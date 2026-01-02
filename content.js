@@ -2046,10 +2046,15 @@ class GmailCRM {
           const firstEmail = data.emails[0];
           const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
+          // Get the first stage of the sales pipeline
+          const salesPipeline = this.pipelines['sales'];
+          const firstStage = salesPipeline?.stages?.[0];
+          const firstStageId = firstStage?.id || 'lead';
+
           deal = {
             id: dealId,
             pipelineId: 'sales',
-            stageId: 'proposal-sent',
+            stageId: firstStageId,
             emailSubject: `${data.company} - ${data.emails.length} email${data.emails.length > 1 ? 's' : ''}`,
             emailFrom: firstEmail.from,
             company: data.company,
@@ -2064,7 +2069,7 @@ class GmailCRM {
 
           this.deals[dealId] = deal;
           created++;
-          console.log('Gmail CRM: Created deal for', data.company);
+          console.log('Gmail CRM: Created deal for', data.company, 'in stage:', firstStageId);
         }
 
         // Link all emails from this company to the deal
