@@ -3495,7 +3495,7 @@ class GmailCRM {
       <div class="crm-modal-content">
         <h2>🤖 Smart Sync with Gemini AI</h2>
         <p style="font-size: 13px; color: #5f6368; margin-bottom: 16px;">
-          AI will analyze your emails to identify deals, extract key information, and intelligently populate your pipeline.
+          AI will analyze <strong>all emails</strong> within the date range to identify deals and populate your pipeline.
         </p>
         <div class="crm-form-group">
           <label>From Date</label>
@@ -3505,13 +3505,9 @@ class GmailCRM {
           <label>To Date</label>
           <input type="date" id="crm-smart-sync-to" class="crm-input" value="${toDate.toISOString().split('T')[0]}" />
         </div>
-        <div class="crm-form-group">
-          <label>Max Emails to Analyze</label>
-          <input type="number" id="crm-smart-sync-limit" class="crm-input" value="50" min="1" max="200" />
-          <p class="crm-help-text" style="color: #5f6368; margin-top: 4px;">
-            Higher numbers will take longer and use more API calls
-          </p>
-        </div>
+        <p class="crm-help-text" style="color: #5f6368; font-size: 12px; margin-top: -8px;">
+          ⚠️ Analyzing many emails will take longer and use more API credits
+        </p>
         <div class="crm-modal-actions">
           <button class="crm-btn" id="crm-cancel-smart-sync">Cancel</button>
           <button class="crm-btn-primary" id="crm-start-smart-sync">🤖 Start Smart Sync</button>
@@ -3525,10 +3521,9 @@ class GmailCRM {
     document.getElementById('crm-start-smart-sync')?.addEventListener('click', () => {
       const fromDate = document.getElementById('crm-smart-sync-from').value;
       const toDate = document.getElementById('crm-smart-sync-to').value;
-      const limit = parseInt(document.getElementById('crm-smart-sync-limit').value) || 50;
 
       modal.remove();
-      this.performSmartSync(fromDate, toDate, limit);
+      this.performSmartSync(fromDate, toDate);
     });
   }
 
@@ -3593,7 +3588,7 @@ class GmailCRM {
     // Modal remains open so user can review the full log
   }
 
-  async performSmartSync(fromDate, toDate, limit) {
+  async performSmartSync(fromDate, toDate) {
     console.log('Gmail CRM: Starting Smart Sync with Gemini...');
 
     // Show progress modal
@@ -3618,16 +3613,38 @@ class GmailCRM {
         return;
       }
 
+      this.updateSmartSyncProgress(`✓ API key configured`, 8);
+
       // Scan emails
       this.updateSmartSyncProgress('📧 Scanning Gmail inbox...', 10);
       const fromDateObj = new Date(fromDate);
       const toDateObj = new Date(toDate);
+
+      this.updateSmartSyncProgress(`📧 Date range: ${fromDateObj.toDateString()} to ${toDateObj.toDateString()}`, 12);
+
       const emailRows = await this.scanGmailEmails(fromDateObj, toDateObj);
 
       console.log(`Gmail CRM: Found ${emailRows.length} emails to analyze`);
-      const emailsToAnalyze = emailRows.slice(0, limit);
 
-      this.updateSmartSyncProgress(`✓ Found ${emailRows.length} emails. Analyzing ${emailsToAnalyze.length} with AI...`, 20);
+      if (emailRows.length === 0) {
+        this.updateSmartSyncProgress('⚠️ No emails found in date range. Try expanding the date range.', 20);
+        this.showNotification('⚠️ No emails found to analyze');
+        return;
+      }
+
+      // Analyze ALL emails in date range (no limit)
+      const emailsToAnalyze = emailRows;
+
+      this.updateSmartSyncProgress(`✓ Found ${emailsToAnalyze.length} emails. Starting AI analysis...`, 20);
+
+      // Show first few email subjects as preview
+      const previewEmails = emailsToAnalyze.slice(0, 5);
+      previewEmails.forEach((email, idx) => {
+        this.updateSmartSyncProgress(`  Preview ${idx + 1}: "${email.subject}"`, 20);
+      });
+      if (emailsToAnalyze.length > 5) {
+        this.updateSmartSyncProgress(`  ... and ${emailsToAnalyze.length - 5} more emails`, 20);
+      }
 
       // Analyze emails in batches with Gemini
       const batchSize = 10;
@@ -3649,22 +3666,28 @@ class GmailCRM {
           this.updateSmartSyncProgress(`  📨 ${idx + 1}. ${email.subject || '(no subject)'}`, batchProgress);
         });
 
-        const deals = await this.analyzeEmailBatchWithGemini(batch, settings.geminiApiKey);
+        try {
+          const deals = await this.analyzeEmailBatchWithGemini(batch, settings.geminiApiKey);
 
-        if (deals && deals.length > 0) {
-          this.updateSmartSyncProgress(`✓ AI identified ${deals.length} potential deals in this batch`, batchProgress);
+          if (deals && deals.length > 0) {
+            this.updateSmartSyncProgress(`✓ AI identified ${deals.length} potential deals in this batch`, batchProgress);
 
-          // Create deals from Gemini's analysis
-          for (const dealData of deals) {
-            await this.createDealFromGeminiAnalysis(dealData);
-            totalDeals++;
-            this.updateSmartSyncProgress(
-              `  ✨ Created deal: "${dealData.dealTitle}" (${dealData.institution || 'Unknown'})`,
-              batchProgress
-            );
+            // Create deals from Gemini's analysis
+            for (const dealData of deals) {
+              await this.createDealFromGeminiAnalysis(dealData);
+              totalDeals++;
+              this.updateSmartSyncProgress(
+                `  ✨ Created deal: "${dealData.dealTitle}" (${dealData.institution || 'Unknown'})`,
+                batchProgress
+              );
+            }
+          } else {
+            this.updateSmartSyncProgress(`  ℹ️ No deals identified in this batch`, batchProgress);
           }
-        } else {
-          this.updateSmartSyncProgress(`  ℹ️ No deals identified in this batch`, batchProgress);
+        } catch (batchError) {
+          this.updateSmartSyncProgress(`  ❌ Error analyzing batch: ${batchError.message}`, batchProgress);
+          console.error('Gmail CRM: Batch analysis error:', batchError);
+          // Continue to next batch instead of failing completely
         }
 
         // Wait between batches to avoid rate limits
@@ -3759,6 +3782,8 @@ Return ONLY a JSON array of deals. If no deals found, return empty array [].
 Format: [{"dealTitle": "...", "institution": "...", "contact": "...", "contactEmail": "...", "stage": "...", "dealValue": 0, "priority": "...", "summary": "...", "isHospital": true}]`;
 
     try {
+      console.log('Gmail CRM: Calling Gemini API with', emails.length, 'emails');
+
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
         method: 'POST',
         headers: {
@@ -3774,24 +3799,31 @@ Format: [{"dealTitle": "...", "institution": "...", "contact": "...", "contactEm
       });
 
       if (!response.ok) {
-        throw new Error(`Gemini API error: ${response.statusText}`);
+        const errorText = await response.text();
+        console.error('Gmail CRM: Gemini API error response:', errorText);
+        throw new Error(`Gemini API error ${response.status}: ${response.statusText} - ${errorText}`);
       }
 
       const data = await response.json();
+      console.log('Gmail CRM: Gemini API response data:', data);
+
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
 
-      console.log('Gmail CRM: Gemini response:', text);
+      console.log('Gmail CRM: Gemini response text:', text);
 
       // Extract JSON from response
       const jsonMatch = text.match(/\[[\s\S]*\]/);
       if (jsonMatch) {
-        return JSON.parse(jsonMatch[0]);
+        const deals = JSON.parse(jsonMatch[0]);
+        console.log('Gmail CRM: Parsed', deals.length, 'deals from Gemini response');
+        return deals;
       }
 
+      console.log('Gmail CRM: No JSON array found in Gemini response');
       return [];
     } catch (error) {
       console.error('Gmail CRM: Error calling Gemini API:', error);
-      return [];
+      throw error; // Re-throw so we can show the error in the UI
     }
   }
 
