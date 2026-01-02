@@ -20,8 +20,18 @@ chrome.storage.local.get(['firebaseConfig', 'currentUser'], (result) => {
 
 // Initialize default data on install
 chrome.runtime.onInstalled.addListener((details) => {
-  if (details.reason === 'install') {
-    console.log('Gmail CRM installed!');
+  if (details.reason === 'install' || details.reason === 'update') {
+    console.log('Gmail CRM ' + details.reason + '!');
+
+    // Auto-configure Firebase for Medivis
+    const defaultFirebaseConfig = {
+      apiKey: "AIzaSyCJAv63NY1FY0JpvB7tLv4KqSCC1yavyVI",
+      authDomain: "crm-medivis.firebaseapp.com",
+      projectId: "crm-medivis",
+      storageBucket: "crm-medivis.firebasestorage.app",
+      messagingSenderId: "676657044030",
+      appId: "1:676657044030:web:14dcb574c1d40a6be98f6f"
+    };
 
     // Set up default pipelines
     const defaultPipelines = [
@@ -63,6 +73,7 @@ chrome.runtime.onInstalled.addListener((details) => {
     ];
 
     chrome.storage.local.set({
+      firebaseConfig: defaultFirebaseConfig,
       pipelines: defaultPipelines,
       deals: {},
       settings: {
@@ -70,7 +81,8 @@ chrome.runtime.onInstalled.addListener((details) => {
         showSidebar: true
       }
     }, () => {
-      console.log('Default data initialized');
+      console.log('✓ Firebase config and default data initialized');
+      firebaseConfig = defaultFirebaseConfig;
     });
   }
 
