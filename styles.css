@@ -78,6 +78,41 @@
   color: #202124;
 }
 
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+  .crm-pipelines-section {
+    border-top-color: #3c4043;
+  }
+
+  .crm-nav-title {
+    color: #e8eaed !important;
+  }
+
+  .crm-nav-add {
+    color: #e8eaed !important;
+  }
+
+  .crm-nav-add:hover {
+    background: #3c4043 !important;
+  }
+
+  .crm-nav-item:hover {
+    background: #3c4043 !important;
+  }
+
+  .crm-nav-item.active {
+    background: #1a3a52 !important;
+  }
+
+  .crm-nav-item.active .crm-nav-name {
+    color: #8ab4f8 !important;
+  }
+
+  .crm-nav-name {
+    color: #e8eaed !important;
+  }
+}
+
 /* ========== Pipeline View Container ========== */
 .crm-pipeline-container {
   position: fixed;
@@ -1288,4 +1323,222 @@
 
 .crm-dashboard-scroll::-webkit-scrollbar-thumb:hover {
   background: #555;
+}
+
+/* ========== Global Dark Mode Support ========== */
+@media (prefers-color-scheme: dark) {
+  /* Pipeline Container */
+  .crm-pipeline-container {
+    background: #202124 !important;
+  }
+
+  /* Pipeline Header */
+  .crm-pipeline-header {
+    background: #292a2d !important;
+    border-bottom-color: #3c4043 !important;
+  }
+
+  .crm-pipeline-title h1,
+  .crm-deal-count {
+    color: #e8eaed !important;
+  }
+
+  /* Stages Bar */
+  .crm-stages-bar {
+    background: #292a2d !important;
+    border-bottom-color: #3c4043 !important;
+  }
+
+  /* Deals Table */
+  .crm-deals-table-container {
+    background: #292a2d !important;
+  }
+
+  .crm-deals-table th,
+  .crm-deals-table td {
+    color: #e8eaed !important;
+    border-color: #3c4043 !important;
+  }
+
+  .crm-stage-group {
+    color: #e8eaed !important;
+  }
+
+  .crm-deal-link {
+    color: #8ab4f8 !important;
+  }
+
+  .crm-status-select {
+    background: #3c4043 !important;
+    color: #e8eaed !important;
+    border-color: #5f6368 !important;
+  }
+
+  /* Sidebar */
+  .crm-deal-sidebar {
+    background: #292a2d !important;
+    border-left-color: #3c4043 !important;
+  }
+
+  .crm-sidebar-header {
+    background: #202124 !important;
+    border-bottom-color: #3c4043 !important;
+  }
+
+  .crm-sidebar-header h3 {
+    color: #e8eaed !important;
+  }
+
+  .crm-sidebar-section h4 {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-info-item label {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-info-item div,
+  .crm-current-status {
+    color: #e8eaed !important;
+  }
+
+  /* Modals */
+  .crm-modal-content {
+    background: #292a2d !important;
+    color: #e8eaed !important;
+  }
+
+  .crm-modal h2 {
+    color: #e8eaed !important;
+  }
+
+  .crm-form-group label {
+    color: #e8eaed !important;
+  }
+
+  .crm-input,
+  .crm-textarea {
+    background: #3c4043 !important;
+    color: #e8eaed !important;
+    border-color: #5f6368 !important;
+  }
+
+  .crm-input:focus,
+  .crm-textarea:focus {
+    border-color: #8ab4f8 !important;
+  }
+
+  /* Buttons */
+  .crm-btn {
+    background: #3c4043 !important;
+    color: #e8eaed !important;
+    border-color: #5f6368 !important;
+  }
+
+  .crm-btn:hover {
+    background: #4c4f52 !important;
+  }
+
+  .crm-btn-small {
+    background: #1a73e8 !important;
+    color: white !important;
+  }
+
+  /* Notes, Calls, etc. */
+  .crm-note-item,
+  .crm-call-item,
+  .crm-email-item {
+    background: #3c4043 !important;
+    border-color: #5f6368 !important;
+  }
+
+  .crm-note-text,
+  .crm-email-subject {
+    color: #e8eaed !important;
+  }
+
+  .crm-note-date,
+  .crm-email-meta,
+  .crm-call-date {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-call-link {
+    color: #8ab4f8 !important;
+  }
+
+  /* Dashboard */
+  .crm-dashboard-content {
+    background: #292a2d !important;
+  }
+
+  .crm-dashboard-header {
+    border-bottom-color: #3c4043 !important;
+  }
+
+  .crm-dashboard-header h2 {
+    color: #e8eaed !important;
+  }
+
+  .crm-dashboard-section h3 {
+    color: #e8eaed !important;
+  }
+
+  .crm-chart-container {
+    background: #3c4043 !important;
+  }
+
+  .crm-bar-value {
+    color: #e8eaed !important;
+  }
+
+  .crm-rank-item,
+  .crm-site-row {
+    background: #3c4043 !important;
+  }
+
+  .crm-rank-item:hover,
+  .crm-site-row:hover {
+    background: #4c4f52 !important;
+  }
+
+  .crm-rank-name,
+  .crm-site-name {
+    color: #e8eaed !important;
+  }
+
+  .crm-rank-meta,
+  .crm-site-stats {
+    color: #9aa0a6 !important;
+  }
+
+  /* Surgeon and Case Cards */
+  .crm-surgeon-item,
+  .crm-case-card {
+    background: #3c4043 !important;
+  }
+
+  .crm-surgeon-name,
+  .crm-case-name {
+    color: #e8eaed !important;
+  }
+
+  .crm-surgeon-specialty,
+  .crm-case-meta {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-case-card.has-issues {
+    background: #3d3520 !important;
+  }
+
+  .crm-surgeons-summary {
+    background: #1a3a52 !important;
+    color: #8ab4f8 !important;
+  }
+
+  /* Empty state */
+  .crm-empty-state {
+    color: #9aa0a6 !important;
+  }
 }
