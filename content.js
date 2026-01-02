@@ -2726,8 +2726,107 @@ class GmailCRM {
       }
     }
 
+    // Try smart pattern recognition for hospitals
+    const predictedName = this.predictHospitalName(domain);
+    if (predictedName) {
+      console.log(`Gmail CRM: Predicted institution name "${predictedName}" from domain "${domain}"`);
+      return predictedName;
+    }
+
     // If no mapping found, use intelligent parsing
     return this.parseInstitutionFromDomain(domain);
+  }
+
+  predictHospitalName(domain) {
+    // Smart pattern recognition for hospital/health system names
+    const lowerDomain = domain.toLowerCase();
+
+    // Common hospital name patterns
+    const patterns = [
+      // St. / Saint patterns
+      { regex: /st[.-]?lukes?/i, name: "St. Luke's Hospital" },
+      { regex: /st[.-]?marys?/i, name: "St. Mary's Hospital" },
+      { regex: /st[.-]?josephs?/i, name: "St. Joseph's Hospital" },
+      { regex: /st[.-]?vincent/i, name: "St. Vincent's Hospital" },
+      { regex: /st[.-]?francis/i, name: "St. Francis Hospital" },
+      { regex: /saint[.-]?lukes?/i, name: "Saint Luke's Hospital" },
+
+      // Regional/City hospitals
+      { regex: /cityhospital/i, name: "City Hospital" },
+      { regex: /countyhospital/i, name: "County Hospital" },
+      { regex: /regionalmedical/i, name: "Regional Medical Center" },
+      { regex: /communityhealth/i, name: "Community Health" },
+
+      // University hospitals
+      { regex: /uhhospital/i, name: "University Hospitals" },
+      { regex: /uchealth/i, name: "UCHealth" },
+      { regex: /umhealth/i, name: "University of Michigan Health" },
+      { regex: /pennhealth/i, name: "Penn Health" },
+
+      // Major systems
+      { regex: /adventhealth/i, name: "AdventHealth" },
+      { regex: /ascension/i, name: "Ascension Health" },
+      { regex: /baptist[.-]?health/i, name: "Baptist Health" },
+      { regex: /bon[.-]?secours/i, name: "Bon Secours Health" },
+      { regex: /hcahealthcare/i, name: "HCA Healthcare" },
+      { regex: /intermountain/i, name: "Intermountain Healthcare" },
+      { regex: /memorial[.-]?health/i, name: "Memorial Health" },
+      { regex: /methodist[.-]?health/i, name: "Methodist Health" },
+      { regex: /tenet[.-]?health/i, name: "Tenet Healthcare" },
+      { regex: /trinity[.-]?health/i, name: "Trinity Health" },
+
+      // Veterans/Military
+      { regex: /va[.-]?gov|veteranshealth/i, name: "Veterans Affairs Health" },
+      { regex: /military[.-]?health/i, name: "Military Health System" },
+
+      // Children's hospitals
+      { regex: /childrens?[.-]?hospital/i, name: "Children's Hospital" },
+      { regex: /pediatric/i, name: "Pediatric Hospital" },
+
+      // Specialty
+      { regex: /cancer[.-]?center/i, name: "Cancer Center" },
+      { regex: /cardiac[.-]?center/i, name: "Cardiac Center" },
+      { regex: /eyecare|ophthalmology/i, name: "Eye Care Center" }
+    ];
+
+    // Check each pattern
+    for (const pattern of patterns) {
+      if (pattern.regex.test(lowerDomain)) {
+        // Try to extract city/region name from domain
+        const cityMatch = lowerDomain.match(/^([a-z]+)[.-]/);
+        if (cityMatch && cityMatch[1].length > 2 && !['www', 'mail', 'email'].includes(cityMatch[1])) {
+          const city = cityMatch[1].charAt(0).toUpperCase() + cityMatch[1].slice(1);
+          return `${city} ${pattern.name}`;
+        }
+        return pattern.name;
+      }
+    }
+
+    // Try to extract hospital/health system name from common formats
+    const hospitalFormats = [
+      // Format: cityhealth.org -> "City Health"
+      /^([a-z]+)(health|medical|hospital)/i,
+      // Format: health-city.org -> "Health City"
+      /(health|medical|hospital)-([a-z]+)/i,
+      // Format: citymemorial.org -> "City Memorial"
+      /^([a-z]+)(memorial|general|regional)/i
+    ];
+
+    for (const format of hospitalFormats) {
+      const match = lowerDomain.match(format);
+      if (match) {
+        const parts = match.slice(1).filter(p => p);
+        const name = parts.map(p =>
+          p.charAt(0).toUpperCase() + p.slice(1)
+        ).join(' ');
+
+        if (name.length > 3) {
+          return name;
+        }
+      }
+    }
+
+    return null;
   }
 
   parseInstitutionFromDomain(domain) {
