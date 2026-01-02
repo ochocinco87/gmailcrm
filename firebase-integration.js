@@ -62,6 +62,20 @@ class FirebaseCRMSync {
     };
   }
 
+  // Wake up service worker with ping before critical operations
+  async wakeUpServiceWorker() {
+    try {
+      const response = await Promise.race([
+        chrome.runtime.sendMessage({ action: 'ping' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Ping timeout')), 1000))
+      ]);
+      return response && response.success;
+    } catch (error) {
+      console.warn('Service worker ping failed:', error);
+      return false;
+    }
+  }
+
   // Load deals - hybrid approach
   async loadDeals() {
     if (this.syncMode === 'firebase' && this.enabled) {
@@ -108,6 +122,9 @@ class FirebaseCRMSync {
         throw new Error('You do not have permission to edit deals (viewer role)');
       }
 
+      // Wake up service worker first
+      await this.wakeUpServiceWorker();
+
       // Save to Firebase via background script (with timeout fallback)
       try {
         const response = await Promise.race([
@@ -115,15 +132,16 @@ class FirebaseCRMSync {
             action: 'saveFirebaseDeal',
             deal: deal
           }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 2000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 3000))
         ]);
 
-        if (response.success) {
+        if (response && response.success) {
           // Also save to local storage for offline access
           await this.saveToLocal('deals', deal.id, deal);
+          console.log('✓ Deal saved to Firebase and local storage');
           return deal;
         } else {
-          throw new Error(response.error || 'Failed to save to Firebase');
+          throw new Error(response?.error || 'Failed to save to Firebase');
         }
       } catch (error) {
         console.warn('Error saving to Firebase, falling back to local:', error);

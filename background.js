@@ -93,6 +93,13 @@ chrome.runtime.onInstalled.addListener((details) => {
 
 // Handle messages from content script
 chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
+  // Ping/pong to wake up and test service worker
+  if (request.action === 'ping') {
+    console.log('Ping received, sending pong');
+    sendResponse({ success: true, message: 'pong' });
+    return true;
+  }
+
   if (request.action === 'getDeal') {
     chrome.storage.local.get(['deals'], (result) => {
       const deal = result.deals?.[request.threadId];
@@ -953,3 +960,40 @@ async function deleteFirestoreDocument(path) {
 }
 
 console.log('Gmail CRM background service worker loaded');
+
+// Keep service worker alive with periodic heartbeat
+let keepAliveInterval = null;
+
+function startKeepAlive() {
+  if (keepAliveInterval) return;
+
+  keepAliveInterval = setInterval(() => {
+    console.log('Service worker heartbeat');
+  }, 20000); // Every 20 seconds
+}
+
+function stopKeepAlive() {
+  if (keepAliveInterval) {
+    clearInterval(keepAliveInterval);
+    keepAliveInterval = null;
+  }
+}
+
+// Start keepAlive when a Gmail tab is opened
+chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
+  if (changeInfo.status === 'complete' && tab.url?.includes('mail.google.com')) {
+    console.log('Gmail tab detected, starting keepAlive');
+    startKeepAlive();
+  }
+});
+
+// Also start if any Gmail tabs are already open
+chrome.tabs.query({ url: 'https://mail.google.com/*' }, (tabs) => {
+  if (tabs.length > 0) {
+    console.log('Gmail tabs already open, starting keepAlive');
+    startKeepAlive();
+  }
+});
+
+// Start keepAlive immediately to ensure service worker is responsive
+startKeepAlive();
