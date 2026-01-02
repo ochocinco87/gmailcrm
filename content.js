@@ -414,6 +414,7 @@ class GmailCRM {
   }
 
   switchViewMode(mode) {
+    console.log('Gmail CRM: Switching to view mode:', mode);
     this.pipelineViewMode = mode;
 
     // Save preference
@@ -425,21 +426,31 @@ class GmailCRM {
     });
 
     // Hide all views
-    document.getElementById('crm-table-view').style.display = 'none';
-    document.getElementById('crm-kanban-view').style.display = 'none';
-    document.getElementById('crm-map-view').style.display = 'none';
+    const tableView = document.getElementById('crm-table-view');
+    const kanbanView = document.getElementById('crm-kanban-view');
+    const mapView = document.getElementById('crm-map-view');
+
+    console.log('Gmail CRM: View elements found - table:', !!tableView, 'kanban:', !!kanbanView, 'map:', !!mapView);
+
+    if (tableView) tableView.style.display = 'none';
+    if (kanbanView) kanbanView.style.display = 'none';
+    if (mapView) mapView.style.display = 'none';
 
     if (mode === 'table') {
       document.getElementById('crm-table-view-btn')?.classList.add('active');
-      document.getElementById('crm-table-view').style.display = 'block';
+      if (tableView) tableView.style.display = 'block';
       this.renderDealsTable();
     } else if (mode === 'kanban') {
       document.getElementById('crm-kanban-view-btn')?.classList.add('active');
-      document.getElementById('crm-kanban-view').style.display = 'flex';
+      if (kanbanView) kanbanView.style.display = 'flex';
       this.renderKanbanView();
     } else if (mode === 'map') {
+      console.log('Gmail CRM: Activating map view');
       document.getElementById('crm-map-view-btn')?.classList.add('active');
-      document.getElementById('crm-map-view').style.display = 'block';
+      if (mapView) {
+        mapView.style.display = 'block';
+        console.log('Gmail CRM: Map view display set to block');
+      }
       this.renderMapView();
     }
   }
@@ -745,20 +756,30 @@ class GmailCRM {
   }
 
   renderMapView() {
+    console.log('Gmail CRM: renderMapView called');
     const mapContainer = document.getElementById('crm-map-container');
-    if (!mapContainer || !this.currentPipeline) return;
+    console.log('Gmail CRM: mapContainer found:', !!mapContainer);
+    console.log('Gmail CRM: currentPipeline:', this.currentPipeline?.name);
+
+    if (!mapContainer || !this.currentPipeline) {
+      console.log('Gmail CRM: Exiting renderMapView - missing container or pipeline');
+      return;
+    }
 
     // Get all deals with addresses
     const dealsInPipeline = this.getDealsInPipeline(this.currentPipeline.id);
+    console.log('Gmail CRM: Total deals in pipeline:', dealsInPipeline.length);
     const dealsWithAddresses = dealsInPipeline.filter(deal => deal.latitude && deal.longitude);
+    console.log('Gmail CRM: Deals with coordinates:', dealsWithAddresses.length);
 
     if (dealsWithAddresses.length === 0) {
+      console.log('Gmail CRM: Showing empty state');
       mapContainer.innerHTML = `
         <div class="crm-map-empty-state">
           <div class="crm-empty-icon">🗺️</div>
           <h3>No Locations to Display</h3>
           <p>Deals need addresses with coordinates to appear on the map.</p>
-          <p>Use the "🔍 Lookup Address" button in the deal sidebar to add addresses.</p>
+          <p>Use the "🔍 Add Address" button in the deal sidebar to add addresses.</p>
         </div>
       `;
       return;
