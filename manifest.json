@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Gmail CRM",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "A powerful CRM that lives within Gmail, helping you manage deals, contacts, and pipelines directly from your inbox.",
   "permissions": [
     "storage",
