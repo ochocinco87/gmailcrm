@@ -86,6 +86,19 @@ class GmailCRM {
         ]
       },
       {
+        id: 'customer-adoption',
+        name: 'Customer Adoption',
+        type: 'customer-tracking',
+        stages: [
+          { id: 'onboarding', name: 'Onboarding', color: '#4285f4' },
+          { id: 'early-adoption', name: 'Early Adoption (1-10 cases)', color: '#7baaf7' },
+          { id: 'active-usage', name: 'Active Usage (11-50 cases)', color: '#34a853' },
+          { id: 'power-user', name: 'Power User (50+ cases)', color: '#0f9d58' },
+          { id: 'at-risk', name: 'At Risk', color: '#f4b400' },
+          { id: 'churned', name: 'Churned', color: '#db4437' }
+        ]
+      },
+      {
         id: 'sales',
         name: 'Sales Pipeline',
         stages: [
@@ -246,13 +259,14 @@ class GmailCRM {
       <div class="crm-pipeline-header">
         <div class="crm-pipeline-title">
           <h1>${pipeline.name}</h1>
-          <span class="crm-deal-count">${dealsInPipeline.length} Count</span>
+          <span class="crm-deal-count">${dealsInPipeline.length} ${pipeline.type === 'customer-tracking' ? 'Customer Sites' : 'Deals'}</span>
         </div>
         <div class="crm-pipeline-actions">
+          ${pipeline.type === 'customer-tracking' ? '<button class="crm-btn" id="crm-dashboard-btn">📊 Dashboard</button>' : ''}
           <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
           <button class="crm-btn" id="crm-settings-btn">⚙️ Settings</button>
           <button class="crm-btn" id="crm-share-btn">🔗 Share</button>
-          <button class="crm-btn-primary" id="crm-add-deal-btn">+ Add Deal</button>
+          <button class="crm-btn-primary" id="crm-add-deal-btn">+ Add ${pipeline.type === 'customer-tracking' ? 'Customer Site' : 'Deal'}</button>
         </div>
       </div>
 
@@ -305,6 +319,10 @@ class GmailCRM {
 
     document.getElementById('crm-refresh-btn')?.addEventListener('click', () => {
       this.loadData().then(() => this.renderPipelineBoard());
+    });
+
+    document.getElementById('crm-dashboard-btn')?.addEventListener('click', () => {
+      this.showDashboard();
     });
   }
 
@@ -860,6 +878,10 @@ class GmailCRM {
 
           ${emailsHTML}
 
+          ${this.currentPipeline?.type === 'customer-tracking' ? this.renderSurgeonsSection(deal) : ''}
+
+          ${this.currentPipeline?.type === 'customer-tracking' ? this.renderCasesSection(deal) : ''}
+
           <div class="crm-sidebar-section">
             <h4>Notes</h4>
             ${this.renderNotesHistory(deal)}
@@ -920,7 +942,7 @@ class GmailCRM {
     sidebar.querySelectorAll('.crm-btn-icon-tiny').forEach(btn => {
       btn.addEventListener('click', (e) => {
         const idx = parseInt(e.target.dataset.noteIdx);
-        if (confirm('Delete this note?')) {
+        if (idx !== undefined && confirm('Delete this note?')) {
           if (!deal.notesHistory) deal.notesHistory = [];
           deal.notesHistory.splice(idx, 1);
           chrome.storage.local.set({ deals: this.deals }, () => {
@@ -930,6 +952,291 @@ class GmailCRM {
         }
       });
     });
+
+    // Add surgeon button
+    document.getElementById('crm-add-surgeon-btn')?.addEventListener('click', () => {
+      this.showAddSurgeonDialog(deal.id);
+    });
+
+    // Remove surgeon listeners
+    sidebar.querySelectorAll('[data-surgeon-idx]').forEach(btn => {
+      if (btn.classList.contains('crm-btn-icon-small')) {
+        btn.addEventListener('click', (e) => {
+          const idx = parseInt(e.target.dataset.surgeonIdx);
+          if (confirm('Remove this surgeon?')) {
+            if (!deal.surgeons) deal.surgeons = [];
+            deal.surgeons.splice(idx, 1);
+            chrome.storage.local.set({ deals: this.deals }, () => {
+              this.showDealSidebar(deal.id);
+            });
+          }
+        });
+      }
+    });
+
+    // Add case button
+    document.getElementById('crm-add-case-btn')?.addEventListener('click', () => {
+      this.showAddCaseDialog(deal.id);
+    });
+
+    // Delete case listeners
+    sidebar.querySelectorAll('[data-case-idx]').forEach(btn => {
+      if (btn.classList.contains('crm-btn-icon-tiny')) {
+        btn.addEventListener('click', (e) => {
+          const idx = parseInt(e.target.dataset.caseIdx);
+          if (idx !== undefined && confirm('Delete this case?')) {
+            if (!deal.cases) deal.cases = [];
+            deal.cases.splice(idx, 1);
+            chrome.storage.local.set({ deals: this.deals }, () => {
+              this.showDealSidebar(deal.id);
+              this.showNotification('Case deleted');
+            });
+          }
+        });
+      }
+    });
+  }
+
+  renderSurgeonsSection(deal) {
+    const surgeons = deal.surgeons || [];
+    const totalCases = surgeons.reduce((sum, s) => sum + (s.caseCount || 0), 0);
+
+    return `
+      <div class="crm-sidebar-section">
+        <h4>Surgeons (${surgeons.length})</h4>
+        <div class="crm-surgeons-list">
+          ${surgeons.map((surgeon, idx) => `
+            <div class="crm-surgeon-item">
+              <div class="crm-surgeon-header">
+                <div>
+                  <div class="crm-surgeon-name">${surgeon.name}</div>
+                  <div class="crm-surgeon-specialty">${surgeon.specialty || 'General Surgery'}</div>
+                </div>
+                <button class="crm-btn-icon-small" data-surgeon-idx="${idx}" title="Remove surgeon">×</button>
+              </div>
+              <div class="crm-surgeon-stats">
+                <span class="crm-stat-badge">${surgeon.caseCount || 0} cases</span>
+                ${surgeon.lastCaseDate ? `<span class="crm-stat-date">Last: ${new Date(surgeon.lastCaseDate).toLocaleDateString()}</span>` : ''}
+              </div>
+            </div>
+          `).join('')}
+          ${surgeons.length === 0 ? '<p class="crm-empty-state">No surgeons added yet</p>' : ''}
+        </div>
+        <div class="crm-surgeons-summary">
+          <strong>Total Cases: ${totalCases}</strong>
+        </div>
+        <button class="crm-btn-small" id="crm-add-surgeon-btn">+ Add Surgeon</button>
+      </div>
+    `;
+  }
+
+  renderCasesSection(deal) {
+    const cases = deal.cases || [];
+
+    // Group cases by week for analytics
+    const casesByWeek = this.groupCasesByWeek(cases);
+
+    return `
+      <div class="crm-sidebar-section">
+        <h4>Cases (${cases.length})</h4>
+        <div class="crm-cases-list">
+          ${cases.slice(-10).reverse().map((caseItem, idx) => `
+            <div class="crm-case-card ${caseItem.hasIssues ? 'has-issues' : ''}">
+              <div class="crm-case-header">
+                <div class="crm-case-name">${caseItem.name || 'Unnamed Case'}</div>
+                <button class="crm-btn-icon-tiny" data-case-idx="${cases.length - 1 - idx}" title="Delete case">×</button>
+              </div>
+              <div class="crm-case-meta">
+                <span>👨‍⚕️ ${caseItem.surgeonName || 'Unknown'}</span>
+                <span>📅 ${new Date(caseItem.date).toLocaleDateString()}</span>
+              </div>
+              ${caseItem.hasIssues ? `<div class="crm-case-issues">⚠️ ${caseItem.issues}</div>` : '<div class="crm-case-success">✓ No issues reported</div>'}
+            </div>
+          `).join('')}
+          ${cases.length === 0 ? '<p class="crm-empty-state">No cases logged yet</p>' : ''}
+          ${cases.length > 10 ? `<p class="crm-more-info">Showing last 10 of ${cases.length} cases</p>` : ''}
+        </div>
+        <button class="crm-btn-small" id="crm-add-case-btn">+ Add Case</button>
+      </div>
+    `;
+  }
+
+  groupCasesByWeek(cases) {
+    const weeks = {};
+    cases.forEach(c => {
+      const date = new Date(c.date);
+      const weekStart = new Date(date.setDate(date.getDate() - date.getDay()));
+      const weekKey = weekStart.toISOString().split('T')[0];
+      weeks[weekKey] = (weeks[weekKey] || 0) + 1;
+    });
+    return weeks;
+  }
+
+  showDashboard() {
+    // Get all customer tracking deals
+    const customerDeals = Object.values(this.deals).filter(d =>
+      d.pipelineId === 'customer-adoption'
+    );
+
+    // Calculate KPIs
+    const totalSites = customerDeals.length;
+    const totalSurgeons = customerDeals.reduce((sum, d) =>
+      sum + (d.surgeons ? d.surgeons.length : 0), 0
+    );
+    const allCases = customerDeals.flatMap(d => d.cases || []);
+    const totalCases = allCases.length;
+    const casesWithIssues = allCases.filter(c => c.hasIssues).length;
+    const successRate = totalCases > 0 ? ((totalCases - casesWithIssues) / totalCases * 100).toFixed(1) : 0;
+
+    // Cases per week (last 12 weeks)
+    const weeks = this.getLast12Weeks();
+    const casesByWeek = weeks.map(week => ({
+      week,
+      count: allCases.filter(c => {
+        const caseDate = new Date(c.date);
+        return caseDate >= week.start && caseDate <= week.end;
+      }).length
+    }));
+
+    // Top surgeons
+    const surgeonMap = {};
+    customerDeals.forEach(deal => {
+      (deal.surgeons || []).forEach(surgeon => {
+        if (!surgeonMap[surgeon.name]) {
+          surgeonMap[surgeon.name] = { ...surgeon, siteName: deal.emailSubject };
+        } else {
+          surgeonMap[surgeon.name].caseCount += (surgeon.caseCount || 0);
+        }
+      });
+    });
+    const topSurgeons = Object.values(surgeonMap)
+      .sort((a, b) => (b.caseCount || 0) - (a.caseCount || 0))
+      .slice(0, 10);
+
+    // Create dashboard modal
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal crm-dashboard-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content crm-dashboard-content">
+        <div class="crm-dashboard-header">
+          <h2>📊 Customer Adoption Dashboard</h2>
+          <button class="crm-close-sidebar" id="crm-close-dashboard">×</button>
+        </div>
+
+        <div class="crm-dashboard-scroll">
+          <div class="crm-kpi-grid">
+            <div class="crm-kpi-card">
+              <div class="crm-kpi-value">${totalSites}</div>
+              <div class="crm-kpi-label">Customer Sites</div>
+            </div>
+            <div class="crm-kpi-card">
+              <div class="crm-kpi-value">${totalSurgeons}</div>
+              <div class="crm-kpi-label">Active Surgeons</div>
+            </div>
+            <div class="crm-kpi-card">
+              <div class="crm-kpi-value">${totalCases}</div>
+              <div class="crm-kpi-label">Total Cases</div>
+            </div>
+            <div class="crm-kpi-card">
+              <div class="crm-kpi-value">${successRate}%</div>
+              <div class="crm-kpi-label">Success Rate</div>
+            </div>
+          </div>
+
+          <div class="crm-dashboard-section">
+            <h3>Cases per Week (Last 12 Weeks)</h3>
+            <div class="crm-chart-container">
+              ${this.renderWeeklyChart(casesByWeek)}
+            </div>
+          </div>
+
+          <div class="crm-dashboard-section">
+            <h3>Top 10 Surgeons by Case Volume</h3>
+            <div class="crm-surgeons-ranking">
+              ${topSurgeons.map((surgeon, idx) => `
+                <div class="crm-rank-item">
+                  <span class="crm-rank-number">#${idx + 1}</span>
+                  <div class="crm-rank-info">
+                    <div class="crm-rank-name">${surgeon.name}</div>
+                    <div class="crm-rank-meta">${surgeon.siteName} • ${surgeon.specialty || 'General Surgery'}</div>
+                  </div>
+                  <span class="crm-rank-value">${surgeon.caseCount || 0} cases</span>
+                </div>
+              `).join('')}
+              ${topSurgeons.length === 0 ? '<p class="crm-empty-state">No surgeon data available</p>' : ''}
+            </div>
+          </div>
+
+          <div class="crm-dashboard-section">
+            <h3>Customer Site Breakdown</h3>
+            <div class="crm-sites-table">
+              ${customerDeals.map(deal => {
+                const siteCases = (deal.cases || []).length;
+                const siteSurgeons = (deal.surgeons || []).length;
+                return `
+                  <div class="crm-site-row">
+                    <div class="crm-site-name">${deal.emailSubject || 'Unnamed Site'}</div>
+                    <div class="crm-site-stats">
+                      <span>${siteSurgeons} surgeons</span>
+                      <span>${siteCases} cases</span>
+                    </div>
+                  </div>
+                `;
+              }).join('')}
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-close-dashboard')?.addEventListener('click', () => {
+      modal.remove();
+    });
+
+    // Close on backdrop click
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) {
+        modal.remove();
+      }
+    });
+  }
+
+  renderWeeklyChart(casesByWeek) {
+    const maxCases = Math.max(...casesByWeek.map(w => w.count), 1);
+
+    return `
+      <div class="crm-bar-chart">
+        ${casesByWeek.map(weekData => {
+          const height = (weekData.count / maxCases) * 100;
+          return `
+            <div class="crm-bar-wrapper">
+              <div class="crm-bar-value">${weekData.count}</div>
+              <div class="crm-bar" style="height: ${height}%"></div>
+              <div class="crm-bar-label">${weekData.week.label}</div>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
+  getLast12Weeks() {
+    const weeks = [];
+    for (let i = 11; i >= 0; i--) {
+      const end = new Date();
+      end.setDate(end.getDate() - (i * 7));
+      const start = new Date(end);
+      start.setDate(start.getDate() - 6);
+
+      weeks.push({
+        start,
+        end,
+        label: `${start.getMonth() + 1}/${start.getDate()}`
+      });
+    }
+    return weeks;
   }
 
   showAddCallDialog(dealId) {
@@ -978,6 +1285,171 @@ class GmailCRM {
         this.showNotification('Call added successfully!');
       });
     });
+  }
+
+  showAddSurgeonDialog(dealId) {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>Add Surgeon</h2>
+        <div class="crm-form-group">
+          <label>Surgeon Name *</label>
+          <input type="text" id="crm-surgeon-name" class="crm-input" placeholder="Dr. Jane Smith" required />
+        </div>
+        <div class="crm-form-group">
+          <label>Specialty</label>
+          <select id="crm-surgeon-specialty" class="crm-input">
+            <option value="General Surgery">General Surgery</option>
+            <option value="Orthopedic Surgery">Orthopedic Surgery</option>
+            <option value="Neurosurgery">Neurosurgery</option>
+            <option value="Cardiothoracic Surgery">Cardiothoracic Surgery</option>
+            <option value="Vascular Surgery">Vascular Surgery</option>
+            <option value="Plastic Surgery">Plastic Surgery</option>
+            <option value="Pediatric Surgery">Pediatric Surgery</option>
+            <option value="Trauma Surgery">Trauma Surgery</option>
+            <option value="Other">Other</option>
+          </select>
+        </div>
+        <div class="crm-form-group">
+          <label>Initial Case Count</label>
+          <input type="number" id="crm-surgeon-cases" class="crm-input" value="0" min="0" />
+        </div>
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-surgeon">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-surgeon">Add Surgeon</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-surgeon')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-surgeon')?.addEventListener('click', () => {
+      const deal = this.deals[dealId];
+      if (!deal) return;
+
+      const name = document.getElementById('crm-surgeon-name').value.trim();
+      if (!name) {
+        alert('Please enter a surgeon name');
+        return;
+      }
+
+      if (!deal.surgeons) deal.surgeons = [];
+
+      deal.surgeons.push({
+        name: name,
+        specialty: document.getElementById('crm-surgeon-specialty').value,
+        caseCount: parseInt(document.getElementById('crm-surgeon-cases').value) || 0,
+        addedAt: new Date().toISOString()
+      });
+
+      chrome.storage.local.set({ deals: this.deals }, () => {
+        modal.remove();
+        this.showDealSidebar(dealId);
+        this.showNotification(`Surgeon ${name} added successfully!`);
+      });
+    });
+
+    // Focus on name input
+    setTimeout(() => document.getElementById('crm-surgeon-name')?.focus(), 100);
+  }
+
+  showAddCaseDialog(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const surgeons = deal.surgeons || [];
+    const today = new Date().toISOString().split('T')[0];
+
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>Add Case</h2>
+        <div class="crm-form-group">
+          <label>Case Name *</label>
+          <input type="text" id="crm-case-name" class="crm-input" placeholder="e.g., Hip Replacement #123" required />
+        </div>
+        <div class="crm-form-group">
+          <label>Date Completed *</label>
+          <input type="date" id="crm-case-date" class="crm-input" value="${today}" required />
+        </div>
+        <div class="crm-form-group">
+          <label>Surgeon *</label>
+          <select id="crm-case-surgeon" class="crm-input" required>
+            ${surgeons.length === 0 ? '<option value="">No surgeons added yet</option>' : ''}
+            ${surgeons.map(s => `<option value="${s.name}">${s.name} - ${s.specialty || 'General Surgery'}</option>`).join('')}
+          </select>
+          ${surgeons.length === 0 ? '<p class="crm-help-text">Please add a surgeon first</p>' : ''}
+        </div>
+        <div class="crm-form-group">
+          <label class="crm-checkbox-label">
+            <input type="checkbox" id="crm-case-has-issues" />
+            <span>Case had issues</span>
+          </label>
+        </div>
+        <div class="crm-form-group" id="crm-issues-group" style="display: none;">
+          <label>Issue Description</label>
+          <textarea id="crm-case-issues" class="crm-input" rows="3" placeholder="Describe the issues encountered..."></textarea>
+        </div>
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-case">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-case" ${surgeons.length === 0 ? 'disabled' : ''}>Add Case</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Toggle issues textarea
+    document.getElementById('crm-case-has-issues')?.addEventListener('change', (e) => {
+      const issuesGroup = document.getElementById('crm-issues-group');
+      if (issuesGroup) {
+        issuesGroup.style.display = e.target.checked ? 'block' : 'none';
+      }
+    });
+
+    document.getElementById('crm-cancel-case')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-case')?.addEventListener('click', () => {
+      const caseName = document.getElementById('crm-case-name').value.trim();
+      const caseDate = document.getElementById('crm-case-date').value;
+      const surgeonName = document.getElementById('crm-case-surgeon').value;
+      const hasIssues = document.getElementById('crm-case-has-issues').checked;
+      const issues = document.getElementById('crm-case-issues').value.trim();
+
+      if (!caseName || !caseDate || !surgeonName) {
+        alert('Please fill in all required fields');
+        return;
+      }
+
+      if (!deal.cases) deal.cases = [];
+
+      deal.cases.push({
+        name: caseName,
+        date: caseDate,
+        surgeonName: surgeonName,
+        hasIssues: hasIssues,
+        issues: hasIssues ? issues : '',
+        createdAt: new Date().toISOString()
+      });
+
+      // Update surgeon case count
+      const surgeon = deal.surgeons?.find(s => s.name === surgeonName);
+      if (surgeon) {
+        surgeon.caseCount = (surgeon.caseCount || 0) + 1;
+        surgeon.lastCaseDate = caseDate;
+      }
+
+      chrome.storage.local.set({ deals: this.deals }, () => {
+        modal.remove();
+        this.showDealSidebar(dealId);
+        this.showNotification('Case added successfully!');
+      });
+    });
+
+    // Focus on case name input
+    setTimeout(() => document.getElementById('crm-case-name')?.focus(), 100);
   }
 
   showNotification(message) {
