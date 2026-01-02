@@ -56,18 +56,84 @@ class GmailCRM {
   }
 
   async loadData() {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(['deals', 'pipelines', 'pipelineViewMode'], (result) => {
-        this.deals = result.deals || {};
-        this.pipelines = result.pipelines || this.getDefaultPipelines();
-        this.pipelineViewMode = result.pipelineViewMode || 'table'; // default to table view
+    // Initialize Firebase sync
+    await window.firebaseCRMSync.initialize();
 
-        if (!result.pipelines) {
-          chrome.storage.local.set({ pipelines: this.pipelines });
-        }
-        resolve();
-      });
+    // Load deals from Firebase or local storage
+    this.deals = await window.firebaseCRMSync.loadDeals();
+
+    // Load pipelines from Firebase or local storage
+    const pipelines = await window.firebaseCRMSync.loadPipelines();
+    this.pipelines = pipelines.length > 0 ? pipelines : this.getDefaultPipelines();
+
+    // Load view mode from local storage
+    const viewModeResult = await new Promise(resolve => {
+      chrome.storage.local.get(['pipelineViewMode'], resolve);
     });
+    this.pipelineViewMode = viewModeResult.pipelineViewMode || 'table';
+
+    // Save default pipelines if none exist
+    if (pipelines.length === 0) {
+      for (const pipeline of this.pipelines) {
+        await window.firebaseCRMSync.savePipeline(pipeline);
+      }
+    }
+
+      console.log('Gmail CRM: Loaded data -', Object.keys(this.deals).length, 'deals,', this.pipelines.length, 'pipelines');
+    console.log('Gmail CRM: Sync mode:', window.firebaseCRMSync.syncMode);
+
+    // Set up real-time sync listeners
+    this.setupRealtimeSync();
+  }
+
+  setupRealtimeSync() {
+    // Subscribe to deals updates
+    window.firebaseCRMSync.subscribeToDeals((deals) => {
+      console.log('Gmail CRM: Received deals update from Firebase');
+      this.deals = deals;
+      if (this.currentPipeline) {
+        this.renderPipelineBoard();
+      }
+    });
+
+    // Subscribe to pipelines updates
+    window.firebaseCRMSync.subscribeToPipelines((pipelines) => {
+      console.log('Gmail CRM: Received pipelines update from Firebase');
+      this.pipelines = pipelines;
+      if (this.currentPipeline) {
+        this.renderPipelineBoard();
+      }
+    });
+  }
+
+  async saveDeal(deal) {
+    try {
+      await window.firebaseCRMSync.saveDeal(deal);
+      this.deals[deal.id] = deal;
+    } catch (error) {
+      console.error('Error saving deal:', error);
+      if (error.message.includes('permission')) {
+        window.firebaseCRMSync.showPermissionError('edit deals');
+      } else {
+        this.showNotification('❌ Error saving deal: ' + error.message);
+      }
+      throw error;
+    }
+  }
+
+  async deleteDeal(dealId) {
+    try {
+      await window.firebaseCRMSync.deleteDeal(dealId);
+      delete this.deals[dealId];
+    } catch (error) {
+      console.error('Error deleting deal:', error);
+      if (error.message.includes('permission')) {
+        window.firebaseCRMSync.showPermissionError('delete deals');
+      } else {
+        this.showNotification('❌ Error deleting deal: ' + error.message);
+      }
+      throw error;
+    }
   }
 
   getDefaultPipelines() {
@@ -729,7 +795,7 @@ class GmailCRM {
     });
   }
 
-  moveDealToStage(dealId, newStageId) {
+  async moveDealToStage(dealId, newStageId) {
     const deal = this.deals[dealId];
     if (!deal) return;
 
@@ -749,8 +815,8 @@ class GmailCRM {
       });
     }
 
-    // Save to storage
-    chrome.storage.local.set({ deals: this.deals });
+    // Save using Firebase sync
+    await this.saveDeal(deal);
 
     console.log(`Gmail CRM: Moved deal ${dealId} from ${oldStageId} to ${newStageId}`);
   }
