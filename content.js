@@ -611,8 +611,8 @@ class GmailCRM {
         sourceStageId = null;
       });
 
-      // Click to open sidebar
-      card.addEventListener('click', (e) => {
+      // Double-click to open sidebar
+      card.addEventListener('dblclick', (e) => {
         if (!e.target.closest('.crm-kanban-card-priority')) {
           const dealId = card.dataset.dealId;
           this.openDealSidebar(dealId);
@@ -3482,9 +3482,63 @@ class GmailCRM {
     });
   }
 
+  showSmartSyncProgress(title, message, progress = 0) {
+    let modal = document.getElementById('crm-smart-sync-progress');
+
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'crm-smart-sync-progress';
+      modal.className = 'crm-modal';
+      document.body.appendChild(modal);
+    }
+
+    modal.innerHTML = `
+      <div class="crm-modal-content crm-progress-modal">
+        <div class="crm-progress-header">
+          <h2>🤖 ${title}</h2>
+        </div>
+        <div class="crm-progress-body">
+          <div class="crm-progress-bar-container">
+            <div class="crm-progress-bar" style="width: ${progress}%"></div>
+          </div>
+          <div class="crm-progress-status">${message}</div>
+          <div class="crm-progress-log" id="crm-progress-log"></div>
+        </div>
+      </div>
+    `;
+  }
+
+  updateSmartSyncProgress(message, progress) {
+    const modal = document.getElementById('crm-smart-sync-progress');
+    if (!modal) return;
+
+    const statusEl = modal.querySelector('.crm-progress-status');
+    const progressBar = modal.querySelector('.crm-progress-bar');
+    const log = document.getElementById('crm-progress-log');
+
+    if (statusEl) statusEl.textContent = message;
+    if (progressBar) progressBar.style.width = `${progress}%`;
+    if (log) {
+      const logEntry = document.createElement('div');
+      logEntry.className = 'crm-progress-log-entry';
+      logEntry.innerHTML = `<span class="crm-log-time">${new Date().toLocaleTimeString()}</span> ${message}`;
+      log.appendChild(logEntry);
+      log.scrollTop = log.scrollHeight;
+    }
+  }
+
+  closeSmartSyncProgress() {
+    const modal = document.getElementById('crm-smart-sync-progress');
+    if (modal) {
+      setTimeout(() => modal.remove(), 2000); // Close after 2 seconds
+    }
+  }
+
   async performSmartSync(fromDate, toDate, limit) {
     console.log('Gmail CRM: Starting Smart Sync with Gemini...');
-    this.showNotification('🤖 Starting AI-powered email analysis...');
+
+    // Show progress modal
+    this.showSmartSyncProgress('AI Email Analysis', 'Initializing...', 0);
 
     const syncBtn = document.getElementById('crm-smart-sync-btn');
     if (syncBtn) {
@@ -3494,11 +3548,19 @@ class GmailCRM {
 
     try {
       // Get API key
+      this.updateSmartSyncProgress('🔑 Retrieving Gemini API key...', 5);
       const settings = await new Promise(resolve => {
         chrome.storage.local.get(['geminiApiKey'], resolve);
       });
 
+      if (!settings.geminiApiKey) {
+        this.updateSmartSyncProgress('❌ No API key found. Please configure in settings.', 0);
+        this.showNotification('❌ Please configure Gemini API key first');
+        return;
+      }
+
       // Scan emails
+      this.updateSmartSyncProgress('📧 Scanning Gmail inbox...', 10);
       const fromDateObj = new Date(fromDate);
       const toDateObj = new Date(toDate);
       const emailRows = await this.scanGmailEmails(fromDateObj, toDateObj);
@@ -3506,47 +3568,75 @@ class GmailCRM {
       console.log(`Gmail CRM: Found ${emailRows.length} emails to analyze`);
       const emailsToAnalyze = emailRows.slice(0, limit);
 
-      this.showNotification(`🤖 Analyzing ${emailsToAnalyze.length} emails with AI...`);
+      this.updateSmartSyncProgress(`✓ Found ${emailRows.length} emails. Analyzing ${emailsToAnalyze.length} with AI...`, 20);
 
       // Analyze emails in batches with Gemini
       const batchSize = 10;
       let totalDeals = 0;
+      const totalBatches = Math.ceil(emailsToAnalyze.length / batchSize);
 
       for (let i = 0; i < emailsToAnalyze.length; i += batchSize) {
         const batch = emailsToAnalyze.slice(i, i + batchSize);
-        console.log(`Gmail CRM: Analyzing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(emailsToAnalyze.length/batchSize)}`);
+        const currentBatch = Math.floor(i / batchSize) + 1;
+        const batchProgress = 20 + ((currentBatch / totalBatches) * 60);
+
+        this.updateSmartSyncProgress(
+          `🤖 Analyzing batch ${currentBatch}/${totalBatches} (${batch.length} emails)...`,
+          batchProgress
+        );
+
+        // Show email subjects being analyzed
+        batch.forEach((email, idx) => {
+          this.updateSmartSyncProgress(`  📨 ${idx + 1}. ${email.subject || '(no subject)'}`, batchProgress);
+        });
 
         const deals = await this.analyzeEmailBatchWithGemini(batch, settings.geminiApiKey);
 
         if (deals && deals.length > 0) {
+          this.updateSmartSyncProgress(`✓ AI identified ${deals.length} potential deals in this batch`, batchProgress);
+
           // Create deals from Gemini's analysis
           for (const dealData of deals) {
             await this.createDealFromGeminiAnalysis(dealData);
             totalDeals++;
+            this.updateSmartSyncProgress(
+              `  ✨ Created deal: "${dealData.dealTitle}" (${dealData.institution || 'Unknown'})`,
+              batchProgress
+            );
           }
+        } else {
+          this.updateSmartSyncProgress(`  ℹ️ No deals identified in this batch`, batchProgress);
         }
 
         // Wait between batches to avoid rate limits
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        if (i + batchSize < emailsToAnalyze.length) {
+          this.updateSmartSyncProgress('⏳ Waiting 1s to avoid rate limits...', batchProgress);
+          await new Promise(resolve => setTimeout(resolve, 1000));
+        }
       }
 
       // Save and refresh
+      this.updateSmartSyncProgress('💾 Saving deals to storage...', 85);
       await new Promise(resolve => {
         chrome.storage.local.set({ deals: this.deals }, resolve);
       });
 
-      console.log(`Gmail CRM: Smart Sync complete. Created ${totalDeals} deals`);
-      this.showNotification(`✓ Smart Sync complete! Created ${totalDeals} deals`);
-
-      // Reload and refresh
+      this.updateSmartSyncProgress('🔄 Refreshing pipeline view...', 95);
       await this.loadData();
       if (this.currentPipeline) {
         this.renderPipelineBoard();
       }
 
+      console.log(`Gmail CRM: Smart Sync complete. Created ${totalDeals} deals`);
+      this.updateSmartSyncProgress(`✅ Smart Sync Complete! Created ${totalDeals} deals`, 100);
+      this.showNotification(`✓ Smart Sync complete! Created ${totalDeals} deals`);
+
+      this.closeSmartSyncProgress();
+
     } catch (error) {
       console.error('Gmail CRM: Error in Smart Sync:', error);
-      this.showNotification('❌ Smart Sync failed. Check console for details.');
+      this.updateSmartSyncProgress(`❌ Error: ${error.message}`, 0);
+      this.showNotification('❌ Smart Sync failed. Check progress window for details.');
     } finally {
       if (syncBtn) {
         syncBtn.disabled = false;

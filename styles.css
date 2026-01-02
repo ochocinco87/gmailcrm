@@ -774,6 +774,84 @@
   margin-top: 24px;
 }
 
+/* ========== Progress Modal ========== */
+.crm-progress-modal {
+  max-width: 700px;
+  width: 90%;
+}
+
+.crm-progress-header {
+  border-bottom: 2px solid #e8eaed;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+.crm-progress-header h2 {
+  margin: 0;
+  font-size: 22px;
+  color: #202124;
+  font-weight: 500;
+}
+
+.crm-progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.crm-progress-bar-container {
+  width: 100%;
+  height: 24px;
+  background: #e8eaed;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.crm-progress-bar {
+  height: 100%;
+  background: linear-gradient(90deg, #1a73e8 0%, #4285f4 100%);
+  transition: width 0.3s ease;
+  border-radius: 12px;
+  box-shadow: 0 2px 4px rgba(26, 115, 232, 0.3);
+}
+
+.crm-progress-status {
+  font-size: 15px;
+  font-weight: 500;
+  color: #202124;
+  padding: 8px 0;
+}
+
+.crm-progress-log {
+  max-height: 400px;
+  overflow-y: auto;
+  background: #f8f9fa;
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'Courier New', monospace;
+  font-size: 13px;
+}
+
+.crm-progress-log-entry {
+  padding: 4px 0;
+  color: #202124;
+  line-height: 1.6;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.crm-progress-log-entry:last-child {
+  border-bottom: none;
+}
+
+.crm-log-time {
+  color: #5f6368;
+  font-size: 11px;
+  margin-right: 8px;
+  font-weight: 600;
+}
+
 /* ========== Pipeline Editor ========== */
 .crm-pipeline-editor {
   max-width: 600px;
@@ -2297,6 +2375,41 @@
   .crm-input:focus,
   .crm-textarea:focus {
     border-color: #8ab4f8 !important;
+  }
+
+  /* Progress Modal */
+  .crm-progress-header {
+    border-bottom-color: #3c4043 !important;
+  }
+
+  .crm-progress-header h2 {
+    color: #e8eaed !important;
+  }
+
+  .crm-progress-bar-container {
+    background: #3c4043 !important;
+  }
+
+  .crm-progress-bar {
+    background: linear-gradient(90deg, #8ab4f8 0%, #669df6 100%) !important;
+  }
+
+  .crm-progress-status {
+    color: #e8eaed !important;
+  }
+
+  .crm-progress-log {
+    background: #202124 !important;
+    border-color: #3c4043 !important;
+  }
+
+  .crm-progress-log-entry {
+    color: #e8eaed !important;
+    border-bottom-color: #3c4043 !important;
+  }
+
+  .crm-log-time {
+    color: #9aa0a6 !important;
   }
 
   /* Buttons */
