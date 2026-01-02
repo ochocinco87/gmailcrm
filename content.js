@@ -785,32 +785,18 @@ class GmailCRM {
       return;
     }
 
-    // Load Leaflet library if not already loaded
+    // Leaflet is loaded via manifest.json, initialize map
+    console.log('Gmail CRM: Leaflet available:', !!window.L);
     if (!window.L) {
-      // Add Leaflet CSS
-      if (!document.getElementById('leaflet-css')) {
-        const link = document.createElement('link');
-        link.id = 'leaflet-css';
-        link.rel = 'stylesheet';
-        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
-        link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
-        link.crossOrigin = '';
-        document.head.appendChild(link);
-      }
-
-      // Add Leaflet JS
-      if (!document.getElementById('leaflet-js')) {
-        const script = document.createElement('script');
-        script.id = 'leaflet-js';
-        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
-        script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
-        script.crossOrigin = '';
-        script.onload = () => {
-          this.initializeMap(dealsWithAddresses);
-        };
-        document.head.appendChild(script);
-        return;
-      }
+      console.error('Gmail CRM: Leaflet library not loaded!');
+      mapContainer.innerHTML = `
+        <div class="crm-map-empty-state">
+          <div class="crm-empty-icon">❌</div>
+          <h3>Map Library Error</h3>
+          <p>The mapping library failed to load. Please reload the extension.</p>
+        </div>
+      `;
+      return;
     }
 
     this.initializeMap(dealsWithAddresses);
