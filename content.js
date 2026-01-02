@@ -2566,71 +2566,174 @@ class GmailCRM {
     return '';
   }
 
+  getInstitutionMappings() {
+    // Multi-domain institution mappings
+    // All domains for an institution map to the same name
+    return {
+      // Stanford - all domains grouped together
+      'stanford': {
+        name: 'Stanford University & Health',
+        domains: ['stanford.edu', 'stanfordhealthcare.org', 'stanfordhealth.org', 'stanfordchildrens.org', 'stanfordmedicine.org', 'lpch.org']
+      },
+
+      // Harvard
+      'harvard': {
+        name: 'Harvard University & Medical',
+        domains: ['harvard.edu', 'hms.harvard.edu', 'mgh.harvard.edu', 'bidmc.harvard.edu', 'childrens.harvard.edu', 'massgeneral.org', 'brighamandwomens.org']
+      },
+
+      // MIT
+      'mit': {
+        name: 'MIT',
+        domains: ['mit.edu', 'csail.mit.edu', 'media.mit.edu']
+      },
+
+      // Yale
+      'yale': {
+        name: 'Yale University & Medicine',
+        domains: ['yale.edu', 'ynhh.org', 'yalemedicine.org']
+      },
+
+      // UCSF
+      'ucsf': {
+        name: 'UCSF',
+        domains: ['ucsf.edu', 'ucsfhealth.org', 'ucsfbenioffchildrens.org']
+      },
+
+      // UCLA
+      'ucla': {
+        name: 'UCLA',
+        domains: ['ucla.edu', 'uclahealth.org', 'mednet.ucla.edu']
+      },
+
+      // USC
+      'usc': {
+        name: 'USC',
+        domains: ['usc.edu', 'med.usc.edu', 'keck.usc.edu']
+      },
+
+      // UC Berkeley
+      'berkeley': {
+        name: 'UC Berkeley',
+        domains: ['berkeley.edu', 'lbl.gov']
+      },
+
+      // Mayo Clinic
+      'mayo': {
+        name: 'Mayo Clinic',
+        domains: ['mayo.edu', 'mayoclinic.org', 'mayoclinic.com']
+      },
+
+      // Cleveland Clinic
+      'cleveland-clinic': {
+        name: 'Cleveland Clinic',
+        domains: ['ccf.org', 'clevelandclinic.org', 'clevelandclinic.com']
+      },
+
+      // Johns Hopkins
+      'hopkins': {
+        name: 'Johns Hopkins',
+        domains: ['jhu.edu', 'jhmi.edu', 'hopkinsmedicine.org', 'jhsph.edu']
+      },
+
+      // Kaiser Permanente
+      'kaiser': {
+        name: 'Kaiser Permanente',
+        domains: ['kp.org', 'kaiserpermanente.org', 'kpihp.org']
+      },
+
+      // Cedars-Sinai
+      'cedars': {
+        name: 'Cedars-Sinai Medical Center',
+        domains: ['cshs.org', 'cedars-sinai.org', 'cedars-sinai.edu']
+      },
+
+      // NYU
+      'nyu': {
+        name: 'NYU Langone Health',
+        domains: ['nyu.edu', 'nyulangone.org', 'nyumc.org', 'med.nyu.edu']
+      },
+
+      // Columbia
+      'columbia': {
+        name: 'Columbia University Medical Center',
+        domains: ['columbia.edu', 'cumc.columbia.edu', 'nyp.org']
+      },
+
+      // Duke
+      'duke': {
+        name: 'Duke University & Health',
+        domains: ['duke.edu', 'dukehealth.org', 'dm.duke.edu']
+      },
+
+      // UPENN
+      'upenn': {
+        name: 'University of Pennsylvania',
+        domains: ['upenn.edu', 'pennmedicine.org', 'chop.edu']
+      },
+
+      // Northwestern
+      'northwestern': {
+        name: 'Northwestern Medicine',
+        domains: ['northwestern.edu', 'nm.org', 'nmh.org', 'feinberg.northwestern.edu']
+      },
+
+      // UW Medicine
+      'uw-medicine': {
+        name: 'University of Washington Medicine',
+        domains: ['uw.edu', 'uwmedicine.org', 'seattlechildrens.org']
+      },
+
+      // Tech Companies
+      'google': {
+        name: 'Google',
+        domains: ['google.com', 'alphabet.com', 'verily.com', 'x.company']
+      },
+
+      'apple': {
+        name: 'Apple',
+        domains: ['apple.com', 'icloud.com']
+      },
+
+      'microsoft': {
+        name: 'Microsoft',
+        domains: ['microsoft.com', 'outlook.com', 'live.com', 'hotmail.com']
+      },
+
+      'meta': {
+        name: 'Meta',
+        domains: ['meta.com', 'facebook.com', 'fb.com', 'instagram.com', 'whatsapp.com']
+      }
+    };
+  }
+
   extractInstitutionName(domain) {
     // Convert domain to readable institution name
+    // Supports multiple domains mapping to same institution
     if (!domain) return 'Unknown Institution';
 
     const lowerDomain = domain.toLowerCase();
+    const institutionMappings = this.getInstitutionMappings();
 
-    // Known institution mappings (domain -> proper name)
-    const knownInstitutions = {
-      // Universities
-      'stanford.edu': 'Stanford University',
-      'mit.edu': 'Massachusetts Institute of Technology (MIT)',
-      'harvard.edu': 'Harvard University',
-      'yale.edu': 'Yale University',
-      'princeton.edu': 'Princeton University',
-      'columbia.edu': 'Columbia University',
-      'cornell.edu': 'Cornell University',
-      'upenn.edu': 'University of Pennsylvania',
-      'berkeley.edu': 'UC Berkeley',
-      'ucla.edu': 'UCLA',
-      'usc.edu': 'USC',
-      'nyu.edu': 'New York University',
-      'duke.edu': 'Duke University',
-      'northwestern.edu': 'Northwestern University',
-      'uchicago.edu': 'University of Chicago',
-      'caltech.edu': 'Caltech',
-
-      // Major Hospital Systems
-      'mayoclinic.org': 'Mayo Clinic',
-      'clevelandclinic.org': 'Cleveland Clinic',
-      'hopkinsmedicine.org': 'Johns Hopkins Medicine',
-      'mgh.harvard.edu': 'Massachusetts General Hospital',
-      'cedars-sinai.org': 'Cedars-Sinai Medical Center',
-      'sutterhealth.org': 'Sutter Health',
-      'kaiserpermanente.org': 'Kaiser Permanente',
-      'providence.org': 'Providence Health',
-      'dignityhealth.org': 'Dignity Health',
-      'adventhealth.com': 'AdventHealth',
-      'memorialhealth.com': 'Memorial Health',
-      'nyp.org': 'NewYork-Presbyterian Hospital',
-
-      // Tech Companies
-      'google.com': 'Google',
-      'apple.com': 'Apple',
-      'microsoft.com': 'Microsoft',
-      'amazon.com': 'Amazon',
-      'meta.com': 'Meta',
-      'facebook.com': 'Meta (Facebook)',
-      'netflix.com': 'Netflix',
-      'salesforce.com': 'Salesforce'
-    };
-
-    // Check for exact matches
-    if (knownInstitutions[lowerDomain]) {
-      return knownInstitutions[lowerDomain];
-    }
-
-    // Check for partial matches (e.g., subdomain.stanford.edu)
-    for (const [knownDomain, name] of Object.entries(knownInstitutions)) {
-      if (lowerDomain.endsWith(knownDomain)) {
-        return name;
+    // Check each institution's domains for a match
+    for (const [institutionId, institutionData] of Object.entries(institutionMappings)) {
+      for (const institutionDomain of institutionData.domains) {
+        // Check for exact match or subdomain match
+        if (lowerDomain === institutionDomain || lowerDomain.endsWith('.' + institutionDomain)) {
+          console.log(`Gmail CRM: Matched domain "${domain}" to institution "${institutionData.name}"`);
+          return institutionData.name;
+        }
       }
     }
 
-    // Parse domain intelligently
+    // If no mapping found, use intelligent parsing
+    return this.parseInstitutionFromDomain(domain);
+  }
+
+  parseInstitutionFromDomain(domain) {
+    // Fallback parser for unknown domains
     const parts = domain.split('.');
+    const lowerDomain = domain.toLowerCase();
 
     // Skip common email service domains
     const emailServices = ['gmail', 'yahoo', 'hotmail', 'outlook', 'aol', 'icloud', 'protonmail', 'mail', 'email'];
