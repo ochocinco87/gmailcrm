@@ -113,6 +113,14 @@ class GmailCRM {
           { id: 'closed-won', name: 'Closed Won', color: '#0f9d58' },
           { id: 'closed-lost', name: 'Closed Lost', color: '#db4437' }
         ]
+      },
+      {
+        id: 'institutions',
+        name: 'Institutions Directory',
+        type: 'institution-directory',
+        stages: [
+          { id: 'all', name: 'All Institutions', color: '#4285f4' }
+        ]
       }
     ];
   }
@@ -252,6 +260,13 @@ class GmailCRM {
     if (!this.currentPipeline || !this.pipelineView) return;
 
     const pipeline = this.currentPipeline;
+
+    // Use custom rendering for institution directory
+    if (pipeline.type === 'institution-directory') {
+      this.renderInstitutionsDirectory();
+      return;
+    }
+
     const dealsInPipeline = this.getDealsInPipeline(pipeline.id);
 
     // Calculate stage counts
@@ -371,6 +386,153 @@ class GmailCRM {
 
     // Make rows draggable
     this.enableDragAndDrop();
+  }
+
+  renderInstitutionsDirectory() {
+    const pipeline = this.currentPipeline;
+
+    // Get all deals with institution data
+    const allDeals = Object.values(this.deals);
+    const dealsWithInstitutions = allDeals.filter(d => d.institution || d.domain);
+
+    // Group by institution
+    const institutionMap = {};
+    dealsWithInstitutions.forEach(deal => {
+      const institutionKey = deal.institution || deal.domain || 'Unknown';
+      if (!institutionMap[institutionKey]) {
+        institutionMap[institutionKey] = {
+          name: institutionKey,
+          domain: deal.domain,
+          isHospital: deal.isHospital,
+          contacts: new Set(),
+          emails: [],
+          deals: []
+        };
+      }
+
+      // Add contacts
+      if (deal.contacts) {
+        deal.contacts.forEach(contact => institutionMap[institutionKey].contacts.add(contact));
+      }
+
+      // Add emails
+      if (deal.linkedEmails) {
+        deal.linkedEmails.forEach(email => {
+          institutionMap[institutionKey].emails.push({
+            ...email,
+            dealId: deal.id,
+            dealName: deal.emailSubject
+          });
+        });
+      }
+
+      institutionMap[institutionKey].deals.push(deal);
+    });
+
+    // Convert to array and sort by email count
+    const institutions = Object.values(institutionMap)
+      .map(inst => ({
+        ...inst,
+        contacts: Array.from(inst.contacts),
+        emails: inst.emails.sort((a, b) => new Date(b.date) - new Date(a.date)) // Sort by date, newest first
+      }))
+      .sort((a, b) => b.emails.length - a.emails.length);
+
+    this.pipelineView.innerHTML = `
+      <div class="crm-pipeline-header">
+        <div class="crm-pipeline-title">
+          <h1>📋 ${pipeline.name}</h1>
+          <span class="crm-deal-count">${institutions.length} Institutions, ${institutions.reduce((sum, i) => sum + i.emails.length, 0)} Emails</span>
+        </div>
+        <div class="crm-pipeline-actions">
+          <input type="text" id="crm-institution-search" placeholder="Search institutions..." class="crm-input" style="width: 250px; margin-right: 10px;" />
+          <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
+        </div>
+      </div>
+
+      <div class="crm-institutions-container" id="crm-institutions-container">
+        ${institutions.map(institution => this.renderInstitutionCard(institution)).join('')}
+      </div>
+    `;
+
+    // Add event listeners
+    document.getElementById('crm-refresh-btn')?.addEventListener('click', () => {
+      this.loadData().then(() => this.renderPipelineBoard());
+    });
+
+    document.getElementById('crm-institution-search')?.addEventListener('input', (e) => {
+      this.filterInstitutions(e.target.value);
+    });
+  }
+
+  renderInstitutionCard(institution) {
+    const emailsList = institution.emails.slice(0, 20).map(email => {
+      const emailDate = new Date(email.date);
+      const formattedDate = emailDate.toLocaleDateString('en-US', {
+        month: 'short',
+        day: 'numeric',
+        year: emailDate.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined,
+        hour: '2-digit',
+        minute: '2-digit'
+      });
+
+      return `
+        <div class="crm-institution-email-item">
+          <div class="crm-email-header">
+            <span class="crm-email-sender">👤 ${email.fromName || 'Unknown'}</span>
+            <span class="crm-email-date">${formattedDate}</span>
+          </div>
+          <div class="crm-email-subject">
+            <a href="${email.url}" target="_blank" class="crm-email-link">${email.subject}</a>
+          </div>
+          <div class="crm-email-meta">
+            <span class="crm-email-from">${email.from}</span>
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    const hospitalBadge = institution.isHospital ? '<span class="crm-hospital-badge">🏥 Hospital</span>' : '';
+
+    return `
+      <div class="crm-institution-card" data-institution="${institution.name}">
+        <div class="crm-institution-header">
+          <div class="crm-institution-title">
+            <h3>${institution.name}</h3>
+            ${hospitalBadge}
+          </div>
+          <div class="crm-institution-stats">
+            <span class="crm-stat">👥 ${institution.contacts.length} contact${institution.contacts.length !== 1 ? 's' : ''}</span>
+            <span class="crm-stat">📧 ${institution.emails.length} email${institution.emails.length !== 1 ? 's' : ''}</span>
+            <span class="crm-stat">💼 ${institution.deals.length} deal${institution.deals.length !== 1 ? 's' : ''}</span>
+          </div>
+        </div>
+        <div class="crm-institution-contacts">
+          <strong>Contacts:</strong> ${institution.contacts.join(', ') || 'None'}
+        </div>
+        <div class="crm-institution-domain">
+          <strong>Domain:</strong> ${institution.domain}
+        </div>
+        <div class="crm-institution-emails">
+          <div class="crm-emails-header">
+            <strong>📬 Email Timeline</strong>
+            ${institution.emails.length > 20 ? `<span class="crm-emails-showing">Showing 20 of ${institution.emails.length}</span>` : ''}
+          </div>
+          ${emailsList}
+        </div>
+      </div>
+    `;
+  }
+
+  filterInstitutions(searchTerm) {
+    const cards = document.querySelectorAll('.crm-institution-card');
+    const normalizedSearch = searchTerm.toLowerCase();
+
+    cards.forEach(card => {
+      const institutionName = card.dataset.institution.toLowerCase();
+      const matches = institutionName.includes(normalizedSearch);
+      card.style.display = matches ? 'block' : 'none';
+    });
   }
 
   createDealRow(deal, stage) {

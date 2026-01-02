@@ -1741,6 +1741,168 @@
   background: #0f9d58;
 }
 
+/* ========== Institutions Directory ========== */
+.crm-institutions-container {
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+.crm-institution-card {
+  background: white;
+  border: 1px solid #e8eaed;
+  border-radius: 12px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  transition: box-shadow 0.2s;
+}
+
+.crm-institution-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+}
+
+.crm-institution-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 16px;
+  border-bottom: 2px solid #e8eaed;
+}
+
+.crm-institution-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.crm-institution-title h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 600;
+  color: #202124;
+}
+
+.crm-hospital-badge {
+  background: #e6f4ea;
+  color: #137333;
+  padding: 4px 12px;
+  border-radius: 12px;
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.crm-institution-stats {
+  display: flex;
+  gap: 20px;
+}
+
+.crm-stat {
+  font-size: 14px;
+  color: #5f6368;
+  font-weight: 500;
+}
+
+.crm-institution-contacts,
+.crm-institution-domain {
+  margin-bottom: 12px;
+  font-size: 14px;
+  color: #5f6368;
+}
+
+.crm-institution-contacts strong,
+.crm-institution-domain strong {
+  color: #202124;
+  margin-right: 8px;
+}
+
+.crm-institution-emails {
+  margin-top: 20px;
+}
+
+.crm-emails-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 16px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.crm-emails-header strong {
+  font-size: 15px;
+  color: #202124;
+}
+
+.crm-emails-showing {
+  font-size: 13px;
+  color: #5f6368;
+  font-weight: normal;
+}
+
+.crm-institution-email-item {
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  border-left: 3px solid #4285f4;
+  transition: background 0.2s;
+}
+
+.crm-institution-email-item:hover {
+  background: #e8f0fe;
+}
+
+.crm-email-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.crm-email-sender {
+  font-weight: 600;
+  font-size: 14px;
+  color: #1a73e8;
+}
+
+.crm-email-date {
+  font-size: 13px;
+  color: #5f6368;
+}
+
+.crm-email-subject {
+  margin-bottom: 4px;
+}
+
+.crm-email-link {
+  color: #202124;
+  text-decoration: none;
+  font-size: 14px;
+  font-weight: 500;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-email-link:hover {
+  color: #1a73e8;
+  text-decoration: underline;
+}
+
+.crm-email-meta {
+  font-size: 12px;
+  color: #5f6368;
+}
+
+.crm-email-from {
+  font-family: monospace;
+}
+
 /* ========== Global Dark Mode Support ========== */
 @media (prefers-color-scheme: dark) {
   /* Pipeline Container */
@@ -2103,5 +2265,63 @@
 
   .crm-sidebar-toggle-btn.active:hover {
     background: #5bb974 !important;
+  }
+
+  /* Institutions Directory */
+  .crm-institution-card {
+    background: #292a2d !important;
+    border-color: #3c4043 !important;
+  }
+
+  .crm-institution-title h3 {
+    color: #e8eaed !important;
+  }
+
+  .crm-hospital-badge {
+    background: #1a3a20 !important;
+    color: #81c995 !important;
+  }
+
+  .crm-stat {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-institution-contacts,
+  .crm-institution-domain {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-institution-contacts strong,
+  .crm-institution-domain strong {
+    color: #e8eaed !important;
+  }
+
+  .crm-emails-header strong {
+    color: #e8eaed !important;
+  }
+
+  .crm-institution-email-item {
+    background: #202124 !important;
+    border-left-color: #8ab4f8 !important;
+  }
+
+  .crm-institution-email-item:hover {
+    background: #3c4043 !important;
+  }
+
+  .crm-email-sender {
+    color: #8ab4f8 !important;
+  }
+
+  .crm-email-link {
+    color: #e8eaed !important;
+  }
+
+  .crm-email-link:hover {
+    color: #8ab4f8 !important;
+  }
+
+  .crm-email-meta {
+    color: #9aa0a6 !important;
   }
 }
