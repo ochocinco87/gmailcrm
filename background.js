@@ -1,4 +1,22 @@
 // Gmail CRM Background Service Worker
+// Handles Firebase authentication and data operations via REST API
+
+// Firebase state
+let firebaseConfig = null;
+let currentUser = null;
+let authToken = null;
+
+// Load Firebase config on startup
+chrome.storage.local.get(['firebaseConfig', 'currentUser'], (result) => {
+  if (result.firebaseConfig) {
+    firebaseConfig = result.firebaseConfig;
+    console.log('Firebase config loaded');
+  }
+  if (result.currentUser) {
+    currentUser = result.currentUser;
+    console.log('Current user loaded:', currentUser.email);
+  }
+});
 
 // Initialize default data on install
 chrome.runtime.onInstalled.addListener((details) => {
@@ -108,6 +126,79 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  // Firebase Authentication
+  if (request.action === 'signInWithGoogle') {
+    handleSignIn().then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'signOut') {
+    currentUser = null;
+    authToken = null;
+    chrome.storage.local.remove('currentUser');
+    sendResponse({ success: true });
+    return true;
+  }
+
+  // Firebase operations
+  if (request.action === 'testFirebaseConnection') {
+    testFirebaseConnection().then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'migrateDataToFirebase') {
+    migrateDataToFirebase().then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'getOrgUsers') {
+    getOrgUsers().then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'updateUserRole') {
+    updateUserRole(request.email, request.role).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'getOrganization') {
+    getOrganization().then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'updateOrganization') {
+    updateOrganization(request.data).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
 });
 
 // Listen for storage changes to sync across tabs
@@ -171,5 +262,447 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
     });
   }
 });
+
+// Firebase Helper Functions
+
+async function handleSignIn() {
+  try {
+    // Use chrome.identity to get OAuth token
+    const token = await new Promise((resolve, reject) => {
+      chrome.identity.getAuthToken({ interactive: true }, (token) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(token);
+        }
+      });
+    });
+
+    authToken = token;
+
+    // Get user info from Google API
+    const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to get user info');
+    }
+
+    const userInfo = await response.json();
+
+    // Extract domain
+    const domain = userInfo.email.split('@')[1];
+
+    // Check if domain is authorized (for now, only medivis.com)
+    if (domain !== 'medivis.com') {
+      throw new Error(`Domain ${domain} is not authorized. Only medivis.com users can sign in.`);
+    }
+
+    // Create or update user in Firestore
+    await createOrUpdateUser(userInfo, domain);
+
+    // Load user role
+    const role = await getUserRole(userInfo.email, domain);
+
+    currentUser = {
+      email: userInfo.email,
+      name: userInfo.name,
+      photoURL: userInfo.picture,
+      domain: domain,
+      role: role
+    };
+
+    await chrome.storage.local.set({ currentUser });
+
+    return {
+      success: true,
+      user: currentUser
+    };
+  } catch (error) {
+    console.error('Sign-in error:', error);
+    return {
+      success: false,
+      error: error.message
+    };
+  }
+}
+
+async function createOrUpdateUser(userInfo, domain) {
+  if (!firebaseConfig) {
+    throw new Error('Firebase not configured');
+  }
+
+  const userDoc = await getFirestoreDocument(`organizations/${domain}/users/${userInfo.email}`);
+
+  const userData = {
+    email: userInfo.email,
+    name: userInfo.name,
+    photoURL: userInfo.picture,
+    lastLoginAt: new Date().toISOString(),
+    updatedAt: new Date().toISOString()
+  };
+
+  if (!userDoc) {
+    // New user - assign default role
+    // Check if this is the first user (admin) or subsequent user (viewer)
+    const usersSnapshot = await getFirestoreCollection(`organizations/${domain}/users`);
+    const users = usersSnapshot ? Object.keys(usersSnapshot).length : 0;
+
+    userData.role = users === 0 ? 'admin' : 'viewer';
+    userData.createdAt = new Date().toISOString();
+
+    console.log('Creating new user with role:', userData.role);
+  } else {
+    // Existing user - preserve role
+    userData.role = userDoc.role;
+  }
+
+  await setFirestoreDocument(`organizations/${domain}/users/${userInfo.email}`, userData);
+
+  // Ensure organization document exists
+  const orgDoc = await getFirestoreDocument(`organizations/${domain}`);
+  if (!orgDoc) {
+    await setFirestoreDocument(`organizations/${domain}`, {
+      domain: domain,
+      name: domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1),
+      createdAt: new Date().toISOString(),
+      subscription: {
+        status: domain === 'medivis.com' ? 'active' : 'trial',
+        plan: 'pro',
+        seats: 10,
+        seatsUsed: 0
+      }
+    });
+  }
+}
+
+async function getUserRole(email, domain) {
+  const userDoc = await getFirestoreDocument(`organizations/${domain}/users/${email}`);
+  return userDoc?.role || 'viewer';
+}
+
+async function testFirebaseConnection() {
+  try {
+    if (!firebaseConfig) {
+      throw new Error('Firebase not configured');
+    }
+
+    if (!currentUser) {
+      throw new Error('Not signed in');
+    }
+
+    // Try to read organization document
+    const orgDoc = await getFirestoreDocument(`organizations/${currentUser.domain}`);
+
+    if (orgDoc) {
+      return { success: true };
+    } else {
+      throw new Error('Organization not found');
+    }
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function migrateDataToFirebase() {
+  try {
+    if (!currentUser || currentUser.role !== 'admin') {
+      throw new Error('Only admins can migrate data');
+    }
+
+    // Get local data
+    const result = await new Promise(resolve => {
+      chrome.storage.local.get(['deals', 'pipelines'], resolve);
+    });
+
+    const deals = result.deals || {};
+    const pipelines = result.pipelines || [];
+
+    let count = 0;
+
+    // Migrate deals
+    for (const dealId in deals) {
+      const deal = deals[dealId];
+      const migratedDeal = {
+        ...deal,
+        createdBy: {
+          email: currentUser.email,
+          name: currentUser.name,
+          photoURL: currentUser.photoURL
+        },
+        lastModifiedBy: {
+          email: currentUser.email,
+          name: currentUser.name,
+          photoURL: currentUser.photoURL
+        },
+        migratedAt: new Date().toISOString()
+      };
+
+      await setFirestoreDocument(
+        `organizations/${currentUser.domain}/deals/${dealId}`,
+        migratedDeal
+      );
+      count++;
+    }
+
+    // Migrate pipelines
+    for (const pipeline of pipelines) {
+      await setFirestoreDocument(
+        `organizations/${currentUser.domain}/pipelines/${pipeline.id}`,
+        pipeline
+      );
+      count++;
+    }
+
+    return { success: true, count };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function getOrgUsers() {
+  try {
+    if (!currentUser || currentUser.role !== 'admin') {
+      throw new Error('Only admins can view users');
+    }
+
+    const usersSnapshot = await getFirestoreCollection(`organizations/${currentUser.domain}/users`);
+
+    const users = [];
+    for (const email in usersSnapshot) {
+      users.push({
+        email,
+        ...usersSnapshot[email]
+      });
+    }
+
+    return { success: true, users };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function updateUserRole(email, role) {
+  try {
+    if (!currentUser || currentUser.role !== 'admin') {
+      throw new Error('Only admins can update user roles');
+    }
+
+    const validRoles = ['admin', 'editor', 'viewer'];
+    if (!validRoles.includes(role)) {
+      throw new Error('Invalid role');
+    }
+
+    const userDoc = await getFirestoreDocument(`organizations/${currentUser.domain}/users/${email}`);
+    if (!userDoc) {
+      throw new Error('User not found');
+    }
+
+    userDoc.role = role;
+    userDoc.updatedAt = new Date().toISOString();
+
+    await setFirestoreDocument(`organizations/${currentUser.domain}/users/${email}`, userDoc);
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function getOrganization() {
+  try {
+    if (!currentUser || currentUser.role !== 'admin') {
+      throw new Error('Only admins can view organization');
+    }
+
+    const org = await getFirestoreDocument(`organizations/${currentUser.domain}`);
+
+    return { success: true, org };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function updateOrganization(data) {
+  try {
+    if (!currentUser || currentUser.role !== 'admin') {
+      throw new Error('Only admins can update organization');
+    }
+
+    const org = await getFirestoreDocument(`organizations/${currentUser.domain}`);
+    const updatedOrg = {
+      ...org,
+      ...data,
+      updatedAt: new Date().toISOString()
+    };
+
+    await setFirestoreDocument(`organizations/${currentUser.domain}`, updatedOrg);
+
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Firestore REST API helpers
+async function getFirestoreDocument(path) {
+  if (!firebaseConfig || !authToken) return null;
+
+  try {
+    const response = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${path}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) return null;
+      throw new Error(`Firestore error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    return convertFirestoreDocument(data);
+  } catch (error) {
+    console.error('Error reading Firestore document:', error);
+    return null;
+  }
+}
+
+async function setFirestoreDocument(path, data) {
+  if (!firebaseConfig || !authToken) {
+    throw new Error('Firebase not configured or not signed in');
+  }
+
+  const firestoreData = convertToFirestoreFormat(data);
+
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${path}`,
+    {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ fields: firestoreData })
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Firestore write error: ${response.statusText}`);
+  }
+
+  return await response.json();
+}
+
+async function getFirestoreCollection(path) {
+  if (!firebaseConfig || !authToken) return null;
+
+  try {
+    const response = await fetch(
+      `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${path}`,
+      {
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) return {};
+      throw new Error(`Firestore error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+    const documents = {};
+
+    if (data.documents) {
+      for (const doc of data.documents) {
+        const id = doc.name.split('/').pop();
+        documents[id] = convertFirestoreDocument(doc);
+      }
+    }
+
+    return documents;
+  } catch (error) {
+    console.error('Error reading Firestore collection:', error);
+    return {};
+  }
+}
+
+// Convert Firestore document format to plain JavaScript object
+function convertFirestoreDocument(doc) {
+  if (!doc || !doc.fields) return null;
+
+  const result = {};
+  for (const [key, value] of Object.entries(doc.fields)) {
+    result[key] = extractFirestoreValue(value);
+  }
+  return result;
+}
+
+function extractFirestoreValue(value) {
+  if (value.stringValue !== undefined) return value.stringValue;
+  if (value.integerValue !== undefined) return parseInt(value.integerValue);
+  if (value.doubleValue !== undefined) return value.doubleValue;
+  if (value.booleanValue !== undefined) return value.booleanValue;
+  if (value.timestampValue !== undefined) return value.timestampValue;
+  if (value.arrayValue !== undefined) {
+    return value.arrayValue.values?.map(v => extractFirestoreValue(v)) || [];
+  }
+  if (value.mapValue !== undefined) {
+    const obj = {};
+    for (const [k, v] of Object.entries(value.mapValue.fields || {})) {
+      obj[k] = extractFirestoreValue(v);
+    }
+    return obj;
+  }
+  if (value.nullValue !== undefined) return null;
+  return null;
+}
+
+// Convert plain JavaScript object to Firestore format
+function convertToFirestoreFormat(obj) {
+  const result = {};
+  for (const [key, value] of Object.entries(obj)) {
+    result[key] = toFirestoreValue(value);
+  }
+  return result;
+}
+
+function toFirestoreValue(value) {
+  if (value === null || value === undefined) {
+    return { nullValue: null };
+  }
+  if (typeof value === 'string') {
+    return { stringValue: value };
+  }
+  if (typeof value === 'number') {
+    return Number.isInteger(value) ? { integerValue: value } : { doubleValue: value };
+  }
+  if (typeof value === 'boolean') {
+    return { booleanValue: value };
+  }
+  if (Array.isArray(value)) {
+    return {
+      arrayValue: {
+        values: value.map(v => toFirestoreValue(v))
+      }
+    };
+  }
+  if (typeof value === 'object') {
+    const fields = {};
+    for (const [k, v] of Object.entries(value)) {
+      fields[k] = toFirestoreValue(v);
+    }
+    return { mapValue: { fields } };
+  }
+  return { nullValue: null };
+}
 
 console.log('Gmail CRM background service worker loaded');
