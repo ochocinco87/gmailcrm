@@ -4014,10 +4014,63 @@ class GmailCRM {
         return;
       }
 
-      // Analyze ALL emails in date range (no limit)
-      const emailsToAnalyze = emailRows;
+      // Pre-filter emails to reduce unnecessary API calls
+      this.updateSmartSyncProgress('🔍 Pre-filtering emails to reduce API usage...', 15);
 
-      this.updateSmartSyncProgress(`✓ Found ${emailsToAnalyze.length} emails. Starting AI analysis...`, 20);
+      const filteredEmails = emailRows.filter(email => {
+        const fromEmail = email.from.toLowerCase();
+        const subject = (email.subject || '').toLowerCase();
+
+        // Filter out automated/notification emails
+        if (fromEmail.includes('noreply') ||
+            fromEmail.includes('no-reply') ||
+            fromEmail.includes('donotreply') ||
+            fromEmail.includes('notifications@') ||
+            fromEmail.includes('automated@') ||
+            fromEmail.includes('digest@') ||
+            fromEmail.includes('mailer-daemon')) {
+          return false;
+        }
+
+        // Filter out obvious personal email domains (unless .edu/.org)
+        const personalDomains = ['gmail.com', 'yahoo.com', 'hotmail.com', 'outlook.com', 'aol.com', 'icloud.com'];
+        const isPersonalDomain = personalDomains.some(domain => fromEmail.endsWith(domain));
+        if (isPersonalDomain && !email.isEducational && !email.isOrganization) {
+          return false;
+        }
+
+        // Filter out newsletters/marketing
+        if (subject.includes('unsubscribe') ||
+            subject.includes('newsletter') ||
+            subject.startsWith('re: your order') ||
+            subject.includes('shipping confirmation') ||
+            subject.includes('receipt for') ||
+            subject.includes('invoice #')) {
+          return false;
+        }
+
+        // Keep high-priority domains
+        if (email.isEducational || email.isOrganization || email.isHospital) {
+          return true;
+        }
+
+        // Keep emails with deal-related keywords
+        const dealKeywords = ['demo', 'meeting', 'interested', 'pricing', 'proposal', 'trial', 'partnership', 'quote', 'presentation', 'call', 'discuss'];
+        if (dealKeywords.some(keyword => subject.includes(keyword))) {
+          return true;
+        }
+
+        // Keep professional domain emails
+        return !isPersonalDomain;
+      });
+
+      const emailsToAnalyze = filteredEmails;
+      const filtered = emailRows.length - filteredEmails.length;
+
+      this.updateSmartSyncProgress(
+        `✓ Pre-filtered ${emailRows.length} emails → ${emailsToAnalyze.length} potential deals (saved ${filtered} API calls)`,
+        20
+      );
 
       // Show first few email subjects as preview
       const previewEmails = emailsToAnalyze.slice(0, 5);
