@@ -2102,6 +2102,12 @@ class GmailCRM {
                 <label>Contact</label>
                 <div>${deal.contactEmail || 'Not set'}</div>
               </div>
+              ${deal.contactTitle ? `
+              <div class="crm-info-item">
+                <label>Contact Title</label>
+                <div>${deal.contactTitle}</div>
+              </div>
+              ` : ''}
               <div class="crm-info-item">
                 <label>Assigned To</label>
                 <div>${deal.assignedTo || 'Unassigned'}</div>
@@ -2112,6 +2118,20 @@ class GmailCRM {
               </div>
             </div>
           </div>
+
+          ${deal.decisionMakers && deal.decisionMakers.length > 0 ? `
+          <div class="crm-sidebar-section">
+            <h4>Decision Makers</h4>
+            <div class="crm-decision-makers-list">
+              ${deal.decisionMakers.map(dm => `
+                <div class="crm-decision-maker-item">
+                  <span class="crm-decision-maker-icon">👤</span>
+                  <span>${dm}</span>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+          ` : ''}
 
           <div class="crm-sidebar-section">
             <h4>Institution Address</h4>
@@ -4185,17 +4205,13 @@ Priority: .edu/.org/healthcare domains = HIGH. Look for: demo, meeting, pricing,
 Extract deals as JSON:
 - dealTitle: brief title
 - institution: hospital/org name
+- institutionAddress: full address if mentioned (street, city, state, zip)
 - contact: person name
 - contactEmail: email
+- contactTitle: job title/role if mentioned
+- decisionMakers: array of names/titles of other stakeholders mentioned (e.g., ["Dr. Smith - Dept Head", "Jane Doe - VP"])
 - stage: lead|contacted|qualified|proposal|negotiation|closed-won|closed-lost
-- dealValue: USD amount - extract from email OR estimate:
-  * Single system/license: $50k-100k
-  * Department (5-10 units): $250k-500k
-  * Hospital-wide: $500k-2M
-  * Multi-site health system: $2M+
-  * Trial/pilot: $50k-100k
-  * Look for: "budget", "$", "pricing", "quote", mentions of quantity/units
-  * If no info: 0
+- dealValue: exact USD amount if mentioned (look for $, budget, price, quote), else 0
 - priority: High|Medium|Low
 - summary: 1-2 sentences
 - isHospital: true/false
@@ -4203,7 +4219,7 @@ Extract deals as JSON:
 Emails:
 ${JSON.stringify(emailContext)}
 
-Return JSON array only: [{"dealTitle":"...","institution":"...","contact":"...","contactEmail":"...","stage":"...","dealValue":0,"priority":"...","summary":"...","isHospital":true}]`;
+Return JSON array: [{"dealTitle":"...","institution":"...","institutionAddress":"","contact":"...","contactEmail":"...","contactTitle":"","decisionMakers":[],"stage":"...","dealValue":0,"priority":"...","summary":"...","isHospital":true}]`;
 
     try {
       console.log('Gmail CRM: Calling Gemini API with', emails.length, 'emails');
@@ -4251,6 +4267,34 @@ Return JSON array only: [{"dealTitle":"...","institution":"...","contact":"...",
     }
   }
 
+  parseAddress(addressString) {
+    if (!addressString || addressString.trim() === '') {
+      return { street: null, city: null, state: null, zip: null };
+    }
+
+    // Try to parse a standard US address format
+    // Example: "123 Main St, Boston, MA 02114"
+    const parts = addressString.split(',').map(p => p.trim());
+
+    if (parts.length >= 3) {
+      const street = parts[0];
+      const city = parts[1];
+      const stateZip = parts[2].match(/([A-Z]{2})\s*(\d{5}(-\d{4})?)/);
+
+      if (stateZip) {
+        return {
+          street,
+          city,
+          state: stateZip[1],
+          zip: stateZip[2]
+        };
+      }
+    }
+
+    // If parsing fails, return the whole string as street address
+    return { street: addressString, city: null, state: null, zip: null };
+  }
+
   async createDealFromGeminiAnalysis(dealData) {
     const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
@@ -4267,6 +4311,9 @@ Return JSON array only: [{"dealTitle":"...","institution":"...","contact":"...",
 
     const stageId = stageMapping[dealData.stage?.toLowerCase()] || 'lead';
 
+    // Parse institution address if provided
+    let parsedAddress = this.parseAddress(dealData.institutionAddress);
+
     const deal = {
       id: dealId,
       pipelineId: 'sales',
@@ -4275,19 +4322,21 @@ Return JSON array only: [{"dealTitle":"...","institution":"...","contact":"...",
       company: dealData.institution,
       institution: dealData.institution,
       contactEmail: dealData.contactEmail,
+      contactTitle: dealData.contactTitle || null,
+      decisionMakers: dealData.decisionMakers || [],
       status: 'Active',
       priority: dealData.priority || 'Medium',
       value: dealData.dealValue || 0,
       isHospital: dealData.isHospital || false,
-      // Address fields
-      address: dealData.address || null,
-      city: dealData.city || null,
-      state: dealData.state || null,
-      zip: dealData.zip || null,
-      country: dealData.country || 'USA',
-      latitude: dealData.latitude || null,
-      longitude: dealData.longitude || null,
-      addressConfirmed: false,
+      // Address fields (from Gemini or null)
+      address: parsedAddress.street || null,
+      city: parsedAddress.city || null,
+      state: parsedAddress.state || null,
+      zip: parsedAddress.zip || null,
+      country: 'USA',
+      latitude: null,
+      longitude: null,
+      addressConfirmed: parsedAddress.street ? false : null,
       createdAt: new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
       linkedEmails: [],

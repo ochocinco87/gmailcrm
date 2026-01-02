@@ -1128,6 +1128,27 @@
   letter-spacing: 0.5px;
 }
 
+/* Decision Makers List */
+.crm-decision-makers-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crm-decision-maker-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.crm-decision-maker-icon {
+  font-size: 16px;
+}
+
 .crm-stage-badge {
   display: inline-block;
   padding: 8px 16px;
@@ -2472,6 +2493,12 @@
 
   .crm-info-item div,
   .crm-current-status {
+    color: #e8eaed !important;
+  }
+
+  /* Decision Makers - Dark Mode */
+  .crm-decision-maker-item {
+    background: #3c4043 !important;
     color: #e8eaed !important;
   }
 
