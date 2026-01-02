@@ -78,6 +78,42 @@
   color: #202124;
 }
 
+/* Sync Section */
+.crm-sync-section {
+  padding: 8px 16px 12px 16px;
+  border-top: 1px solid #e8eaed;
+  margin-top: 8px;
+}
+
+.crm-sync-btn {
+  width: 100%;
+  padding: 8px 12px;
+  background: #34a853;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+.crm-sync-btn:hover {
+  background: #0f9d58;
+  transform: translateY(-1px);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+.crm-sync-btn:disabled {
+  background: #9aa0a6;
+  cursor: not-allowed;
+  transform: none;
+}
+
 /* Dark Mode Support */
 @media (prefers-color-scheme: dark) {
   .crm-pipelines-section {
@@ -110,6 +146,18 @@
 
   .crm-nav-name {
     color: #e8eaed !important;
+  }
+
+  .crm-sync-section {
+    border-top-color: #3c4043 !important;
+  }
+
+  .crm-sync-btn {
+    background: #81c995 !important;
+  }
+
+  .crm-sync-btn:hover {
+    background: #5bb974 !important;
   }
 }
 

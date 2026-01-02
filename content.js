@@ -145,6 +145,11 @@ class GmailCRM {
         <button class="crm-nav-add" title="Add Pipeline">+</button>
       </div>
       <div class="crm-nav-list" id="crm-pipelines-list"></div>
+      <div class="crm-sync-section">
+        <button class="crm-sync-btn" id="crm-sync-emails-btn" title="Sync emails to create deals">
+          📧 Sync Emails
+        </button>
+      </div>
     `;
 
     // Insert after Labels section or at the end
@@ -166,6 +171,11 @@ class GmailCRM {
     // Add pipeline button
     this.pipelinesNav.querySelector('.crm-nav-add')?.addEventListener('click', () => {
       this.showPipelineEditor();
+    });
+
+    // Sync emails button
+    this.pipelinesNav.querySelector('#crm-sync-emails-btn')?.addEventListener('click', () => {
+      this.syncEmailsToDeals();
     });
   }
 
@@ -1909,6 +1919,177 @@ class GmailCRM {
       notification.classList.remove('show');
       setTimeout(() => notification.remove(), 300);
     }, 3000);
+  }
+
+  async syncEmailsToDeals() {
+    const syncBtn = document.getElementById('crm-sync-emails-btn');
+    if (!syncBtn) return;
+
+    // Show loading state
+    syncBtn.disabled = true;
+    syncBtn.innerHTML = '⏳ Syncing...';
+
+    try {
+      // Get all email rows from Gmail inbox view
+      const emailRows = await this.scanGmailEmails();
+
+      if (emailRows.length === 0) {
+        this.showNotification('No emails found. Please navigate to your inbox.');
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = '📧 Sync Emails';
+        return;
+      }
+
+      let created = 0;
+      let linked = 0;
+
+      // Process each email
+      for (const emailData of emailRows) {
+        // Check if deal already exists with this thread
+        let deal = Object.values(this.deals).find(d =>
+          d.threadId === emailData.threadId ||
+          d.emailSubject === emailData.subject
+        );
+
+        if (!deal) {
+          // Create new deal
+          const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+          deal = {
+            id: dealId,
+            pipelineId: 'sales', // Default to sales pipeline
+            stageId: 'proposal-sent',
+            emailSubject: emailData.subject,
+            emailFrom: emailData.from,
+            company: this.extractCompanyFromEmail(emailData.from),
+            status: 'Active',
+            threadId: emailData.threadId,
+            createdAt: emailData.date || new Date().toISOString(),
+            lastUpdated: new Date().toISOString(),
+            linkedEmails: [],
+            notesHistory: [],
+            calls: []
+          };
+          this.deals[dealId] = deal;
+          created++;
+        }
+
+        // Link email to deal if not already linked
+        if (!deal.linkedEmails) deal.linkedEmails = [];
+        const alreadyLinked = deal.linkedEmails.some(e => e.threadId === emailData.threadId);
+
+        if (!alreadyLinked && emailData.threadId) {
+          deal.linkedEmails.push({
+            subject: emailData.subject,
+            from: emailData.from,
+            date: emailData.date || new Date().toISOString(),
+            threadId: emailData.threadId,
+            url: emailData.url,
+            linkedAt: new Date().toISOString()
+          });
+          linked++;
+        }
+      }
+
+      // Save all deals
+      await new Promise(resolve => {
+        chrome.storage.local.set({ deals: this.deals }, resolve);
+      });
+
+      this.showNotification(`✓ Synced! Created ${created} deals, linked ${linked} emails`);
+
+      // Refresh pipeline view if open
+      if (this.currentPipeline) {
+        this.renderPipelineBoard();
+      }
+
+    } catch (error) {
+      console.error('Gmail CRM: Error syncing emails:', error);
+      this.showNotification('Error syncing emails. Please try again.');
+    } finally {
+      syncBtn.disabled = false;
+      syncBtn.innerHTML = '📧 Sync Emails';
+    }
+  }
+
+  async scanGmailEmails() {
+    const emails = [];
+
+    // Try to find email rows in Gmail inbox
+    const emailRows = document.querySelectorAll('tr.zA, table.F tr');
+
+    console.log(`Gmail CRM: Found ${emailRows.length} email rows`);
+
+    emailRows.forEach((row, index) => {
+      try {
+        // Extract subject
+        const subjectEl = row.querySelector('.bog span[data-thread-id], .y6 span, span.bqe');
+        const subject = subjectEl?.textContent?.trim() || 'No Subject';
+
+        // Extract sender
+        const senderEl = row.querySelector('.yW span[email], .yX span, span.zF');
+        const from = senderEl?.getAttribute('email') || senderEl?.textContent?.trim() || 'Unknown';
+
+        // Extract thread ID from data attribute or URL
+        const threadId = subjectEl?.getAttribute('data-thread-id') ||
+                        row.querySelector('[data-thread-id]')?.getAttribute('data-thread-id') ||
+                        null;
+
+        // Extract date
+        const dateEl = row.querySelector('.xW.xY span, span.g3');
+        const dateText = dateEl?.textContent?.trim() || '';
+
+        // Create URL for this thread
+        const url = threadId ? `https://mail.google.com/mail/u/0/#inbox/${threadId}` : '';
+
+        // Only add if we have basic data
+        if (subject && from && subject !== 'No Subject') {
+          emails.push({
+            subject,
+            from,
+            threadId,
+            date: this.parseGmailDate(dateText),
+            url
+          });
+        }
+      } catch (e) {
+        console.error('Gmail CRM: Error parsing email row:', e);
+      }
+    });
+
+    return emails.slice(0, 50); // Limit to 50 emails for performance
+  }
+
+  parseGmailDate(dateText) {
+    // Gmail shows dates like "Dec 31", "3:45 PM", "Yesterday"
+    const now = new Date();
+
+    if (dateText.includes(':')) {
+      // Today (shows time)
+      return new Date().toISOString();
+    } else if (dateText.toLowerCase().includes('yesterday')) {
+      const yesterday = new Date(now);
+      yesterday.setDate(yesterday.getDate() - 1);
+      return yesterday.toISOString();
+    } else {
+      // Try to parse date like "Dec 31"
+      try {
+        const date = new Date(dateText + ' ' + now.getFullYear());
+        return date.toISOString();
+      } catch {
+        return new Date().toISOString();
+      }
+    }
+  }
+
+  extractCompanyFromEmail(email) {
+    // Extract domain from email and use as company name
+    const match = email.match(/@([^>]+)/);
+    if (match) {
+      const domain = match[1].replace(/[<>]/g, '');
+      // Capitalize first letter
+      return domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
+    }
+    return 'Unknown Company';
   }
 }
 
