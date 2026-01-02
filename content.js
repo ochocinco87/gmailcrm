@@ -29,11 +29,24 @@ class GmailCRM {
 
   waitForGmail() {
     return new Promise((resolve) => {
+      console.log('Gmail CRM: Waiting for Gmail to load...');
+      let attempts = 0;
       const checkGmail = setInterval(() => {
+        attempts++;
         const leftNav = document.querySelector('div[role="navigation"]');
+        console.log(`Gmail CRM: Attempt ${attempts}, found navigation:`, !!leftNav);
+
         if (leftNav) {
+          console.log('Gmail CRM: Gmail navigation found!', leftNav);
           clearInterval(checkGmail);
           resolve();
+        }
+
+        // Timeout after 20 seconds
+        if (attempts > 40) {
+          console.error('Gmail CRM: Timeout waiting for Gmail navigation');
+          clearInterval(checkGmail);
+          resolve(); // Resolve anyway to continue
         }
       }, 500);
     });
@@ -91,7 +104,19 @@ class GmailCRM {
   injectPipelinesNav() {
     // Find Gmail's left navigation
     const leftNav = document.querySelector('div[role="navigation"]');
-    if (!leftNav) return;
+    console.log('Gmail CRM: Attempting to inject pipelines nav, found leftNav:', !!leftNav);
+
+    if (!leftNav) {
+      console.error('Gmail CRM: Cannot find left navigation div[role="navigation"]');
+
+      // Try alternative selectors
+      const altNav = document.querySelector('nav');
+      console.log('Gmail CRM: Alternative nav element:', !!altNav);
+
+      return;
+    }
+
+    console.log('Gmail CRM: Left nav element:', leftNav);
 
     // Create pipelines section
     this.pipelinesNav = document.createElement('div');
@@ -108,11 +133,17 @@ class GmailCRM {
 
     // Insert after Labels section or at the end
     const labelsSection = leftNav.querySelector('div[data-tooltip="Labels"]')?.closest('.aAw, .Tma');
+    console.log('Gmail CRM: Found labels section:', !!labelsSection);
+
     if (labelsSection && labelsSection.parentElement) {
       labelsSection.parentElement.insertBefore(this.pipelinesNav, labelsSection.nextSibling);
+      console.log('Gmail CRM: Inserted pipelines nav after labels');
     } else {
       leftNav.appendChild(this.pipelinesNav);
+      console.log('Gmail CRM: Appended pipelines nav to left nav');
     }
+
+    console.log('Gmail CRM: Pipelines nav injected successfully!', this.pipelinesNav);
 
     this.renderPipelinesList();
 
