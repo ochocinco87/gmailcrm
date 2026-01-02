@@ -4028,8 +4028,8 @@ class GmailCRM {
         this.updateSmartSyncProgress(`  ... and ${emailsToAnalyze.length - 5} more emails`, 20);
       }
 
-      // Analyze emails in batches with Gemini
-      const batchSize = 10;
+      // Analyze emails in batches with Gemini (optimized batch size)
+      const batchSize = 25; // Increased from 10 to reduce API calls
       let totalDeals = 0;
       const totalBatches = Math.ceil(emailsToAnalyze.length / batchSize);
 
@@ -4043,10 +4043,13 @@ class GmailCRM {
           batchProgress
         );
 
-        // Show email subjects being analyzed
-        batch.forEach((email, idx) => {
+        // Show email subjects being analyzed (first 5 only to save space)
+        batch.slice(0, 5).forEach((email, idx) => {
           this.updateSmartSyncProgress(`  📨 ${idx + 1}. ${email.subject || '(no subject)'}`, batchProgress);
         });
+        if (batch.length > 5) {
+          this.updateSmartSyncProgress(`  ... and ${batch.length - 5} more`, batchProgress);
+        }
 
         try {
           const deals = await this.analyzeEmailBatchWithGemini(batch, settings.geminiApiKey);
@@ -4066,16 +4069,17 @@ class GmailCRM {
           } else {
             this.updateSmartSyncProgress(`  ℹ️ No deals identified in this batch`, batchProgress);
           }
+
+          // Rate limiting: Wait 2 seconds between batches to avoid quota issues
+          if (i + batchSize < emailsToAnalyze.length) {
+            this.updateSmartSyncProgress(`  ⏳ Waiting 2s before next batch (rate limiting)...`, batchProgress);
+            await new Promise(resolve => setTimeout(resolve, 2000));
+          }
+
         } catch (batchError) {
           this.updateSmartSyncProgress(`  ❌ Error analyzing batch: ${batchError.message}`, batchProgress);
           console.error('Gmail CRM: Batch analysis error:', batchError);
           // Continue to next batch instead of failing completely
-        }
-
-        // Wait between batches to avoid rate limits
-        if (i + batchSize < emailsToAnalyze.length) {
-          this.updateSmartSyncProgress('⏳ Waiting 1s to avoid rate limits...', batchProgress);
-          await new Promise(resolve => setTimeout(resolve, 1000));
         }
       }
 
@@ -4110,58 +4114,36 @@ class GmailCRM {
   }
 
   async analyzeEmailBatchWithGemini(emails, apiKey) {
+    // Send only essential fields to reduce tokens
     const emailContext = emails.map(e => ({
-      subject: e.subject,
-      bodyPreview: e.bodySnippet || '(no preview available)',
+      subj: e.subject,
+      body: e.bodySnippet || '',
       from: e.fromName,
-      fromEmail: e.from,
-      domain: e.domain,
-      domainType: e.domainType,
-      isEducational: e.isEducational,
-      isOrganization: e.isOrganization,
-      isHospital: e.isHospital,
-      institution: e.institution,
-      date: e.date
+      email: e.from,
+      domain: e.domainType, // edu/org/healthcare/other
+      inst: e.institution
     }));
 
-    const prompt = `You are an expert CRM analyst for a surgical AR (augmented reality) company. Analyze these emails and identify which ones represent potential sales deals or business opportunities.
+    // Concise prompt to save tokens
+    const prompt = `CRM analyst for surgical AR company. Find sales deals/opportunities from these emails.
 
-IMPORTANT CONTEXT:
-- Emails from .edu domains (educational institutions/universities) are HIGH PRIORITY - they often indicate hospital/medical school partnerships
-- Emails from .org domains (organizations) are HIGH PRIORITY - many hospitals and medical centers use .org domains
-- Look at BOTH the subject line AND the email body preview to understand context
-- Keywords like "demo", "meeting", "interested", "pricing", "proposal", "trial", "partnership" suggest potential deals
-- Healthcare-related domains (hospital, medical, health, clinic) are HIGH PRIORITY
+Priority: .edu/.org/healthcare domains = HIGH. Look for: demo, meeting, pricing, proposal, trial keywords.
 
-For each email that represents a potential deal, extract:
-- dealTitle: Short descriptive title based on subject AND body content
-- institution: Hospital/institution name (use the institution field provided, or infer from email content)
-- contact: Person's name
-- contactEmail: Email address
-- stage: Best guess at sales stage based on email content:
-  * "lead" - initial inquiry, general interest
-  * "contacted" - active conversation, follow-up emails
-  * "qualified" - specific requirements discussed, budget mentioned
-  * "proposal" - formal proposal requested or sent
-  * "negotiation" - discussing terms, pricing, timeline
-  * "closed-won" - deal confirmed, contract signed
-  * "closed-lost" - opportunity lost or declined
-- dealValue: Estimated deal size in USD (if mentioned or can be inferred, otherwise 0)
-- priority: "High" for .edu/.org/healthcare domains or urgent requests, "Medium" for active discussions, "Low" for general inquiries
-- summary: 1-2 sentence summary combining subject and body preview context
-- isHospital: true if from hospital/medical center/healthcare facility
+Extract deals as JSON:
+- dealTitle: brief title
+- institution: hospital/org name
+- contact: person name
+- contactEmail: email
+- stage: lead|contacted|qualified|proposal|negotiation|closed-won|closed-lost
+- dealValue: USD amount (0 if unknown)
+- priority: High|Medium|Low
+- summary: 1-2 sentences
+- isHospital: true/false
 
-ANALYZE CAREFULLY:
-- Read the bodyPreview field - it contains the actual email content
-- .edu/.org domains should be weighted heavily as potential deals
-- Don't just rely on subject line - use the body preview for context
-- If domainType is "edu", "org", or "healthcare", prioritize these emails
+Emails:
+${JSON.stringify(emailContext)}
 
-Emails to analyze:
-${JSON.stringify(emailContext, null, 2)}
-
-Return ONLY a JSON array of deals. If no deals found, return empty array [].
-Format: [{"dealTitle": "...", "institution": "...", "contact": "...", "contactEmail": "...", "stage": "...", "dealValue": 0, "priority": "...", "summary": "...", "isHospital": true}]`;
+Return JSON array only: [{"dealTitle":"...","institution":"...","contact":"...","contactEmail":"...","stage":"...","dealValue":0,"priority":"...","summary":"...","isHospital":true}]`;
 
     try {
       console.log('Gmail CRM: Calling Gemini API with', emails.length, 'emails');
