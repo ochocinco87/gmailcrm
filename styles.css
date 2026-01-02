@@ -1658,6 +1658,41 @@
   color: #5f6368;
 }
 
+/* ========== Sidebar Toggle Button ========== */
+.crm-sidebar-toggle-btn {
+  position: fixed;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
+  width: 48px;
+  height: 48px;
+  background: #1a73e8;
+  color: white;
+  border: none;
+  border-radius: 24px 0 0 24px;
+  font-size: 24px;
+  cursor: pointer;
+  z-index: 999998;
+  box-shadow: -2px 2px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.3s ease;
+}
+
+.crm-sidebar-toggle-btn:hover {
+  background: #1557b0;
+  width: 52px;
+}
+
+.crm-sidebar-toggle-btn.active {
+  background: #34a853;
+}
+
+.crm-sidebar-toggle-btn.active:hover {
+  background: #0f9d58;
+}
+
 /* ========== Global Dark Mode Support ========== */
 @media (prefers-color-scheme: dark) {
   /* Pipeline Container */
@@ -2003,5 +2038,22 @@
 
   .crm-deal-checkbox-stage {
     color: #9aa0a6 !important;
+  }
+
+  /* Sidebar Toggle Button */
+  .crm-sidebar-toggle-btn {
+    background: #8ab4f8 !important;
+  }
+
+  .crm-sidebar-toggle-btn:hover {
+    background: #669df6 !important;
+  }
+
+  .crm-sidebar-toggle-btn.active {
+    background: #81c995 !important;
+  }
+
+  .crm-sidebar-toggle-btn.active:hover {
+    background: #5bb974 !important;
   }
 }

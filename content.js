@@ -681,9 +681,12 @@ class GmailCRM {
   }
 
   observeEmailView() {
-    // Use MutationObserver to detect when emails are opened
+    // Add toggle button
+    this.injectSidebarToggleButton();
+
+    // Use MutationObserver to detect when emails are opened/closed
     const observer = new MutationObserver(() => {
-      this.checkAndInjectEmailLinkUI();
+      this.updateToggleButtonVisibility();
     });
 
     // Observe the main content area
@@ -696,37 +699,67 @@ class GmailCRM {
     }
 
     // Also check immediately
-    setTimeout(() => this.checkAndInjectEmailLinkUI(), 1000);
+    setTimeout(() => this.updateToggleButtonVisibility(), 1000);
   }
 
-  checkAndInjectEmailLinkUI() {
-    // Find email view container - Gmail uses various selectors
-    const emailView = document.querySelector('.nH.aHU') || document.querySelector('div[role="main"]');
-    if (!emailView) return;
+  injectSidebarToggleButton() {
+    // Check if button already exists
+    if (document.getElementById('crm-sidebar-toggle-btn')) return;
 
-    // Check if we're viewing an email (look for email subject)
-    const emailSubjectElement = emailView.querySelector('h2.hP') || emailView.querySelector('[data-legacy-message-id]');
-    if (!emailSubjectElement) {
-      // Not viewing an email, hide sidebar if it exists
-      const existingSidebar = document.getElementById('crm-email-deals-sidebar');
-      if (existingSidebar) {
-        existingSidebar.style.display = 'none';
+    const toggleBtn = document.createElement('button');
+    toggleBtn.id = 'crm-sidebar-toggle-btn';
+    toggleBtn.className = 'crm-sidebar-toggle-btn';
+    toggleBtn.innerHTML = '🔗';
+    toggleBtn.title = 'Link Email to Deal';
+
+    document.body.appendChild(toggleBtn);
+
+    toggleBtn.addEventListener('click', () => {
+      const emailMetadata = this.extractEmailMetadata();
+      if (emailMetadata) {
+        const sidebar = document.getElementById('crm-email-deals-sidebar');
+        if (sidebar && sidebar.style.display === 'flex') {
+          sidebar.style.display = 'none';
+          toggleBtn.classList.remove('active');
+        } else {
+          this.showEmailDealsSidebar(emailMetadata);
+          toggleBtn.classList.add('active');
+        }
+      } else {
+        alert('Please open an email first to link it to a deal.');
       }
-      return;
-    }
-
-    // Get email metadata
-    const emailMetadata = this.extractEmailMetadata(emailView);
-    if (!emailMetadata) return;
-
-    // Show the right sidebar
-    this.showEmailDealsSidebar(emailMetadata);
+    });
   }
 
-  extractEmailMetadata(emailView) {
+  updateToggleButtonVisibility() {
+    const toggleBtn = document.getElementById('crm-sidebar-toggle-btn');
+    if (!toggleBtn) return;
+
+    // Check if we're viewing an email
+    const emailMetadata = this.extractEmailMetadata();
+    if (emailMetadata) {
+      toggleBtn.style.display = 'flex';
+    } else {
+      toggleBtn.style.display = 'none';
+      // Also hide sidebar if email is closed
+      const sidebar = document.getElementById('crm-email-deals-sidebar');
+      if (sidebar) {
+        sidebar.style.display = 'none';
+      }
+      toggleBtn.classList.remove('active');
+    }
+  }
+
+  extractEmailMetadata() {
     try {
-      // Extract email subject
+      // Find email view container
+      const emailView = document.querySelector('.nH.aHU') || document.querySelector('div[role="main"]');
+      if (!emailView) return null;
+
+      // Check if we're viewing an email (look for email subject)
       const subjectEl = emailView.querySelector('h2.hP') || emailView.querySelector('.hP');
+      if (!subjectEl) return null;
+
       const subject = subjectEl?.textContent?.trim() || 'No Subject';
 
       // Extract sender
