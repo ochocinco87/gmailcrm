@@ -1211,20 +1211,18 @@ class GmailCRM {
           }
 
           // Delete the merged deal
-          delete this.deals[mergeDealId];
+          await this.deleteDeal(mergeDealId);
           merged++;
         }
 
         // Update primary deal counts
         primaryDeal.contactCount = primaryDeal.contacts?.length || 0;
         primaryDeal.emailSubject = `${institution} - ${primaryDeal.contacts.length} contact${primaryDeal.contacts.length !== 1 ? 's' : ''}, ${primaryDeal.linkedEmails.length} email${primaryDeal.linkedEmails.length !== 1 ? 's' : ''}`;
+
+        // Save the merged primary deal
+        await this.saveDeal(primaryDeal);
       }
     }
-
-    // Save updated deals
-    await new Promise(resolve => {
-      chrome.storage.local.set({ deals: this.deals }, resolve);
-    });
 
     console.log(`Gmail CRM: Re-analysis complete. Updated ${updated} institutions, merged ${merged} deals`);
     this.showNotification(`✓ Re-analysis complete! Updated ${updated} institutions, merged ${merged} duplicate deals`);
@@ -1340,17 +1338,16 @@ class GmailCRM {
     });
   }
 
-  moveDealToStage(dealId, newStageId) {
+  async moveDealToStage(dealId, newStageId) {
     const deal = this.deals[dealId];
     if (!deal) return;
 
     deal.stageId = newStageId;
     deal.lastUpdated = new Date().toISOString();
 
-    chrome.storage.local.set({ deals: this.deals }, () => {
-      this.renderPipelineBoard();
-      this.showNotification('Deal moved successfully!');
-    });
+    await this.saveDeal(deal);
+    this.renderPipelineBoard();
+    this.showNotification('Deal moved successfully!');
   }
 
   getDealsInPipeline(pipelineId) {
@@ -1401,9 +1398,9 @@ class GmailCRM {
     document.body.appendChild(modal);
 
     document.getElementById('crm-cancel-deal')?.addEventListener('click', () => modal.remove());
-    document.getElementById('crm-save-deal')?.addEventListener('click', () => {
+    document.getElementById('crm-save-deal')?.addEventListener('click', async () => {
       const dealId = 'deal_' + Date.now();
-      this.deals[dealId] = {
+      const deal = {
         id: dealId,
         threadId: dealId,
         pipelineId: this.currentPipeline.id,
@@ -1416,11 +1413,10 @@ class GmailCRM {
         lastUpdated: new Date().toISOString()
       };
 
-      chrome.storage.local.set({ deals: this.deals }, () => {
-        modal.remove();
-        this.renderPipelineBoard();
-        this.showNotification('Deal added successfully!');
-      });
+      await this.saveDeal(deal);
+      modal.remove();
+      this.renderPipelineBoard();
+      this.showNotification('Deal added successfully!');
     });
   }
 
@@ -1810,7 +1806,7 @@ class GmailCRM {
     });
   }
 
-  linkEmailToDeal(dealId, emailMetadata) {
+  async linkEmailToDeal(dealId, emailMetadata) {
     const deal = this.deals[dealId];
     if (!deal) return;
 
@@ -1835,29 +1831,27 @@ class GmailCRM {
       linkedAt: new Date().toISOString()
     });
 
-    chrome.storage.local.set({ deals: this.deals }, () => {
-      this.showNotification(`Email linked to "${deal.emailSubject || 'deal'}"`);
+    await this.saveDeal(deal);
+    this.showNotification(`Email linked to "${deal.emailSubject || 'deal'}"`);
 
-      // Refresh the email link bar
-      const existingBar = document.getElementById('crm-email-link-bar');
-      if (existingBar) {
-        existingBar.remove();
-      }
-      this.checkAndInjectEmailLinkUI();
-    });
+    // Refresh the email link bar
+    const existingBar = document.getElementById('crm-email-link-bar');
+    if (existingBar) {
+      existingBar.remove();
+    }
+    this.checkAndInjectEmailLinkUI();
   }
 
-  unlinkEmailFromDeal(dealId, emailMetadata) {
+  async unlinkEmailFromDeal(dealId, emailMetadata) {
     const deal = this.deals[dealId];
     if (!deal || !deal.linkedEmails) return;
 
     deal.linkedEmails = deal.linkedEmails.filter(e => e.threadId !== emailMetadata.threadId);
 
-    chrome.storage.local.set({ deals: this.deals }, () => {
-      this.showNotification('Email unlinked from deal');
-      // Refresh the sidebar
-      this.checkAndInjectEmailLinkUI();
-    });
+    await this.saveDeal(deal);
+    this.showNotification('Email unlinked from deal');
+    // Refresh the sidebar
+    this.checkAndInjectEmailLinkUI();
   }
 
   showEmailDealsSidebar(emailMetadata) {
@@ -1984,7 +1978,7 @@ class GmailCRM {
     });
   }
 
-  updateDealStatus(dealId, newStatus) {
+  async updateDealStatus(dealId, newStatus) {
     const deal = this.deals[dealId];
     if (!deal) return;
 
@@ -2006,15 +2000,14 @@ class GmailCRM {
     deal.status = newStatus;
     deal.lastUpdated = new Date().toISOString();
 
-    chrome.storage.local.set({ deals: this.deals }, () => {
-      this.showNotification(`Status updated: ${oldStatus} → ${newStatus}`);
+    await this.saveDeal(deal);
+    this.showNotification(`Status updated: ${oldStatus} → ${newStatus}`);
 
-      // Refresh sidebar if it's showing this deal
-      const sidebar = document.getElementById('crm-deal-sidebar');
-      if (sidebar && sidebar.classList.contains('active') && sidebar.dataset.dealId === dealId) {
-        this.showDealSidebar(dealId);
-      }
-    });
+    // Refresh sidebar if it's showing this deal
+    const sidebar = document.getElementById('crm-deal-sidebar');
+    if (sidebar && sidebar.classList.contains('active') && sidebar.dataset.dealId === dealId) {
+      this.showDealSidebar(dealId);
+    }
   }
 
   showDealSidebar(dealId) {
@@ -2244,7 +2237,7 @@ class GmailCRM {
       this.lookupInstitutionAddress(deal.id);
     });
 
-    document.getElementById('crm-save-notes-btn')?.addEventListener('click', () => {
+    document.getElementById('crm-save-notes-btn')?.addEventListener('click', async () => {
       const noteText = document.getElementById('crm-sidebar-notes')?.value;
       if (noteText && noteText.trim()) {
         // Initialize notes array if it doesn't exist
@@ -2262,36 +2255,33 @@ class GmailCRM {
         deal.notes = noteText.trim();
         deal.lastUpdated = new Date().toISOString();
 
-        chrome.storage.local.set({ deals: this.deals }, () => {
-          this.showNotification('Note added');
-          this.showDealSidebar(deal.id); // Refresh sidebar to show new note
-        });
+        await this.saveDeal(deal);
+        this.showNotification('Note added');
+        this.showDealSidebar(deal.id); // Refresh sidebar to show new note
       }
     });
 
     // Remove call listeners
     sidebar.querySelectorAll('.crm-btn-icon-small').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const idx = parseInt(e.target.dataset.callIdx);
         if (!deal.calls) deal.calls = [];
         deal.calls.splice(idx, 1);
-        chrome.storage.local.set({ deals: this.deals }, () => {
-          this.showDealSidebar(deal.id);
-        });
+        await this.saveDeal(deal);
+        this.showDealSidebar(deal.id);
       });
     });
 
     // Delete note listeners
     sidebar.querySelectorAll('.crm-btn-icon-tiny').forEach(btn => {
-      btn.addEventListener('click', (e) => {
+      btn.addEventListener('click', async (e) => {
         const idx = parseInt(e.target.dataset.noteIdx);
         if (idx !== undefined && confirm('Delete this note?')) {
           if (!deal.notesHistory) deal.notesHistory = [];
           deal.notesHistory.splice(idx, 1);
-          chrome.storage.local.set({ deals: this.deals }, () => {
-            this.showDealSidebar(deal.id);
-            this.showNotification('Note deleted');
-          });
+          await this.saveDeal(deal);
+          this.showDealSidebar(deal.id);
+          this.showNotification('Note deleted');
         }
       });
     });
@@ -2314,14 +2304,13 @@ class GmailCRM {
     // Remove surgeon listeners
     sidebar.querySelectorAll('[data-surgeon-idx]').forEach(btn => {
       if (btn.classList.contains('crm-btn-icon-small')) {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
           const idx = parseInt(e.target.dataset.surgeonIdx);
           if (confirm('Remove this surgeon?')) {
             if (!deal.surgeons) deal.surgeons = [];
             deal.surgeons.splice(idx, 1);
-            chrome.storage.local.set({ deals: this.deals }, () => {
-              this.showDealSidebar(deal.id);
-            });
+            await this.saveDeal(deal);
+            this.showDealSidebar(deal.id);
           }
         });
       }
@@ -2335,15 +2324,14 @@ class GmailCRM {
     // Delete case listeners
     sidebar.querySelectorAll('[data-case-idx]').forEach(btn => {
       if (btn.classList.contains('crm-btn-icon-tiny')) {
-        btn.addEventListener('click', (e) => {
+        btn.addEventListener('click', async (e) => {
           const idx = parseInt(e.target.dataset.caseIdx);
           if (idx !== undefined && confirm('Delete this case?')) {
             if (!deal.cases) deal.cases = [];
             deal.cases.splice(idx, 1);
-            chrome.storage.local.set({ deals: this.deals }, () => {
-              this.showDealSidebar(deal.id);
-              this.showNotification('Case deleted');
-            });
+            await this.saveDeal(deal);
+            this.showDealSidebar(deal.id);
+            this.showNotification('Case deleted');
           }
         });
       }
@@ -2620,7 +2608,7 @@ class GmailCRM {
     document.body.appendChild(modal);
 
     document.getElementById('crm-cancel-call')?.addEventListener('click', () => modal.remove());
-    document.getElementById('crm-save-call')?.addEventListener('click', () => {
+    document.getElementById('crm-save-call')?.addEventListener('click', async () => {
       const deal = this.deals[dealId];
       if (!deal) return;
 
@@ -2632,11 +2620,10 @@ class GmailCRM {
         date: document.getElementById('crm-call-date').value
       });
 
-      chrome.storage.local.set({ deals: this.deals }, () => {
-        modal.remove();
-        this.showDealSidebar(dealId);
-        this.showNotification('Call added successfully!');
-      });
+      await this.saveDeal(deal);
+      modal.remove();
+      this.showDealSidebar(dealId);
+      this.showNotification('Call added successfully!');
     });
   }
 
@@ -2678,7 +2665,7 @@ class GmailCRM {
     document.body.appendChild(modal);
 
     document.getElementById('crm-cancel-surgeon')?.addEventListener('click', () => modal.remove());
-    document.getElementById('crm-save-surgeon')?.addEventListener('click', () => {
+    document.getElementById('crm-save-surgeon')?.addEventListener('click', async () => {
       const deal = this.deals[dealId];
       if (!deal) return;
 
@@ -2697,11 +2684,10 @@ class GmailCRM {
         addedAt: new Date().toISOString()
       });
 
-      chrome.storage.local.set({ deals: this.deals }, () => {
-        modal.remove();
-        this.showDealSidebar(dealId);
-        this.showNotification(`Surgeon ${name} added successfully!`);
-      });
+      await this.saveDeal(deal);
+      modal.remove();
+      this.showDealSidebar(dealId);
+      this.showNotification(`Surgeon ${name} added successfully!`);
     });
 
     // Focus on name input
@@ -2764,7 +2750,7 @@ class GmailCRM {
     });
 
     document.getElementById('crm-cancel-case')?.addEventListener('click', () => modal.remove());
-    document.getElementById('crm-save-case')?.addEventListener('click', () => {
+    document.getElementById('crm-save-case')?.addEventListener('click', async () => {
       const caseName = document.getElementById('crm-case-name').value.trim();
       const caseDate = document.getElementById('crm-case-date').value;
       const surgeonName = document.getElementById('crm-case-surgeon').value;
@@ -2794,11 +2780,10 @@ class GmailCRM {
         surgeon.lastCaseDate = caseDate;
       }
 
-      chrome.storage.local.set({ deals: this.deals }, () => {
-        modal.remove();
-        this.showDealSidebar(dealId);
-        this.showNotification('Case added successfully!');
-      });
+      await this.saveDeal(deal);
+      modal.remove();
+      this.showDealSidebar(dealId);
+      this.showNotification('Case added successfully!');
     });
 
     // Focus on case name input
@@ -2900,11 +2885,10 @@ class GmailCRM {
         console.error('Gmail CRM: Geocoding error:', error);
       }
 
-      chrome.storage.local.set({ deals: this.deals }, () => {
-        modal.remove();
-        this.showDealSidebar(dealId);
-        this.showNotification('✓ Address saved successfully!');
-      });
+      await this.saveDeal(deal);
+      modal.remove();
+      this.showDealSidebar(dealId);
+      this.showNotification('✓ Address saved successfully!');
     });
 
     // Focus on address input
@@ -3218,10 +3202,13 @@ class GmailCRM {
         deal.emailSubject = `${deal.institution} - ${deal.contacts.length} contact${deal.contacts.length > 1 ? 's' : ''}, ${deal.linkedEmails.length} email${deal.linkedEmails.length > 1 ? 's' : ''}`;
       }
 
-      // Save all deals
-      await new Promise(resolve => {
-        chrome.storage.local.set({ deals: this.deals }, resolve);
-      });
+      // Save all modified deals
+      const modifiedDeals = Object.values(this.deals).filter(d =>
+        groupedByInstitution[d.institution] !== undefined
+      );
+      for (const deal of modifiedDeals) {
+        await this.saveDeal(deal);
+      }
 
       console.log('Gmail CRM: Sync complete. Created:', created, 'Linked:', linked);
       console.log('Gmail CRM: Total deals in storage:', Object.keys(this.deals).length);
@@ -4222,12 +4209,7 @@ class GmailCRM {
         }
       }
 
-      // Save and refresh
-      this.updateSmartSyncProgress('💾 Saving deals to storage...', 85);
-      await new Promise(resolve => {
-        chrome.storage.local.set({ deals: this.deals }, resolve);
-      });
-
+      // Refresh
       this.updateSmartSyncProgress('🔄 Refreshing pipeline view...', 95);
       await this.loadData();
       if (this.currentPipeline) {
@@ -4436,6 +4418,7 @@ Return JSON array: [{"dealTitle":"...","institution":"...","institutionAddress":
     };
 
     this.deals[dealId] = deal;
+    await this.saveDeal(deal);
     console.log('Gmail CRM: Created deal from AI analysis:', dealData.dealTitle, 'with', linkedEmails.length, 'linked emails');
   }
 }
