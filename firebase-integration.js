@@ -108,12 +108,15 @@ class FirebaseCRMSync {
         throw new Error('You do not have permission to edit deals (viewer role)');
       }
 
-      // Save to Firebase via background script
+      // Save to Firebase via background script (with timeout fallback)
       try {
-        const response = await chrome.runtime.sendMessage({
-          action: 'saveFirebaseDeal',
-          deal: deal
-        });
+        const response = await Promise.race([
+          chrome.runtime.sendMessage({
+            action: 'saveFirebaseDeal',
+            deal: deal
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 2000))
+        ]);
 
         if (response.success) {
           // Also save to local storage for offline access
@@ -123,8 +126,10 @@ class FirebaseCRMSync {
           throw new Error(response.error || 'Failed to save to Firebase');
         }
       } catch (error) {
-        console.error('Error saving to Firebase:', error);
-        throw error;
+        console.warn('Error saving to Firebase, falling back to local:', error);
+        // Fall back to local storage if Firebase fails
+        await this.saveToLocal('deals', deal.id, deal);
+        return deal;
       }
     } else {
       // Save to local storage
@@ -142,10 +147,13 @@ class FirebaseCRMSync {
       }
 
       try {
-        const response = await chrome.runtime.sendMessage({
-          action: 'deleteFirebaseDeal',
-          dealId: dealId
-        });
+        const response = await Promise.race([
+          chrome.runtime.sendMessage({
+            action: 'deleteFirebaseDeal',
+            dealId: dealId
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 2000))
+        ]);
 
         if (response.success) {
           await this.deleteFromLocal('deals', dealId);
@@ -154,8 +162,10 @@ class FirebaseCRMSync {
           throw new Error(response.error || 'Failed to delete from Firebase');
         }
       } catch (error) {
-        console.error('Error deleting from Firebase:', error);
-        throw error;
+        console.warn('Error deleting from Firebase, falling back to local:', error);
+        // Fall back to local storage if Firebase fails
+        await this.deleteFromLocal('deals', dealId);
+        return true;
       }
     } else {
       await this.deleteFromLocal('deals', dealId);
@@ -195,18 +205,25 @@ class FirebaseCRMSync {
       }
 
       try {
-        const response = await chrome.runtime.sendMessage({
-          action: 'saveFirebasePipeline',
-          pipeline: pipeline
-        });
+        const response = await Promise.race([
+          chrome.runtime.sendMessage({
+            action: 'saveFirebasePipeline',
+            pipeline: pipeline
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 2000))
+        ]);
 
         if (response.success) {
           await this.saveToLocal('pipelines', pipeline.id, pipeline);
           return pipeline;
+        } else {
+          throw new Error(response.error || 'Failed to save pipeline to Firebase');
         }
       } catch (error) {
-        console.error('Error saving pipeline to Firebase:', error);
-        throw error;
+        console.warn('Error saving pipeline to Firebase, falling back to local:', error);
+        // Fall back to local storage if Firebase fails
+        await this.saveToLocal('pipelines', pipeline.id, pipeline);
+        return pipeline;
       }
     } else {
       await this.saveToLocal('pipelines', pipeline.id, pipeline);
