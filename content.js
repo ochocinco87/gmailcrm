@@ -2115,7 +2115,7 @@ class GmailCRM {
                 ${!deal.addressConfirmed ? '<div class="crm-address-status">⚠️ Unconfirmed</div>' : '<div class="crm-address-status">✓ Confirmed</div>'}
               </div>
             ` : '<p class="crm-empty-state">No address set</p>'}
-            ${deal.institution ? `<button class="crm-btn-small" id="crm-lookup-address-btn">🔍 Lookup Address</button>` : ''}
+            <button class="crm-btn-small" id="crm-lookup-address-btn">🔍 ${deal.address ? 'Update' : 'Add'} Address</button>
           </div>
 
           ${callsHTML}
@@ -2714,48 +2714,23 @@ class GmailCRM {
 
   async lookupInstitutionAddress(dealId) {
     const deal = this.deals[dealId];
-    if (!deal || !deal.institution) {
-      this.showNotification('No institution name found for this deal');
+    if (!deal) {
+      this.showNotification('Deal not found');
       return;
     }
 
-    // Show loading state
-    const loadingModal = document.createElement('div');
-    loadingModal.className = 'crm-modal';
-    loadingModal.innerHTML = `
-      <div class="crm-modal-content">
-        <h2>🔍 Looking up address...</h2>
-        <p>Searching for: ${deal.institution}</p>
-        <div class="crm-loading-spinner"></div>
-      </div>
-    `;
-    document.body.appendChild(loadingModal);
+    // Get institution or company name
+    const institutionName = deal.institution || deal.company || deal.emailSubject || 'this deal';
 
-    try {
-      // Search for the institution address using WebSearch
-      const searchQuery = `${deal.institution} hospital address location`;
-      console.log('Gmail CRM: Searching for address:', searchQuery);
-
-      // Use Chrome's search capability via a background message
-      // For now, we'll show a confirmation dialog with manual input
-      loadingModal.remove();
-
-      // In a real implementation, we would use the WebSearch tool here
-      // For this demo, we'll show an edit dialog immediately
-      this.showAddressConfirmationDialog(dealId, {
-        institution: deal.institution,
-        address: '',
-        city: '',
-        state: '',
-        zip: '',
-        country: 'USA'
-      });
-
-    } catch (error) {
-      console.error('Gmail CRM: Error looking up address:', error);
-      loadingModal.remove();
-      this.showNotification('❌ Failed to lookup address');
-    }
+    // Show address dialog immediately with existing data if available
+    this.showAddressConfirmationDialog(dealId, {
+      institution: institutionName,
+      address: deal.address || '',
+      city: deal.city || '',
+      state: deal.state || '',
+      zip: deal.zip || '',
+      country: deal.country || 'USA'
+    });
   }
 
   showAddressConfirmationDialog(dealId, addressData) {
