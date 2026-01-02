@@ -6,7 +6,8 @@
   "permissions": [
     "storage",
     "activeTab",
-    "identity"
+    "identity",
+    "alarms"
   ],
   "oauth2": {
     "client_id": "892135221790-vrbs0kmib5uosbafqsmeb4tlnsq9hc1o.apps.googleusercontent.com",

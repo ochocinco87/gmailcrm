@@ -978,39 +978,12 @@ async function deleteFirestoreDocument(path) {
 
 console.log('Gmail CRM background service worker loaded');
 
-// Keep service worker alive with periodic heartbeat
-let keepAliveInterval = null;
+// Use Chrome alarms API to keep service worker responsive (Manifest V3 best practice)
+// This is better than setInterval which can cause issues with service worker lifecycle
+chrome.alarms.create('keepAlive', { periodInMinutes: 1 });
 
-function startKeepAlive() {
-  if (keepAliveInterval) return;
-
-  keepAliveInterval = setInterval(() => {
-    console.log('Service worker heartbeat');
-  }, 20000); // Every 20 seconds
-}
-
-function stopKeepAlive() {
-  if (keepAliveInterval) {
-    clearInterval(keepAliveInterval);
-    keepAliveInterval = null;
-  }
-}
-
-// Start keepAlive when a Gmail tab is opened
-chrome.tabs.onUpdated.addListener((tabId, changeInfo, tab) => {
-  if (changeInfo.status === 'complete' && tab.url?.includes('mail.google.com')) {
-    console.log('Gmail tab detected, starting keepAlive');
-    startKeepAlive();
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === 'keepAlive') {
+    console.log('Service worker keepAlive ping');
   }
 });
-
-// Also start if any Gmail tabs are already open
-chrome.tabs.query({ url: 'https://mail.google.com/*' }, (tabs) => {
-  if (tabs.length > 0) {
-    console.log('Gmail tabs already open, starting keepAlive');
-    startKeepAlive();
-  }
-});
-
-// Start keepAlive immediately to ensure service worker is responsive
-startKeepAlive();
