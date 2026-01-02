@@ -156,6 +156,23 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     return true;
   }
 
+  if (request.action === 'userSignedIn') {
+    // Handle sign-in from settings page
+    currentUser = request.user;
+    console.log('User signed in from settings:', currentUser.email);
+
+    // Get auth token for Firebase API calls
+    chrome.identity.getAuthToken({ interactive: false }, (token) => {
+      if (token) {
+        authToken = token;
+        console.log('Auth token retrieved for Firebase API');
+      }
+    });
+
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (request.action === 'signOut') {
     currentUser = null;
     authToken = null;
