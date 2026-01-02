@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gmail CRM - Pipeline View</title>
+  <link rel="stylesheet" href="popup-styles.css">
+</head>
+<body>
+  <div class="popup-container">
+    <header class="popup-header">
+      <h1>Gmail CRM</h1>
+      <div class="header-actions">
+        <select id="pipeline-selector" class="pipeline-select">
+          <option value="">Select Pipeline</option>
+        </select>
+        <button id="manage-pipelines-btn" class="icon-btn" title="Manage Pipelines">⚙️</button>
+      </div>
+    </header>
+
+    <div class="pipeline-stats">
+      <div class="stat-card">
+        <div class="stat-value" id="total-deals">0</div>
+        <div class="stat-label">Total Deals</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="total-value">$0</div>
+        <div class="stat-label">Total Value</div>
+      </div>
+    </div>
+
+    <div id="pipeline-board" class="pipeline-board">
+      <!-- Stages will be dynamically added here -->
+    </div>
+
+    <div id="pipeline-manager" class="pipeline-manager hidden">
+      <div class="manager-header">
+        <h2>Manage Pipelines</h2>
+        <button id="close-manager-btn" class="icon-btn">✕</button>
+      </div>
+
+      <div class="manager-content">
+        <div class="pipeline-list">
+          <h3>Your Pipelines</h3>
+          <div id="pipelines-list"></div>
+          <button id="add-pipeline-btn" class="btn btn-primary">+ Add Pipeline</button>
+        </div>
+
+        <div id="pipeline-editor" class="pipeline-editor hidden">
+          <h3>Edit Pipeline</h3>
+          <div class="form-group">
+            <label>Pipeline Name</label>
+            <input type="text" id="pipeline-name" class="input" placeholder="e.g., Sales Pipeline">
+          </div>
+
+          <div class="form-group">
+            <label>Stages</label>
+            <div id="stages-list"></div>
+            <button id="add-stage-btn" class="btn">+ Add Stage</button>
+          </div>
+
+          <div class="form-actions">
+            <button id="save-pipeline-btn" class="btn btn-primary">Save Pipeline</button>
+            <button id="cancel-pipeline-btn" class="btn">Cancel</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

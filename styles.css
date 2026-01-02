@@ -1,0 +1,316 @@
+/* Gmail CRM Styles */
+
+/* Sidebar */
+.gmail-crm-sidebar {
+  position: fixed;
+  right: 0;
+  top: 0;
+  width: 350px;
+  height: 100vh;
+  background: #ffffff;
+  border-left: 1px solid #e0e0e0;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.3s ease;
+}
+
+.gmail-crm-sidebar.collapsed {
+  transform: translateX(100%);
+}
+
+.crm-sidebar-header {
+  background: #1a73e8;
+  color: white;
+  padding: 16px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 1px solid #1557b0;
+}
+
+.crm-sidebar-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 500;
+}
+
+#crm-close-btn {
+  background: transparent;
+  border: none;
+  color: white;
+  font-size: 24px;
+  cursor: pointer;
+  padding: 0;
+  width: 30px;
+  height: 30px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+}
+
+#crm-close-btn:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.crm-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+/* Sections */
+.crm-section {
+  margin-bottom: 20px;
+}
+
+.crm-section h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  font-weight: 500;
+  color: #202124;
+}
+
+.crm-section h5 {
+  margin: 0 0 8px 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #5f6368;
+}
+
+.crm-subtitle {
+  font-size: 12px;
+  color: #5f6368;
+  margin: 0;
+}
+
+.thread-id {
+  font-size: 12px;
+  color: #5f6368;
+  font-family: monospace;
+  margin-bottom: 16px;
+}
+
+/* Form elements */
+.crm-select,
+.crm-input,
+.crm-textarea {
+  width: 100%;
+  padding: 8px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.crm-select:focus,
+.crm-input:focus,
+.crm-textarea:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
+}
+
+.crm-textarea {
+  min-height: 100px;
+  resize: vertical;
+}
+
+/* Buttons */
+.crm-btn {
+  padding: 8px 16px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  background: white;
+  color: #1a73e8;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.crm-btn:hover {
+  background: #f8f9fa;
+  border-color: #1a73e8;
+}
+
+.crm-btn-primary {
+  background: #1a73e8;
+  color: white;
+  border-color: #1a73e8;
+  width: 100%;
+  margin-top: 8px;
+}
+
+.crm-btn-primary:hover {
+  background: #1557b0;
+  border-color: #1557b0;
+}
+
+/* Floating Action Button */
+.gmail-crm-fab {
+  position: fixed;
+  bottom: 24px;
+  right: 374px;
+  z-index: 9998;
+}
+
+#crm-add-deal-btn {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: #1a73e8;
+  color: white;
+  border: none;
+  font-size: 24px;
+  cursor: pointer;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+
+#crm-add-deal-btn:hover {
+  background: #1557b0;
+  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
+  transform: scale(1.05);
+}
+
+/* Loading state */
+.crm-loading {
+  text-align: center;
+  padding: 40px 20px;
+  color: #5f6368;
+}
+
+/* Notifications */
+.crm-notification {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #323232;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10000;
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.crm-notification.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+}
+
+/* Modal */
+.crm-modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10001;
+}
+
+.crm-modal-content {
+  background: white;
+  padding: 24px;
+  border-radius: 8px;
+  max-width: 400px;
+  width: 90%;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+}
+
+.crm-modal-content h3 {
+  margin: 0 0 12px 0;
+  font-size: 20px;
+  color: #202124;
+}
+
+.crm-modal-content p {
+  margin: 0 0 20px 0;
+  color: #5f6368;
+}
+
+.crm-modal-content .crm-btn {
+  margin-right: 8px;
+}
+
+/* Contact info */
+#crm-contact-info {
+  background: #f8f9fa;
+  padding: 12px;
+  border-radius: 4px;
+}
+
+/* Responsive adjustments */
+@media (max-width: 1400px) {
+  .gmail-crm-sidebar {
+    width: 300px;
+  }
+
+  .gmail-crm-fab {
+    right: 324px;
+  }
+}
+
+/* Pipeline badge */
+.crm-pipeline-badge {
+  display: inline-block;
+  padding: 4px 12px;
+  background: #e8f0fe;
+  color: #1a73e8;
+  border-radius: 12px;
+  font-size: 12px;
+  font-weight: 500;
+  margin-bottom: 8px;
+}
+
+/* Stage indicator */
+.crm-stage-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.crm-stage-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: #34a853;
+}
+
+.crm-stage-dot.lead {
+  background: #fbbc04;
+}
+
+.crm-stage-dot.contacted {
+  background: #4285f4;
+}
+
+.crm-stage-dot.qualified {
+  background: #34a853;
+}
+
+.crm-stage-dot.proposal {
+  background: #9334e6;
+}
+
+.crm-stage-dot.closed-won {
+  background: #34a853;
+}
+
+.crm-stage-dot.closed-lost {
+  background: #ea4335;
+}
