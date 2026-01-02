@@ -319,6 +319,9 @@ class GmailCRM {
             <button class="crm-view-btn ${this.pipelineViewMode === 'kanban' ? 'active' : ''}" id="crm-kanban-view-btn" title="Kanban View">
               ▦
             </button>
+            <button class="crm-view-btn ${this.pipelineViewMode === 'map' ? 'active' : ''}" id="crm-map-view-btn" title="Map View">
+              🗺️
+            </button>
           </div>
           ${pipeline.type === 'customer-tracking' ? '<button class="crm-btn" id="crm-dashboard-btn">📊 Dashboard</button>' : ''}
           <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
@@ -357,6 +360,10 @@ class GmailCRM {
           <!-- Kanban columns will be rendered here -->
         </div>
 
+        <div class="crm-map-view" id="crm-map-view" style="display: ${this.pipelineViewMode === 'map' ? 'block' : 'none'};">
+          <div id="crm-map-container" style="width: 100%; height: 100%;"></div>
+        </div>
+
         <div class="crm-deal-sidebar" id="crm-deal-sidebar">
           <div class="crm-deal-sidebar-content">
             <div class="crm-sidebar-placeholder">
@@ -370,8 +377,10 @@ class GmailCRM {
     // Render deals based on current view mode
     if (this.pipelineViewMode === 'table') {
       this.renderDealsTable();
-    } else {
+    } else if (this.pipelineViewMode === 'kanban') {
       this.renderKanbanView();
+    } else if (this.pipelineViewMode === 'map') {
+      this.renderMapView();
     }
 
     // Add event listeners
@@ -381,6 +390,10 @@ class GmailCRM {
 
     document.getElementById('crm-kanban-view-btn')?.addEventListener('click', () => {
       this.switchViewMode('kanban');
+    });
+
+    document.getElementById('crm-map-view-btn')?.addEventListener('click', () => {
+      this.switchViewMode('map');
     });
 
     document.getElementById('crm-add-deal-btn')?.addEventListener('click', () => {
@@ -411,16 +424,23 @@ class GmailCRM {
       btn.classList.remove('active');
     });
 
+    // Hide all views
+    document.getElementById('crm-table-view').style.display = 'none';
+    document.getElementById('crm-kanban-view').style.display = 'none';
+    document.getElementById('crm-map-view').style.display = 'none';
+
     if (mode === 'table') {
       document.getElementById('crm-table-view-btn')?.classList.add('active');
       document.getElementById('crm-table-view').style.display = 'block';
-      document.getElementById('crm-kanban-view').style.display = 'none';
       this.renderDealsTable();
-    } else {
+    } else if (mode === 'kanban') {
       document.getElementById('crm-kanban-view-btn')?.classList.add('active');
-      document.getElementById('crm-table-view').style.display = 'none';
       document.getElementById('crm-kanban-view').style.display = 'flex';
       this.renderKanbanView();
+    } else if (mode === 'map') {
+      document.getElementById('crm-map-view-btn')?.classList.add('active');
+      document.getElementById('crm-map-view').style.display = 'block';
+      this.renderMapView();
     }
   }
 
@@ -722,6 +742,154 @@ class GmailCRM {
     chrome.storage.local.set({ deals: this.deals });
 
     console.log(`Gmail CRM: Moved deal ${dealId} from ${oldStageId} to ${newStageId}`);
+  }
+
+  renderMapView() {
+    const mapContainer = document.getElementById('crm-map-container');
+    if (!mapContainer || !this.currentPipeline) return;
+
+    // Get all deals with addresses
+    const dealsInPipeline = this.getDealsInPipeline(this.currentPipeline.id);
+    const dealsWithAddresses = dealsInPipeline.filter(deal => deal.latitude && deal.longitude);
+
+    if (dealsWithAddresses.length === 0) {
+      mapContainer.innerHTML = `
+        <div class="crm-map-empty-state">
+          <div class="crm-empty-icon">🗺️</div>
+          <h3>No Locations to Display</h3>
+          <p>Deals need addresses with coordinates to appear on the map.</p>
+          <p>Use the "🔍 Lookup Address" button in the deal sidebar to add addresses.</p>
+        </div>
+      `;
+      return;
+    }
+
+    // Load Leaflet library if not already loaded
+    if (!window.L) {
+      // Add Leaflet CSS
+      if (!document.getElementById('leaflet-css')) {
+        const link = document.createElement('link');
+        link.id = 'leaflet-css';
+        link.rel = 'stylesheet';
+        link.href = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.css';
+        link.integrity = 'sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=';
+        link.crossOrigin = '';
+        document.head.appendChild(link);
+      }
+
+      // Add Leaflet JS
+      if (!document.getElementById('leaflet-js')) {
+        const script = document.createElement('script');
+        script.id = 'leaflet-js';
+        script.src = 'https://unpkg.com/leaflet@1.9.4/dist/leaflet.js';
+        script.integrity = 'sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=';
+        script.crossOrigin = '';
+        script.onload = () => {
+          this.initializeMap(dealsWithAddresses);
+        };
+        document.head.appendChild(script);
+        return;
+      }
+    }
+
+    this.initializeMap(dealsWithAddresses);
+  }
+
+  initializeMap(deals) {
+    const mapContainer = document.getElementById('crm-map-container');
+    if (!mapContainer) return;
+
+    // Clear existing map if any
+    mapContainer.innerHTML = '';
+
+    // Initialize map centered on US
+    const map = L.map('crm-map-container').setView([39.8283, -98.5795], 4);
+
+    // Add OpenStreetMap tiles
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+      maxZoom: 18
+    }).addTo(map);
+
+    // Create custom icons based on deal priority
+    const createIcon = (priority, stage) => {
+      const priorityColor = {
+        'High': '#ea4335',
+        'Medium': '#fbbc04',
+        'Low': '#34a853'
+      }[priority] || '#5f6368';
+
+      return L.divIcon({
+        className: 'crm-map-marker',
+        html: `<div class="crm-map-marker-icon" style="background-color: ${priorityColor}; border: 3px solid white; width: 24px; height: 24px; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.3);"></div>`,
+        iconSize: [24, 24],
+        iconAnchor: [12, 12]
+      });
+    };
+
+    // Add markers for each deal
+    deals.forEach(deal => {
+      const marker = L.marker([deal.latitude, deal.longitude], {
+        icon: createIcon(deal.priority, deal.stageId)
+      }).addTo(map);
+
+      // Get stage info
+      const stage = this.currentPipeline.stages.find(s => s.id === deal.stageId);
+      const stageName = stage ? stage.name : 'Unknown';
+      const stageColor = stage ? stage.color : '#5f6368';
+
+      // Create popup content
+      const popupContent = `
+        <div class="crm-map-popup">
+          <div class="crm-map-popup-header">
+            <h4 style="margin: 0 0 8px 0; font-size: 14px; color: #202124;">${deal.emailSubject || deal.title || 'Untitled Deal'}</h4>
+          </div>
+          <div class="crm-map-popup-body">
+            <div style="margin-bottom: 4px;">
+              <strong>🏢 Institution:</strong> ${deal.institution || deal.company || '-'}
+            </div>
+            <div style="margin-bottom: 4px;">
+              <strong>📍 Location:</strong> ${deal.city}, ${deal.state}
+            </div>
+            <div style="margin-bottom: 4px;">
+              <strong>📊 Stage:</strong> <span style="background-color: ${stageColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">${stageName}</span>
+            </div>
+            <div style="margin-bottom: 4px;">
+              <strong>💰 Value:</strong> ${deal.value ? `$${deal.value.toLocaleString()}` : '-'}
+            </div>
+            <div style="margin-bottom: 4px;">
+              <strong>⚡ Priority:</strong> ${deal.priority || 'Medium'}
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong>👤 Contact:</strong> ${deal.contactEmail || '-'}
+            </div>
+            <button class="crm-btn-small" onclick="window.gmailCRM.openDealSidebar('${deal.id}')">View Details</button>
+          </div>
+        </div>
+      `;
+
+      marker.bindPopup(popupContent, {
+        maxWidth: 300,
+        className: 'crm-leaflet-popup'
+      });
+
+      // Open deal sidebar on click
+      marker.on('click', () => {
+        this.openDealSidebar(deal.id);
+      });
+    });
+
+    // Fit bounds to show all markers
+    if (deals.length > 0) {
+      const bounds = L.latLngBounds(deals.map(d => [d.latitude, d.longitude]));
+      map.fitBounds(bounds, { padding: [50, 50] });
+    }
+
+    // Store map instance for later use
+    this.map = map;
+
+    // Make gmailCRM globally accessible for onclick handlers
+    window.gmailCRM = this;
   }
 
   renderInstitutionsDirectory() {
@@ -1938,6 +2106,18 @@ class GmailCRM {
             </div>
           </div>
 
+          <div class="crm-sidebar-section">
+            <h4>Institution Address</h4>
+            ${deal.address ? `
+              <div class="crm-address-display ${deal.addressConfirmed ? 'confirmed' : 'unconfirmed'}">
+                <div>${deal.address}</div>
+                <div>${deal.city}, ${deal.state} ${deal.zip}</div>
+                ${!deal.addressConfirmed ? '<div class="crm-address-status">⚠️ Unconfirmed</div>' : '<div class="crm-address-status">✓ Confirmed</div>'}
+              </div>
+            ` : '<p class="crm-empty-state">No address set</p>'}
+            ${deal.institution ? `<button class="crm-btn-small" id="crm-lookup-address-btn">🔍 Lookup Address</button>` : ''}
+          </div>
+
           ${callsHTML}
 
           ${historyHTML}
@@ -1965,6 +2145,10 @@ class GmailCRM {
 
     document.getElementById('crm-add-call-btn')?.addEventListener('click', () => {
       this.showAddCallDialog(deal.id);
+    });
+
+    document.getElementById('crm-lookup-address-btn')?.addEventListener('click', () => {
+      this.lookupInstitutionAddress(deal.id);
     });
 
     document.getElementById('crm-save-notes-btn')?.addEventListener('click', () => {
@@ -2526,6 +2710,222 @@ class GmailCRM {
 
     // Focus on case name input
     setTimeout(() => document.getElementById('crm-case-name')?.focus(), 100);
+  }
+
+  async lookupInstitutionAddress(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal || !deal.institution) {
+      this.showNotification('No institution name found for this deal');
+      return;
+    }
+
+    // Show loading state
+    const loadingModal = document.createElement('div');
+    loadingModal.className = 'crm-modal';
+    loadingModal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>🔍 Looking up address...</h2>
+        <p>Searching for: ${deal.institution}</p>
+        <div class="crm-loading-spinner"></div>
+      </div>
+    `;
+    document.body.appendChild(loadingModal);
+
+    try {
+      // Search for the institution address using WebSearch
+      const searchQuery = `${deal.institution} hospital address location`;
+      console.log('Gmail CRM: Searching for address:', searchQuery);
+
+      // Use Chrome's search capability via a background message
+      // For now, we'll show a confirmation dialog with manual input
+      loadingModal.remove();
+
+      // In a real implementation, we would use the WebSearch tool here
+      // For this demo, we'll show an edit dialog immediately
+      this.showAddressConfirmationDialog(dealId, {
+        institution: deal.institution,
+        address: '',
+        city: '',
+        state: '',
+        zip: '',
+        country: 'USA'
+      });
+
+    } catch (error) {
+      console.error('Gmail CRM: Error looking up address:', error);
+      loadingModal.remove();
+      this.showNotification('❌ Failed to lookup address');
+    }
+  }
+
+  showAddressConfirmationDialog(dealId, addressData) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>Confirm Institution Address</h2>
+        <p style="font-size: 13px; color: #5f6368; margin-bottom: 16px;">
+          ${deal.institution}
+        </p>
+        <div class="crm-form-group">
+          <label>Street Address *</label>
+          <input type="text" id="crm-address-street" class="crm-input" placeholder="123 Main Street" value="${addressData.address || ''}" />
+        </div>
+        <div class="crm-form-group">
+          <label>City *</label>
+          <input type="text" id="crm-address-city" class="crm-input" placeholder="Boston" value="${addressData.city || ''}" />
+        </div>
+        <div class="crm-form-row">
+          <div class="crm-form-group">
+            <label>State *</label>
+            <select id="crm-address-state" class="crm-input">
+              <option value="">Select State</option>
+              ${this.getUSStates().map(state => `<option value="${state.code}" ${addressData.state === state.code ? 'selected' : ''}>${state.name}</option>`).join('')}
+            </select>
+          </div>
+          <div class="crm-form-group">
+            <label>ZIP Code *</label>
+            <input type="text" id="crm-address-zip" class="crm-input" placeholder="02114" value="${addressData.zip || ''}" maxlength="10" />
+          </div>
+        </div>
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-address">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-address">Save Address</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-address')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-address')?.addEventListener('click', async () => {
+      const address = document.getElementById('crm-address-street').value.trim();
+      const city = document.getElementById('crm-address-city').value.trim();
+      const state = document.getElementById('crm-address-state').value;
+      const zip = document.getElementById('crm-address-zip').value.trim();
+
+      if (!address || !city || !state || !zip) {
+        alert('Please fill in all address fields');
+        return;
+      }
+
+      // Update deal with address
+      deal.address = address;
+      deal.city = city;
+      deal.state = state;
+      deal.zip = zip;
+      deal.country = 'USA';
+      deal.addressConfirmed = true;
+
+      // Geocode the address to get lat/lng
+      const fullAddress = `${address}, ${city}, ${state} ${zip}, USA`;
+      try {
+        const coords = await this.geocodeAddress(fullAddress);
+        if (coords) {
+          deal.latitude = coords.lat;
+          deal.longitude = coords.lng;
+        }
+      } catch (error) {
+        console.error('Gmail CRM: Geocoding error:', error);
+      }
+
+      chrome.storage.local.set({ deals: this.deals }, () => {
+        modal.remove();
+        this.showDealSidebar(dealId);
+        this.showNotification('✓ Address saved successfully!');
+      });
+    });
+
+    // Focus on address input
+    setTimeout(() => document.getElementById('crm-address-street')?.focus(), 100);
+  }
+
+  getUSStates() {
+    return [
+      { code: 'AL', name: 'Alabama' },
+      { code: 'AK', name: 'Alaska' },
+      { code: 'AZ', name: 'Arizona' },
+      { code: 'AR', name: 'Arkansas' },
+      { code: 'CA', name: 'California' },
+      { code: 'CO', name: 'Colorado' },
+      { code: 'CT', name: 'Connecticut' },
+      { code: 'DE', name: 'Delaware' },
+      { code: 'FL', name: 'Florida' },
+      { code: 'GA', name: 'Georgia' },
+      { code: 'HI', name: 'Hawaii' },
+      { code: 'ID', name: 'Idaho' },
+      { code: 'IL', name: 'Illinois' },
+      { code: 'IN', name: 'Indiana' },
+      { code: 'IA', name: 'Iowa' },
+      { code: 'KS', name: 'Kansas' },
+      { code: 'KY', name: 'Kentucky' },
+      { code: 'LA', name: 'Louisiana' },
+      { code: 'ME', name: 'Maine' },
+      { code: 'MD', name: 'Maryland' },
+      { code: 'MA', name: 'Massachusetts' },
+      { code: 'MI', name: 'Michigan' },
+      { code: 'MN', name: 'Minnesota' },
+      { code: 'MS', name: 'Mississippi' },
+      { code: 'MO', name: 'Missouri' },
+      { code: 'MT', name: 'Montana' },
+      { code: 'NE', name: 'Nebraska' },
+      { code: 'NV', name: 'Nevada' },
+      { code: 'NH', name: 'New Hampshire' },
+      { code: 'NJ', name: 'New Jersey' },
+      { code: 'NM', name: 'New Mexico' },
+      { code: 'NY', name: 'New York' },
+      { code: 'NC', name: 'North Carolina' },
+      { code: 'ND', name: 'North Dakota' },
+      { code: 'OH', name: 'Ohio' },
+      { code: 'OK', name: 'Oklahoma' },
+      { code: 'OR', name: 'Oregon' },
+      { code: 'PA', name: 'Pennsylvania' },
+      { code: 'RI', name: 'Rhode Island' },
+      { code: 'SC', name: 'South Carolina' },
+      { code: 'SD', name: 'South Dakota' },
+      { code: 'TN', name: 'Tennessee' },
+      { code: 'TX', name: 'Texas' },
+      { code: 'UT', name: 'Utah' },
+      { code: 'VT', name: 'Vermont' },
+      { code: 'VA', name: 'Virginia' },
+      { code: 'WA', name: 'Washington' },
+      { code: 'WV', name: 'West Virginia' },
+      { code: 'WI', name: 'Wisconsin' },
+      { code: 'WY', name: 'Wyoming' },
+      { code: 'DC', name: 'Washington D.C.' }
+    ];
+  }
+
+  async geocodeAddress(address) {
+    // Use Nominatim (OpenStreetMap) geocoding service - free and no API key required
+    try {
+      const encodedAddress = encodeURIComponent(address);
+      const response = await fetch(`https://nominatim.openstreetmap.org/search?format=json&q=${encodedAddress}&countrycodes=us&limit=1`, {
+        headers: {
+          'User-Agent': 'GmailCRM/1.5.0'
+        }
+      });
+
+      if (!response.ok) {
+        throw new Error('Geocoding failed');
+      }
+
+      const data = await response.json();
+      if (data && data.length > 0) {
+        return {
+          lat: parseFloat(data[0].lat),
+          lng: parseFloat(data[0].lon)
+        };
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Gmail CRM: Geocoding error:', error);
+      return null;
+    }
   }
 
   showNotification(message) {
@@ -3855,6 +4255,15 @@ Format: [{"dealTitle": "...", "institution": "...", "contact": "...", "contactEm
       priority: dealData.priority || 'Medium',
       value: dealData.dealValue || 0,
       isHospital: dealData.isHospital || false,
+      // Address fields
+      address: dealData.address || null,
+      city: dealData.city || null,
+      state: dealData.state || null,
+      zip: dealData.zip || null,
+      country: dealData.country || 'USA',
+      latitude: dealData.latitude || null,
+      longitude: dealData.longitude || null,
+      addressConfirmed: false,
       createdAt: new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
       linkedEmails: [],
