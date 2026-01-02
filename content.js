@@ -154,8 +154,14 @@ class GmailCRM {
       </div>
       <div class="crm-nav-list" id="crm-pipelines-list"></div>
       <div class="crm-sync-section">
-        <button class="crm-sync-btn" id="crm-sync-emails-btn" title="Sync emails to create deals">
+        <button class="crm-sync-btn" id="crm-sync-emails-btn" title="Basic email sync">
           📧 Sync Emails
+        </button>
+        <button class="crm-sync-btn-smart" id="crm-smart-sync-btn" title="AI-powered smart sync with Gemini">
+          🤖 Smart Sync
+        </button>
+        <button class="crm-settings-btn" id="crm-gemini-settings-btn" title="Gemini API Settings">
+          ⚙️
         </button>
       </div>
     `;
@@ -184,6 +190,16 @@ class GmailCRM {
     // Sync emails button
     this.pipelinesNav.querySelector('#crm-sync-emails-btn')?.addEventListener('click', () => {
       this.syncEmailsToDeals();
+    });
+
+    // Smart sync with Gemini button
+    this.pipelinesNav.querySelector('#crm-smart-sync-btn')?.addEventListener('click', () => {
+      this.smartSyncWithGemini();
+    });
+
+    // Gemini settings button
+    this.pipelinesNav.querySelector('#crm-gemini-settings-btn')?.addEventListener('click', () => {
+      this.showGeminiSettings();
     });
   }
 
@@ -3017,6 +3033,315 @@ class GmailCRM {
       .replace(/\bFda\b/g, 'FDA');
 
     return institutionName;
+  }
+
+  // ========== Gemini AI Integration ==========
+
+  showGeminiSettings() {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+
+    // Get existing API key
+    chrome.storage.local.get(['geminiApiKey'], (result) => {
+      const existingKey = result.geminiApiKey || '';
+
+      modal.innerHTML = `
+        <div class="crm-modal-content">
+          <h2>🤖 Gemini AI Settings</h2>
+          <p style="font-size: 13px; color: #5f6368; margin-bottom: 16px;">
+            Enable AI-powered email analysis to automatically identify deals, extract information, and populate your pipeline.
+          </p>
+          <div class="crm-form-group">
+            <label><strong>Gemini API Key</strong></label>
+            <input type="password" id="crm-gemini-api-key" class="crm-input"
+                   value="${existingKey}"
+                   placeholder="Enter your Gemini API key" />
+            <p class="crm-help-text" style="color: #5f6368; margin-top: 4px;">
+              Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>
+            </p>
+          </div>
+          <div class="crm-form-group">
+            <label class="crm-checkbox-label">
+              <input type="checkbox" id="crm-gemini-enabled" ${existingKey ? 'checked' : ''} />
+              <span>Enable Smart Sync</span>
+            </label>
+          </div>
+          <div class="crm-modal-actions">
+            <button class="crm-btn" id="crm-cancel-settings">Cancel</button>
+            <button class="crm-btn-primary" id="crm-save-settings">Save</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      document.getElementById('crm-cancel-settings')?.addEventListener('click', () => modal.remove());
+      document.getElementById('crm-save-settings')?.addEventListener('click', () => {
+        const apiKey = document.getElementById('crm-gemini-api-key').value.trim();
+        const enabled = document.getElementById('crm-gemini-enabled').checked;
+
+        if (enabled && !apiKey) {
+          alert('Please enter a Gemini API key');
+          return;
+        }
+
+        chrome.storage.local.set({
+          geminiApiKey: apiKey,
+          geminiEnabled: enabled
+        }, () => {
+          modal.remove();
+          this.showNotification('✓ Gemini settings saved!');
+        });
+      });
+    });
+  }
+
+  async smartSyncWithGemini() {
+    // Check if API key is set
+    const settings = await new Promise(resolve => {
+      chrome.storage.local.get(['geminiApiKey', 'geminiEnabled'], resolve);
+    });
+
+    if (!settings.geminiEnabled || !settings.geminiApiKey) {
+      this.showNotification('⚠️ Please configure Gemini API key in settings first');
+      this.showGeminiSettings();
+      return;
+    }
+
+    // Show date picker first
+    this.showSmartSyncDialog();
+  }
+
+  showSmartSyncDialog() {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+
+    const defaultDaysBack = 30;
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - defaultDaysBack);
+    const toDate = new Date();
+
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>🤖 Smart Sync with Gemini AI</h2>
+        <p style="font-size: 13px; color: #5f6368; margin-bottom: 16px;">
+          AI will analyze your emails to identify deals, extract key information, and intelligently populate your pipeline.
+        </p>
+        <div class="crm-form-group">
+          <label>From Date</label>
+          <input type="date" id="crm-smart-sync-from" class="crm-input" value="${fromDate.toISOString().split('T')[0]}" />
+        </div>
+        <div class="crm-form-group">
+          <label>To Date</label>
+          <input type="date" id="crm-smart-sync-to" class="crm-input" value="${toDate.toISOString().split('T')[0]}" />
+        </div>
+        <div class="crm-form-group">
+          <label>Max Emails to Analyze</label>
+          <input type="number" id="crm-smart-sync-limit" class="crm-input" value="50" min="1" max="200" />
+          <p class="crm-help-text" style="color: #5f6368; margin-top: 4px;">
+            Higher numbers will take longer and use more API calls
+          </p>
+        </div>
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-smart-sync">Cancel</button>
+          <button class="crm-btn-primary" id="crm-start-smart-sync">🤖 Start Smart Sync</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-smart-sync')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-start-smart-sync')?.addEventListener('click', () => {
+      const fromDate = document.getElementById('crm-smart-sync-from').value;
+      const toDate = document.getElementById('crm-smart-sync-to').value;
+      const limit = parseInt(document.getElementById('crm-smart-sync-limit').value) || 50;
+
+      modal.remove();
+      this.performSmartSync(fromDate, toDate, limit);
+    });
+  }
+
+  async performSmartSync(fromDate, toDate, limit) {
+    console.log('Gmail CRM: Starting Smart Sync with Gemini...');
+    this.showNotification('🤖 Starting AI-powered email analysis...');
+
+    const syncBtn = document.getElementById('crm-smart-sync-btn');
+    if (syncBtn) {
+      syncBtn.disabled = true;
+      syncBtn.innerHTML = '⏳ Analyzing...';
+    }
+
+    try {
+      // Get API key
+      const settings = await new Promise(resolve => {
+        chrome.storage.local.get(['geminiApiKey'], resolve);
+      });
+
+      // Scan emails
+      const fromDateObj = new Date(fromDate);
+      const toDateObj = new Date(toDate);
+      const emailRows = await this.scanGmailEmails(fromDateObj, toDateObj);
+
+      console.log(`Gmail CRM: Found ${emailRows.length} emails to analyze`);
+      const emailsToAnalyze = emailRows.slice(0, limit);
+
+      this.showNotification(`🤖 Analyzing ${emailsToAnalyze.length} emails with AI...`);
+
+      // Analyze emails in batches with Gemini
+      const batchSize = 10;
+      let totalDeals = 0;
+
+      for (let i = 0; i < emailsToAnalyze.length; i += batchSize) {
+        const batch = emailsToAnalyze.slice(i, i + batchSize);
+        console.log(`Gmail CRM: Analyzing batch ${Math.floor(i/batchSize) + 1}/${Math.ceil(emailsToAnalyze.length/batchSize)}`);
+
+        const deals = await this.analyzeEmailBatchWithGemini(batch, settings.geminiApiKey);
+
+        if (deals && deals.length > 0) {
+          // Create deals from Gemini's analysis
+          for (const dealData of deals) {
+            await this.createDealFromGeminiAnalysis(dealData);
+            totalDeals++;
+          }
+        }
+
+        // Wait between batches to avoid rate limits
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+
+      // Save and refresh
+      await new Promise(resolve => {
+        chrome.storage.local.set({ deals: this.deals }, resolve);
+      });
+
+      console.log(`Gmail CRM: Smart Sync complete. Created ${totalDeals} deals`);
+      this.showNotification(`✓ Smart Sync complete! Created ${totalDeals} deals`);
+
+      // Reload and refresh
+      await this.loadData();
+      if (this.currentPipeline) {
+        this.renderPipelineBoard();
+      }
+
+    } catch (error) {
+      console.error('Gmail CRM: Error in Smart Sync:', error);
+      this.showNotification('❌ Smart Sync failed. Check console for details.');
+    } finally {
+      if (syncBtn) {
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = '🤖 Smart Sync';
+      }
+    }
+  }
+
+  async analyzeEmailBatchWithGemini(emails, apiKey) {
+    const emailContext = emails.map(e => ({
+      subject: e.subject,
+      from: e.fromName,
+      fromEmail: e.from,
+      institution: e.institution,
+      date: e.date
+    }));
+
+    const prompt = `You are an expert CRM analyst. Analyze these emails and identify which ones represent potential sales deals or business opportunities for a surgical AR (augmented reality) company.
+
+For each email that represents a deal, extract:
+- dealTitle: Short descriptive title
+- institution: Hospital/institution name
+- contact: Person's name
+- contactEmail: Email address
+- stage: Best guess at sales stage (lead, contacted, qualified, proposal, negotiation, closed-won, closed-lost)
+- dealValue: Estimated deal size in USD (if mentioned or can be inferred)
+- priority: High/Medium/Low
+- summary: 1-2 sentence summary of the opportunity
+- isHospital: true/false
+
+Emails to analyze:
+${JSON.stringify(emailContext, null, 2)}
+
+Return ONLY a JSON array of deals. If no deals found, return empty array [].
+Format: [{"dealTitle": "...", "institution": "...", "contact": "...", "contactEmail": "...", "stage": "...", "dealValue": 0, "priority": "...", "summary": "...", "isHospital": true}]`;
+
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '[]';
+
+      console.log('Gmail CRM: Gemini response:', text);
+
+      // Extract JSON from response
+      const jsonMatch = text.match(/\[[\s\S]*\]/);
+      if (jsonMatch) {
+        return JSON.parse(jsonMatch[0]);
+      }
+
+      return [];
+    } catch (error) {
+      console.error('Gmail CRM: Error calling Gemini API:', error);
+      return [];
+    }
+  }
+
+  async createDealFromGeminiAnalysis(dealData) {
+    const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    // Map Gemini's stage to our stage IDs
+    const stageMapping = {
+      'lead': 'lead',
+      'contacted': 'contacted',
+      'qualified': 'qualified',
+      'proposal': 'proposal',
+      'negotiation': 'negotiation',
+      'closed-won': 'closed-won',
+      'closed-lost': 'closed-lost'
+    };
+
+    const stageId = stageMapping[dealData.stage?.toLowerCase()] || 'lead';
+
+    const deal = {
+      id: dealId,
+      pipelineId: 'sales',
+      stageId: stageId,
+      emailSubject: dealData.dealTitle || 'AI-Identified Deal',
+      company: dealData.institution,
+      institution: dealData.institution,
+      contactEmail: dealData.contactEmail,
+      status: 'Active',
+      priority: dealData.priority || 'Medium',
+      value: dealData.dealValue || 0,
+      isHospital: dealData.isHospital || false,
+      createdAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+      linkedEmails: [],
+      notesHistory: [{
+        text: `AI Analysis: ${dealData.summary}`,
+        createdAt: new Date().toISOString()
+      }],
+      calls: [],
+      contacts: dealData.contact ? [dealData.contact] : [],
+      aiGenerated: true
+    };
+
+    this.deals[dealId] = deal;
+    console.log('Gmail CRM: Created deal from AI analysis:', dealData.dealTitle);
   }
 }
 
