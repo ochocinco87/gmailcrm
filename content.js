@@ -1922,71 +1922,170 @@ class GmailCRM {
   }
 
   async syncEmailsToDeals() {
-    const syncBtn = document.getElementById('crm-sync-emails-btn');
-    if (!syncBtn) return;
+    // Show date picker dialog first
+    this.showSyncDateDialog();
+  }
 
-    // Show loading state
-    syncBtn.disabled = true;
-    syncBtn.innerHTML = '⏳ Syncing...';
+  showSyncDateDialog() {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+
+    const defaultDaysBack = 30;
+    const fromDate = new Date();
+    fromDate.setDate(fromDate.getDate() - defaultDaysBack);
+    const toDate = new Date();
+
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>Sync Emails to CRM</h2>
+        <p style="font-size: 13px; color: #5f6368; margin-bottom: 16px;">
+          Scan Gmail emails and automatically create deals. Emails from the same person/company will be grouped into one deal.
+        </p>
+        <div class="crm-form-group">
+          <label>From Date</label>
+          <input type="date" id="crm-sync-from-date" class="crm-input" value="${fromDate.toISOString().split('T')[0]}" />
+        </div>
+        <div class="crm-form-group">
+          <label>To Date</label>
+          <input type="date" id="crm-sync-to-date" class="crm-input" value="${toDate.toISOString().split('T')[0]}" />
+        </div>
+        <div class="crm-form-group">
+          <label class="crm-checkbox-label">
+            <input type="checkbox" id="crm-sync-hospitals-only" checked />
+            <span>Prioritize hospitals/health systems</span>
+          </label>
+          <p class="crm-help-text" style="color: #5f6368; margin-top: 4px;">
+            Focus on emails from medical facilities and health organizations
+          </p>
+        </div>
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-sync">Cancel</button>
+          <button class="crm-btn-primary" id="crm-start-sync">Start Sync</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-sync')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-start-sync')?.addEventListener('click', () => {
+      const fromDate = document.getElementById('crm-sync-from-date').value;
+      const toDate = document.getElementById('crm-sync-to-date').value;
+      const hospitalsOnly = document.getElementById('crm-sync-hospitals-only').checked;
+
+      modal.remove();
+      this.performEmailSync(fromDate, toDate, hospitalsOnly);
+    });
+  }
+
+  async performEmailSync(fromDate, toDate, hospitalsOnly) {
+    const syncBtn = document.getElementById('crm-sync-emails-btn');
+    if (syncBtn) {
+      syncBtn.disabled = true;
+      syncBtn.innerHTML = '⏳ Syncing...';
+    }
 
     try {
-      // Get all email rows from Gmail inbox view
+      console.log('Gmail CRM: Starting sync from', fromDate, 'to', toDate);
+
+      // Scan Gmail emails
       const emailRows = await this.scanGmailEmails();
+      console.log('Gmail CRM: Found', emailRows.length, 'emails');
 
       if (emailRows.length === 0) {
-        this.showNotification('No emails found. Please navigate to your inbox.');
-        syncBtn.disabled = false;
-        syncBtn.innerHTML = '📧 Sync Emails';
+        this.showNotification('No emails found. Make sure you\'re viewing your inbox.');
+        if (syncBtn) {
+          syncBtn.disabled = false;
+          syncBtn.innerHTML = '📧 Sync Emails';
+        }
         return;
       }
+
+      // Group emails by sender/company
+      const groupedByCompany = {};
+
+      for (const emailData of emailRows) {
+        // Filter by date range
+        const emailDate = new Date(emailData.date);
+        if (emailDate < fromDate || emailDate > toDate) {
+          continue;
+        }
+
+        const companyKey = this.extractCompanyFromEmail(emailData.from);
+        const isHospital = this.isHospitalOrHealthSystem(emailData.from, emailData.subject);
+
+        // Skip if hospitals-only mode and this isn't a hospital
+        if (hospitalsOnly && !isHospital) continue;
+
+        if (!groupedByCompany[companyKey]) {
+          groupedByCompany[companyKey] = {
+            company: companyKey,
+            emails: [],
+            isHospital: isHospital
+          };
+        }
+
+        groupedByCompany[companyKey].emails.push(emailData);
+      }
+
+      console.log('Gmail CRM: Grouped into', Object.keys(groupedByCompany).length, 'companies');
 
       let created = 0;
       let linked = 0;
 
-      // Process each email
-      for (const emailData of emailRows) {
-        // Check if deal already exists with this thread
+      // Create deals from grouped emails
+      for (const [companyKey, data] of Object.entries(groupedByCompany)) {
+        // Check if deal already exists for this company
         let deal = Object.values(this.deals).find(d =>
-          d.threadId === emailData.threadId ||
-          d.emailSubject === emailData.subject
+          d.company === data.company ||
+          d.emailFrom === data.emails[0].from
         );
 
         if (!deal) {
-          // Create new deal
+          // Create new deal for this company
+          const firstEmail = data.emails[0];
           const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
           deal = {
             id: dealId,
-            pipelineId: 'sales', // Default to sales pipeline
+            pipelineId: 'sales',
             stageId: 'proposal-sent',
-            emailSubject: emailData.subject,
-            emailFrom: emailData.from,
-            company: this.extractCompanyFromEmail(emailData.from),
+            emailSubject: `${data.company} - ${data.emails.length} email${data.emails.length > 1 ? 's' : ''}`,
+            emailFrom: firstEmail.from,
+            company: data.company,
             status: 'Active',
-            threadId: emailData.threadId,
-            createdAt: emailData.date || new Date().toISOString(),
+            isHospital: data.isHospital,
+            createdAt: firstEmail.date || new Date().toISOString(),
             lastUpdated: new Date().toISOString(),
             linkedEmails: [],
             notesHistory: [],
             calls: []
           };
+
           this.deals[dealId] = deal;
           created++;
+          console.log('Gmail CRM: Created deal for', data.company);
         }
 
-        // Link email to deal if not already linked
+        // Link all emails from this company to the deal
         if (!deal.linkedEmails) deal.linkedEmails = [];
-        const alreadyLinked = deal.linkedEmails.some(e => e.threadId === emailData.threadId);
 
-        if (!alreadyLinked && emailData.threadId) {
-          deal.linkedEmails.push({
-            subject: emailData.subject,
-            from: emailData.from,
-            date: emailData.date || new Date().toISOString(),
-            threadId: emailData.threadId,
-            url: emailData.url,
-            linkedAt: new Date().toISOString()
-          });
-          linked++;
+        for (const email of data.emails) {
+          const alreadyLinked = deal.linkedEmails.some(e =>
+            e.threadId === email.threadId || e.subject === email.subject
+          );
+
+          if (!alreadyLinked) {
+            deal.linkedEmails.push({
+              subject: email.subject,
+              from: email.from,
+              date: email.date || new Date().toISOString(),
+              threadId: email.threadId,
+              url: email.url,
+              linkedAt: new Date().toISOString()
+            });
+            linked++;
+          }
         }
       }
 
@@ -1995,6 +2094,7 @@ class GmailCRM {
         chrome.storage.local.set({ deals: this.deals }, resolve);
       });
 
+      console.log('Gmail CRM: Sync complete. Created:', created, 'Linked:', linked);
       this.showNotification(`✓ Synced! Created ${created} deals, linked ${linked} emails`);
 
       // Refresh pipeline view if open
@@ -2004,10 +2104,12 @@ class GmailCRM {
 
     } catch (error) {
       console.error('Gmail CRM: Error syncing emails:', error);
-      this.showNotification('Error syncing emails. Please try again.');
+      this.showNotification('Error syncing emails. Check console for details.');
     } finally {
-      syncBtn.disabled = false;
-      syncBtn.innerHTML = '📧 Sync Emails';
+      if (syncBtn) {
+        syncBtn.disabled = false;
+        syncBtn.innerHTML = '📧 Sync Emails';
+      }
     }
   }
 
@@ -2090,6 +2192,26 @@ class GmailCRM {
       return domain.split('.')[0].charAt(0).toUpperCase() + domain.split('.')[0].slice(1);
     }
     return 'Unknown Company';
+  }
+
+  isHospitalOrHealthSystem(emailFrom, emailSubject) {
+    // Keywords that indicate a hospital or health system
+    const hospitalKeywords = [
+      'hospital', 'medical center', 'health system', 'healthcare',
+      'clinic', 'medical group', 'physicians', 'surgery center',
+      'regional medical', 'community hospital', 'health network',
+      'health partners', 'memorial', 'university hospital',
+      'children\'s hospital', 'veterans hospital', 'va hospital',
+      'urgent care', 'primary care', 'specialty clinic',
+      'medical', 'medicine', 'doctor', 'surgeon',
+      'health care', 'patient', 'clinical'
+    ];
+
+    // Combine email and subject for checking
+    const textToCheck = `${emailFrom} ${emailSubject}`.toLowerCase();
+
+    // Check if any hospital keyword appears in the text
+    return hospitalKeywords.some(keyword => textToCheck.includes(keyword));
   }
 }
 
