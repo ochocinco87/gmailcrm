@@ -706,16 +706,21 @@ class GmailCRM {
 
     // Check if we're viewing an email (look for email subject)
     const emailSubjectElement = emailView.querySelector('h2.hP') || emailView.querySelector('[data-legacy-message-id]');
-    if (!emailSubjectElement) return;
-
-    // Check if we already injected the UI
-    if (document.getElementById('crm-email-link-bar')) return;
+    if (!emailSubjectElement) {
+      // Not viewing an email, hide sidebar if it exists
+      const existingSidebar = document.getElementById('crm-email-deals-sidebar');
+      if (existingSidebar) {
+        existingSidebar.style.display = 'none';
+      }
+      return;
+    }
 
     // Get email metadata
     const emailMetadata = this.extractEmailMetadata(emailView);
     if (!emailMetadata) return;
 
-    this.injectEmailLinkUI(emailView, emailMetadata);
+    // Show the right sidebar
+    this.showEmailDealsSidebar(emailMetadata);
   }
 
   extractEmailMetadata(emailView) {
@@ -946,13 +951,132 @@ class GmailCRM {
 
     chrome.storage.local.set({ deals: this.deals }, () => {
       this.showNotification('Email unlinked from deal');
-
-      // Refresh the email link bar
-      const existingBar = document.getElementById('crm-email-link-bar');
-      if (existingBar) {
-        existingBar.remove();
-      }
+      // Refresh the sidebar
       this.checkAndInjectEmailLinkUI();
+    });
+  }
+
+  showEmailDealsSidebar(emailMetadata) {
+    // Check if sidebar already exists
+    let sidebar = document.getElementById('crm-email-deals-sidebar');
+
+    if (!sidebar) {
+      // Create sidebar
+      sidebar = document.createElement('div');
+      sidebar.id = 'crm-email-deals-sidebar';
+      sidebar.className = 'crm-email-deals-sidebar';
+      document.body.appendChild(sidebar);
+    }
+
+    sidebar.style.display = 'flex';
+    this.currentEmailMetadata = emailMetadata;
+
+    // Get linked deals for this email
+    const linkedDeals = this.getDealsLinkedToEmail(emailMetadata.threadId);
+    const linkedDealIds = new Set(linkedDeals.map(d => d.id));
+
+    // Group deals by pipeline
+    const dealsByPipeline = {};
+    this.pipelines.forEach(pipeline => {
+      dealsByPipeline[pipeline.id] = {
+        pipeline,
+        deals: Object.values(this.deals).filter(d => d.pipelineId === pipeline.id)
+      };
+    });
+
+    sidebar.innerHTML = `
+      <div class="crm-email-sidebar-header">
+        <div class="crm-email-sidebar-title">
+          <span class="crm-sidebar-icon">🔗</span>
+          <span>Link to Deals</span>
+        </div>
+        <button class="crm-sidebar-close-btn" id="crm-close-email-sidebar">×</button>
+      </div>
+
+      <div class="crm-email-sidebar-content">
+        <div class="crm-email-sidebar-info">
+          <div class="crm-email-info-subject">${emailMetadata.subject}</div>
+          <div class="crm-email-info-from">From: ${emailMetadata.from}</div>
+        </div>
+
+        <div class="crm-linked-count">
+          ${linkedDealIds.size} ${linkedDealIds.size === 1 ? 'deal' : 'deals'} linked
+        </div>
+
+        <div class="crm-email-sidebar-search">
+          <input type="text"
+                 id="crm-email-sidebar-search"
+                 class="crm-sidebar-search-input"
+                 placeholder="Search deals..." />
+        </div>
+
+        <div class="crm-email-sidebar-deals">
+          ${Object.values(dealsByPipeline).map(({ pipeline, deals }) => {
+            if (deals.length === 0) return '';
+            return `
+              <div class="crm-pipeline-group">
+                <div class="crm-pipeline-group-header">${pipeline.name} (${deals.length})</div>
+                ${deals.map(deal => {
+                  const isLinked = linkedDealIds.has(deal.id);
+                  return `
+                    <label class="crm-deal-checkbox-item ${isLinked ? 'linked' : ''}">
+                      <input type="checkbox"
+                             class="crm-deal-checkbox"
+                             data-deal-id="${deal.id}"
+                             ${isLinked ? 'checked' : ''} />
+                      <span class="crm-deal-checkbox-label">
+                        <span class="crm-deal-checkbox-name">${deal.emailSubject || 'Unnamed Deal'}</span>
+                        <span class="crm-deal-checkbox-stage">${pipeline.stages.find(s => s.id === deal.stageId)?.name || ''}</span>
+                      </span>
+                    </label>
+                  `;
+                }).join('')}
+              </div>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    `;
+
+    // Close button
+    document.getElementById('crm-close-email-sidebar')?.addEventListener('click', () => {
+      sidebar.style.display = 'none';
+    });
+
+    // Search functionality
+    const searchInput = document.getElementById('crm-email-sidebar-search');
+    searchInput?.addEventListener('input', (e) => {
+      const query = e.target.value.toLowerCase();
+      const dealItems = sidebar.querySelectorAll('.crm-deal-checkbox-item');
+
+      dealItems.forEach(item => {
+        const dealName = item.querySelector('.crm-deal-checkbox-name').textContent.toLowerCase();
+        if (dealName.includes(query) || query === '') {
+          item.style.display = '';
+        } else {
+          item.style.display = 'none';
+        }
+      });
+
+      // Hide empty pipeline groups
+      const pipelineGroups = sidebar.querySelectorAll('.crm-pipeline-group');
+      pipelineGroups.forEach(group => {
+        const visibleDeals = group.querySelectorAll('.crm-deal-checkbox-item:not([style*="display: none"])');
+        group.style.display = visibleDeals.length > 0 ? '' : 'none';
+      });
+    });
+
+    // Checkbox change listeners
+    const checkboxes = sidebar.querySelectorAll('.crm-deal-checkbox');
+    checkboxes.forEach(checkbox => {
+      checkbox.addEventListener('change', (e) => {
+        const dealId = checkbox.dataset.dealId;
+        if (checkbox.checked) {
+          this.linkEmailToDeal(dealId, emailMetadata);
+        } else {
+          this.unlinkEmailFromDeal(dealId, emailMetadata);
+        }
+      });
     });
   }
 

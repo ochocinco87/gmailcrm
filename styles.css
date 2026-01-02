@@ -1476,6 +1476,188 @@
   color: #ea4335;
 }
 
+/* ========== Email Deals Right Sidebar ========== */
+.crm-email-deals-sidebar {
+  position: fixed;
+  top: 0;
+  right: 0;
+  width: 320px;
+  height: 100vh;
+  background: white;
+  border-left: 1px solid #e8eaed;
+  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
+  z-index: 999999;
+  display: flex;
+  flex-direction: column;
+}
+
+.crm-email-sidebar-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px;
+  border-bottom: 1px solid #e8eaed;
+  background: #f8f9fa;
+}
+
+.crm-email-sidebar-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+  font-weight: 500;
+  color: #202124;
+}
+
+.crm-sidebar-icon {
+  font-size: 20px;
+}
+
+.crm-sidebar-close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: #5f6368;
+  cursor: pointer;
+  padding: 4px;
+  border-radius: 50%;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s;
+}
+
+.crm-sidebar-close-btn:hover {
+  background: #f1f3f4;
+}
+
+.crm-email-sidebar-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.crm-email-sidebar-info {
+  padding: 12px;
+  background: #e8f0fe;
+  border-radius: 8px;
+  margin-bottom: 16px;
+}
+
+.crm-email-info-subject {
+  font-size: 14px;
+  font-weight: 500;
+  color: #1967d2;
+  margin-bottom: 4px;
+}
+
+.crm-email-info-from {
+  font-size: 12px;
+  color: #5f6368;
+}
+
+.crm-linked-count {
+  font-size: 13px;
+  color: #34a853;
+  font-weight: 500;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background: #e6f4ea;
+  border-radius: 4px;
+  text-align: center;
+}
+
+.crm-email-sidebar-search {
+  margin-bottom: 16px;
+}
+
+.crm-sidebar-search-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 8px;
+  font-size: 14px;
+  box-sizing: border-box;
+}
+
+.crm-sidebar-search-input:focus {
+  outline: none;
+  border-color: #1a73e8;
+}
+
+.crm-email-sidebar-deals {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+.crm-pipeline-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crm-pipeline-group-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: #5f6368;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  padding: 4px 0;
+}
+
+.crm-deal-checkbox-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+
+.crm-deal-checkbox-item:hover {
+  background: #f8f9fa;
+}
+
+.crm-deal-checkbox-item.linked {
+  background: #e6f4ea;
+  border-color: #34a853;
+}
+
+.crm-deal-checkbox {
+  margin-top: 2px;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+}
+
+.crm-deal-checkbox-label {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.crm-deal-checkbox-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #202124;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.crm-deal-checkbox-stage {
+  font-size: 12px;
+  color: #5f6368;
+}
+
 /* ========== Global Dark Mode Support ========== */
 @media (prefers-color-scheme: dark) {
   /* Pipeline Container */
@@ -1749,6 +1931,77 @@
   }
 
   .crm-unlink-email {
+    color: #9aa0a6 !important;
+  }
+
+  /* Email Deals Sidebar */
+  .crm-email-deals-sidebar {
+    background: #292a2d !important;
+    border-left-color: #3c4043 !important;
+  }
+
+  .crm-email-sidebar-header {
+    background: #202124 !important;
+    border-bottom-color: #3c4043 !important;
+  }
+
+  .crm-email-sidebar-title {
+    color: #e8eaed !important;
+  }
+
+  .crm-sidebar-close-btn {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-sidebar-close-btn:hover {
+    background: #3c4043 !important;
+  }
+
+  .crm-email-sidebar-info {
+    background: #1a3a52 !important;
+  }
+
+  .crm-email-info-subject {
+    color: #8ab4f8 !important;
+  }
+
+  .crm-email-info-from {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-linked-count {
+    background: #1a3a20 !important;
+    color: #81c995 !important;
+  }
+
+  .crm-sidebar-search-input {
+    background: #3c4043 !important;
+    color: #e8eaed !important;
+    border-color: #5f6368 !important;
+  }
+
+  .crm-pipeline-group-header {
+    color: #9aa0a6 !important;
+  }
+
+  .crm-deal-checkbox-item {
+    background: #202124 !important;
+  }
+
+  .crm-deal-checkbox-item:hover {
+    background: #3c4043 !important;
+  }
+
+  .crm-deal-checkbox-item.linked {
+    background: #1a3a20 !important;
+    border-color: #81c995 !important;
+  }
+
+  .crm-deal-checkbox-name {
+    color: #e8eaed !important;
+  }
+
+  .crm-deal-checkbox-stage {
     color: #9aa0a6 !important;
   }
 }
