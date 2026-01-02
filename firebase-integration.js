@@ -122,27 +122,13 @@ class FirebaseCRMSync {
         throw new Error('You do not have permission to edit deals (viewer role)');
       }
 
-      // Wake up service worker first
-      await this.wakeUpServiceWorker();
-
-      // Save to Firebase via background script (with timeout fallback)
+      // Save directly to Firebase REST API (bypass broken background worker)
       try {
-        const response = await Promise.race([
-          chrome.runtime.sendMessage({
-            action: 'saveFirebaseDeal',
-            deal: deal
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 3000))
-        ]);
-
-        if (response && response.success) {
-          // Also save to local storage for offline access
-          await this.saveToLocal('deals', deal.id, deal);
-          console.log('✓ Deal saved to Firebase and local storage');
-          return deal;
-        } else {
-          throw new Error(response?.error || 'Failed to save to Firebase');
-        }
+        await this.saveToFirestoreDirectly(deal);
+        // Also save to local storage for offline access
+        await this.saveToLocal('deals', deal.id, deal);
+        console.log('✓ Deal saved to Firebase and local storage');
+        return deal;
       } catch (error) {
         console.warn('Error saving to Firebase, falling back to local:', error);
         // Fall back to local storage if Firebase fails
@@ -154,6 +140,80 @@ class FirebaseCRMSync {
       await this.saveToLocal('deals', deal.id, deal);
       return deal;
     }
+  }
+
+  // Save directly to Firestore using REST API (bypasses background worker)
+  async saveToFirestoreDirectly(deal) {
+    const config = await new Promise(resolve => {
+      chrome.storage.local.get(['firebaseConfig'], (result) => resolve(result.firebaseConfig));
+    });
+
+    if (!config) {
+      throw new Error('Firebase not configured');
+    }
+
+    // Get OAuth token
+    const token = await new Promise((resolve, reject) => {
+      chrome.identity.getAuthToken({ interactive: false }, (token) => {
+        if (chrome.runtime.lastError || !token) {
+          reject(new Error('Not authenticated'));
+        } else {
+          resolve(token);
+        }
+      });
+    });
+
+    // Convert deal to Firestore format
+    const firestoreDoc = this.convertToFirestoreFormat(deal);
+
+    const path = `organizations/${this.currentUser.domain}/deals/${deal.id}`;
+    const url = `https://firestore.googleapis.com/v1/projects/${config.projectId}/databases/(default)/documents/${path}`;
+
+    const response = await fetch(url, {
+      method: 'PATCH',
+      headers: {
+        'Authorization': `Bearer ${token}`,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({ fields: firestoreDoc })
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Firestore save failed: ${error}`);
+    }
+
+    return deal;
+  }
+
+  // Convert JavaScript object to Firestore document format
+  convertToFirestoreFormat(obj) {
+    const fields = {};
+    for (const [key, value] of Object.entries(obj)) {
+      if (value === null || value === undefined) continue;
+
+      if (typeof value === 'string') {
+        fields[key] = { stringValue: value };
+      } else if (typeof value === 'number') {
+        fields[key] = { doubleValue: value };
+      } else if (typeof value === 'boolean') {
+        fields[key] = { booleanValue: value };
+      } else if (Array.isArray(value)) {
+        fields[key] = {
+          arrayValue: {
+            values: value.map(v => {
+              if (typeof v === 'object') {
+                return { mapValue: { fields: this.convertToFirestoreFormat(v) } };
+              }
+              return { stringValue: String(v) };
+            })
+          }
+        };
+      } else if (typeof value === 'object') {
+        fields[key] = { mapValue: { fields: this.convertToFirestoreFormat(value) } };
+      }
+    }
+    return fields;
   }
 
   // Delete deal
