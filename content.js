@@ -23,6 +23,9 @@ class GmailCRM {
     // Monitor for navigation
     this.observeNavigation();
 
+    // Monitor for email views to inject link UI
+    this.observeEmailView();
+
     this.initialized = true;
     console.log('Gmail CRM: Initialized successfully');
   }
@@ -677,6 +680,282 @@ class GmailCRM {
     this.renderPipelinesList();
   }
 
+  observeEmailView() {
+    // Use MutationObserver to detect when emails are opened
+    const observer = new MutationObserver(() => {
+      this.checkAndInjectEmailLinkUI();
+    });
+
+    // Observe the main content area
+    const gmailMain = document.querySelector('div[role="main"]');
+    if (gmailMain) {
+      observer.observe(gmailMain, {
+        childList: true,
+        subtree: true
+      });
+    }
+
+    // Also check immediately
+    setTimeout(() => this.checkAndInjectEmailLinkUI(), 1000);
+  }
+
+  checkAndInjectEmailLinkUI() {
+    // Find email view container - Gmail uses various selectors
+    const emailView = document.querySelector('.nH.aHU') || document.querySelector('div[role="main"]');
+    if (!emailView) return;
+
+    // Check if we're viewing an email (look for email subject)
+    const emailSubjectElement = emailView.querySelector('h2.hP') || emailView.querySelector('[data-legacy-message-id]');
+    if (!emailSubjectElement) return;
+
+    // Check if we already injected the UI
+    if (document.getElementById('crm-email-link-bar')) return;
+
+    // Get email metadata
+    const emailMetadata = this.extractEmailMetadata(emailView);
+    if (!emailMetadata) return;
+
+    this.injectEmailLinkUI(emailView, emailMetadata);
+  }
+
+  extractEmailMetadata(emailView) {
+    try {
+      // Extract email subject
+      const subjectEl = emailView.querySelector('h2.hP') || emailView.querySelector('.hP');
+      const subject = subjectEl?.textContent?.trim() || 'No Subject';
+
+      // Extract sender
+      const senderEl = emailView.querySelector('.gD') || emailView.querySelector('span[email]');
+      const from = senderEl?.getAttribute('email') || senderEl?.textContent?.trim() || 'Unknown Sender';
+
+      // Extract date
+      const dateEl = emailView.querySelector('.g3') || emailView.querySelector('span[title]');
+      const date = dateEl?.getAttribute('title') || dateEl?.textContent?.trim() || new Date().toISOString();
+
+      // Try to get thread ID from URL
+      const urlMatch = window.location.hash.match(/\/([a-f0-9]+)$/);
+      const threadId = urlMatch ? urlMatch[1] : null;
+
+      return {
+        subject,
+        from,
+        date,
+        threadId,
+        url: window.location.href
+      };
+    } catch (e) {
+      console.error('Gmail CRM: Error extracting email metadata:', e);
+      return null;
+    }
+  }
+
+  injectEmailLinkUI(emailView, emailMetadata) {
+    // Find the email header area
+    const emailHeader = emailView.querySelector('.adn.ads') || emailView.querySelector('div[role="main"]');
+    if (!emailHeader) return;
+
+    // Create link bar
+    const linkBar = document.createElement('div');
+    linkBar.id = 'crm-email-link-bar';
+    linkBar.className = 'crm-email-link-bar';
+
+    // Check if this email is already linked to deals
+    const linkedDeals = this.getDealsLinkedToEmail(emailMetadata.threadId);
+
+    linkBar.innerHTML = `
+      <div class="crm-email-link-content">
+        <span class="crm-email-link-icon">🔗</span>
+        <span class="crm-email-link-label">Add to Deal:</span>
+        <div class="crm-deal-search-wrapper">
+          <input type="text"
+                 id="crm-deal-search-input"
+                 class="crm-deal-search-input"
+                 placeholder="Search for a deal..."
+                 autocomplete="off" />
+          <div id="crm-deal-search-results" class="crm-deal-search-results" style="display: none;"></div>
+        </div>
+        ${linkedDeals.length > 0 ? `
+          <div class="crm-linked-deals">
+            ${linkedDeals.map(deal => `
+              <span class="crm-linked-deal-tag" data-deal-id="${deal.id}">
+                ${deal.emailSubject || 'Unnamed Deal'}
+                <button class="crm-unlink-email" data-deal-id="${deal.id}" title="Unlink">×</button>
+              </span>
+            `).join('')}
+          </div>
+        ` : ''}
+      </div>
+    `;
+
+    // Insert at the top of email view
+    const insertTarget = emailView.querySelector('.nH.aHU') || emailView.firstChild;
+    if (insertTarget) {
+      insertTarget.insertBefore(linkBar, insertTarget.firstChild);
+    } else {
+      emailView.insertBefore(linkBar, emailView.firstChild);
+    }
+
+    // Setup search functionality
+    this.setupDealSearch(emailMetadata);
+
+    // Setup unlink buttons
+    linkBar.querySelectorAll('.crm-unlink-email').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        const dealId = btn.dataset.dealId;
+        this.unlinkEmailFromDeal(dealId, emailMetadata);
+      });
+    });
+  }
+
+  getDealsLinkedToEmail(threadId) {
+    if (!threadId) return [];
+
+    return Object.values(this.deals).filter(deal => {
+      return deal.linkedEmails?.some(email => email.threadId === threadId);
+    });
+  }
+
+  setupDealSearch(emailMetadata) {
+    const searchInput = document.getElementById('crm-deal-search-input');
+    const resultsDiv = document.getElementById('crm-deal-search-results');
+    if (!searchInput || !resultsDiv) return;
+
+    let searchTimeout;
+
+    searchInput.addEventListener('input', (e) => {
+      clearTimeout(searchTimeout);
+      const query = e.target.value.trim().toLowerCase();
+
+      if (query.length < 1) {
+        resultsDiv.style.display = 'none';
+        return;
+      }
+
+      searchTimeout = setTimeout(() => {
+        this.performDealSearch(query, resultsDiv, emailMetadata);
+      }, 300);
+    });
+
+    searchInput.addEventListener('focus', () => {
+      if (searchInput.value.trim().length >= 1) {
+        resultsDiv.style.display = 'block';
+      }
+    });
+
+    // Close on click outside
+    document.addEventListener('click', (e) => {
+      if (!e.target.closest('.crm-deal-search-wrapper')) {
+        resultsDiv.style.display = 'none';
+      }
+    });
+  }
+
+  performDealSearch(query, resultsDiv, emailMetadata) {
+    const allDeals = Object.values(this.deals);
+
+    // Filter deals by query
+    const matches = allDeals.filter(deal => {
+      const subject = (deal.emailSubject || '').toLowerCase();
+      const company = (deal.company || '').toLowerCase();
+      const pipeline = this.pipelines.find(p => p.id === deal.pipelineId);
+      const pipelineName = (pipeline?.name || '').toLowerCase();
+
+      return subject.includes(query) ||
+             company.includes(query) ||
+             pipelineName.includes(query);
+    }).slice(0, 10); // Limit to 10 results
+
+    if (matches.length === 0) {
+      resultsDiv.innerHTML = '<div class="crm-deal-search-empty">No deals found</div>';
+      resultsDiv.style.display = 'block';
+      return;
+    }
+
+    resultsDiv.innerHTML = matches.map(deal => {
+      const pipeline = this.pipelines.find(p => p.id === deal.pipelineId);
+      const stage = pipeline?.stages.find(s => s.id === deal.stageId);
+      const isLinked = deal.linkedEmails?.some(e => e.threadId === emailMetadata.threadId);
+
+      return `
+        <div class="crm-deal-search-result ${isLinked ? 'linked' : ''}" data-deal-id="${deal.id}">
+          <div class="crm-deal-search-title">${deal.emailSubject || 'Unnamed Deal'}</div>
+          <div class="crm-deal-search-meta">
+            ${pipeline?.name || 'Unknown Pipeline'} • ${stage?.name || 'Unknown Stage'}
+            ${isLinked ? ' • <span class="crm-linked-badge">✓ Linked</span>' : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+
+    resultsDiv.style.display = 'block';
+
+    // Add click handlers
+    resultsDiv.querySelectorAll('.crm-deal-search-result').forEach(result => {
+      result.addEventListener('click', () => {
+        const dealId = result.dataset.dealId;
+        this.linkEmailToDeal(dealId, emailMetadata);
+        resultsDiv.style.display = 'none';
+        document.getElementById('crm-deal-search-input').value = '';
+      });
+    });
+  }
+
+  linkEmailToDeal(dealId, emailMetadata) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    // Initialize linkedEmails array if it doesn't exist
+    if (!deal.linkedEmails) {
+      deal.linkedEmails = [];
+    }
+
+    // Check if already linked
+    if (deal.linkedEmails.some(e => e.threadId === emailMetadata.threadId)) {
+      this.showNotification('Email already linked to this deal');
+      return;
+    }
+
+    // Add email to deal
+    deal.linkedEmails.push({
+      subject: emailMetadata.subject,
+      from: emailMetadata.from,
+      date: emailMetadata.date,
+      threadId: emailMetadata.threadId,
+      url: emailMetadata.url,
+      linkedAt: new Date().toISOString()
+    });
+
+    chrome.storage.local.set({ deals: this.deals }, () => {
+      this.showNotification(`Email linked to "${deal.emailSubject || 'deal'}"`);
+
+      // Refresh the email link bar
+      const existingBar = document.getElementById('crm-email-link-bar');
+      if (existingBar) {
+        existingBar.remove();
+      }
+      this.checkAndInjectEmailLinkUI();
+    });
+  }
+
+  unlinkEmailFromDeal(dealId, emailMetadata) {
+    const deal = this.deals[dealId];
+    if (!deal || !deal.linkedEmails) return;
+
+    deal.linkedEmails = deal.linkedEmails.filter(e => e.threadId !== emailMetadata.threadId);
+
+    chrome.storage.local.set({ deals: this.deals }, () => {
+      this.showNotification('Email unlinked from deal');
+
+      // Refresh the email link bar
+      const existingBar = document.getElementById('crm-email-link-bar');
+      if (existingBar) {
+        existingBar.remove();
+      }
+      this.checkAndInjectEmailLinkUI();
+    });
+  }
+
   updateDealStatus(dealId, newStatus) {
     const deal = this.deals[dealId];
     if (!deal) return;
@@ -801,21 +1080,21 @@ class GmailCRM {
       </div>
     `;
 
-    // Emails section (grouped)
-    const emails = deal.emails || [];
+    // Emails section (linked emails from the link bar)
+    const linkedEmails = deal.linkedEmails || [];
     const emailsHTML = `
       <div class="crm-sidebar-section">
-        <h4>Related Emails (${emails.length})</h4>
+        <h4>Linked Emails (${linkedEmails.length})</h4>
         <div class="crm-emails-list">
-          ${emails.map(email => `
-            <div class="crm-email-item">
-              <div class="crm-email-subject">${email.subject}</div>
+          ${linkedEmails.slice().reverse().map((email, idx) => `
+            <div class="crm-email-item crm-email-link-item" data-email-url="${email.url || '#'}">
+              <div class="crm-email-subject">${email.subject || 'No Subject'}</div>
               <div class="crm-email-meta">
-                <span>${email.from}</span> • <span>${new Date(email.date).toLocaleDateString()}</span>
+                <span>${email.from || 'Unknown'}</span> • <span>${new Date(email.date).toLocaleDateString()}</span>
               </div>
             </div>
           `).join('')}
-          ${emails.length === 0 ? '<p class="crm-empty-state">No emails linked yet</p>' : ''}
+          ${linkedEmails.length === 0 ? '<p class="crm-empty-state">No emails linked yet. Open an email and use the "Add to Deal" bar at the top to link it.</p>' : ''}
         </div>
       </div>
     `;
@@ -949,6 +1228,16 @@ class GmailCRM {
             this.showDealSidebar(deal.id);
             this.showNotification('Note deleted');
           });
+        }
+      });
+    });
+
+    // Linked email click listeners - open email in Gmail
+    sidebar.querySelectorAll('.crm-email-link-item').forEach(emailItem => {
+      emailItem.addEventListener('click', () => {
+        const url = emailItem.dataset.emailUrl;
+        if (url && url !== '#') {
+          window.location.href = url;
         }
       });
     });
