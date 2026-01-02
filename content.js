@@ -4188,7 +4188,14 @@ Extract deals as JSON:
 - contact: person name
 - contactEmail: email
 - stage: lead|contacted|qualified|proposal|negotiation|closed-won|closed-lost
-- dealValue: USD amount (0 if unknown)
+- dealValue: USD amount - extract from email OR estimate:
+  * Single system/license: $50k-100k
+  * Department (5-10 units): $250k-500k
+  * Hospital-wide: $500k-2M
+  * Multi-site health system: $2M+
+  * Trial/pilot: $50k-100k
+  * Look for: "budget", "$", "pricing", "quote", mentions of quantity/units
+  * If no info: 0
 - priority: High|Medium|Low
 - summary: 1-2 sentences
 - isHospital: true/false
