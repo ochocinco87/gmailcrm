@@ -1,0 +1,51 @@
+{
+  "expo": {
+    "name": "MacroSnap",
+    "slug": "macro-snap",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./src/assets/icon.png",
+    "userInterfaceStyle": "automatic",
+    "splash": {
+      "image": "./src/assets/splash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#10B981"
+    },
+    "assetBundlePatterns": [
+      "**/*"
+    ],
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.macrosnap.app",
+      "infoPlist": {
+        "NSCameraUsageDescription": "MacroSnap needs camera access to take photos of your food for nutritional analysis.",
+        "NSPhotoLibraryUsageDescription": "MacroSnap needs photo library access to analyze food images from your gallery."
+      }
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./src/assets/adaptive-icon.png",
+        "backgroundColor": "#10B981"
+      },
+      "package": "com.macrosnap.app",
+      "permissions": [
+        "android.permission.CAMERA",
+        "android.permission.READ_EXTERNAL_STORAGE"
+      ]
+    },
+    "plugins": [
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow MacroSnap to access your camera to photograph food."
+        }
+      ],
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow MacroSnap to access your photos to analyze food images."
+        }
+      ]
+    ]
+  }
+}
