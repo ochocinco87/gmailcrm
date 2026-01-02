@@ -1,0 +1,172 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Submit Time Off Request</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body class="request-page">
+    <div class="request-container">
+        <div class="request-card">
+            <div class="request-header">
+                <h1>Time Off Request</h1>
+                <p class="department-name" id="departmentName">Department Scheduling</p>
+            </div>
+
+            <!-- Request Window Status -->
+            <div class="window-status" id="windowStatus">
+                <div class="window-open" id="windowOpen">
+                    <span class="status-icon">✓</span>
+                    <span>Request window is open</span>
+                </div>
+                <div class="window-closed" id="windowClosed" style="display: none;">
+                    <span class="status-icon">✕</span>
+                    <span>Request window is closed</span>
+                    <p class="window-dates" id="windowDates"></p>
+                </div>
+            </div>
+
+            <!-- Clinician Selection/Login -->
+            <div class="form-section" id="clinicianSection">
+                <h3>Select Your Name</h3>
+                <div class="form-group">
+                    <select id="clinicianSelect" class="form-input" required>
+                        <option value="">-- Select Clinician --</option>
+                    </select>
+                </div>
+                <div class="form-group" id="newClinicianGroup" style="display: none;">
+                    <label>Or enter your information:</label>
+                    <input type="text" id="newClinicianName" class="form-input" placeholder="Full Name">
+                    <input type="email" id="newClinicianEmail" class="form-input" placeholder="Email Address">
+                </div>
+                <button class="btn btn-link" id="toggleNewClinician">Not in the list? Add yourself</button>
+            </div>
+
+            <!-- Request Form -->
+            <form id="requestForm" class="request-form">
+                <div class="form-section">
+                    <h3>Request Details</h3>
+
+                    <div class="form-group">
+                        <label for="requestType">Request Type</label>
+                        <select id="requestType" class="form-input" required>
+                            <option value="">-- Select Type --</option>
+                            <option value="vacation">Vacation</option>
+                            <option value="personal">Personal Day</option>
+                            <option value="sick">Sick Leave</option>
+                            <option value="conference">Conference/CME</option>
+                            <option value="other">Other</option>
+                        </select>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startDate">Start Date</label>
+                            <input type="date" id="startDate" class="form-input" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="endDate">End Date</label>
+                            <input type="date" id="endDate" class="form-input" required>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="startTime">Start Time (optional)</label>
+                            <select id="startTime" class="form-input">
+                                <option value="all-day">All Day</option>
+                                <option value="07:00">7:00 AM</option>
+                                <option value="08:00">8:00 AM</option>
+                                <option value="09:00">9:00 AM</option>
+                                <option value="10:00">10:00 AM</option>
+                                <option value="11:00">11:00 AM</option>
+                                <option value="12:00">12:00 PM</option>
+                                <option value="13:00">1:00 PM</option>
+                                <option value="14:00">2:00 PM</option>
+                                <option value="15:00">3:00 PM</option>
+                                <option value="16:00">4:00 PM</option>
+                                <option value="17:00">5:00 PM</option>
+                                <option value="18:00">6:00 PM</option>
+                                <option value="19:00">7:00 PM</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="endTime">End Time (optional)</label>
+                            <select id="endTime" class="form-input">
+                                <option value="all-day">All Day</option>
+                                <option value="07:00">7:00 AM</option>
+                                <option value="08:00">8:00 AM</option>
+                                <option value="09:00">9:00 AM</option>
+                                <option value="10:00">10:00 AM</option>
+                                <option value="11:00">11:00 AM</option>
+                                <option value="12:00">12:00 PM</option>
+                                <option value="13:00">1:00 PM</option>
+                                <option value="14:00">2:00 PM</option>
+                                <option value="15:00">3:00 PM</option>
+                                <option value="16:00">4:00 PM</option>
+                                <option value="17:00">5:00 PM</option>
+                                <option value="18:00">6:00 PM</option>
+                                <option value="19:00">7:00 PM</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="locations">Affected Locations</label>
+                        <div class="checkbox-group" id="locationsCheckboxes">
+                            <!-- Location checkboxes will be populated -->
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="notes">Additional Notes</label>
+                        <textarea id="notes" class="form-input" rows="3" placeholder="Any additional information..."></textarea>
+                    </div>
+                </div>
+
+                <!-- Coverage Check -->
+                <div class="coverage-preview" id="coveragePreview" style="display: none;">
+                    <h4>Coverage Impact</h4>
+                    <div class="coverage-status" id="coverageStatus">
+                        <!-- Coverage check results will appear here -->
+                    </div>
+                </div>
+
+                <!-- Blackout Warning -->
+                <div class="blackout-warning" id="blackoutWarning" style="display: none;">
+                    <span class="warning-icon">⚠️</span>
+                    <span>Selected dates include blackout periods</span>
+                </div>
+
+                <div class="form-actions">
+                    <button type="submit" class="btn btn-primary btn-large">Submit Request</button>
+                </div>
+            </form>
+
+            <!-- Submission Confirmation -->
+            <div class="submission-confirmation" id="confirmationMessage" style="display: none;">
+                <div class="confirmation-icon">✓</div>
+                <h2>Request Submitted!</h2>
+                <p>Your time-off request has been submitted successfully.</p>
+                <p>You will receive notification once it has been reviewed.</p>
+                <div class="request-summary" id="requestSummary">
+                    <!-- Summary will be populated -->
+                </div>
+                <button class="btn btn-secondary" id="submitAnother">Submit Another Request</button>
+            </div>
+        </div>
+
+        <!-- My Requests Section -->
+        <div class="my-requests-card" id="myRequestsCard" style="display: none;">
+            <h3>My Requests</h3>
+            <div class="my-requests-list" id="myRequestsList">
+                <!-- Previous requests will be listed -->
+            </div>
+        </div>
+    </div>
+
+    <script src="js/storage.js"></script>
+    <script src="js/request.js"></script>
+</body>
+</html>

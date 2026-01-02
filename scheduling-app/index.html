@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Clinician Scheduling - Dashboard</title>
+    <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Sidebar Navigation -->
+        <nav class="sidebar">
+            <div class="sidebar-header">
+                <h1>Clinician Scheduler</h1>
+            </div>
+            <ul class="nav-menu">
+                <li class="nav-item active" data-view="dashboard">
+                    <span class="nav-icon">📊</span>
+                    Dashboard
+                </li>
+                <li class="nav-item" data-view="calendar">
+                    <span class="nav-icon">📅</span>
+                    Calendar View
+                </li>
+                <li class="nav-item" data-view="requests">
+                    <span class="nav-icon">📝</span>
+                    Time Off Requests
+                </li>
+                <li class="nav-item" data-view="coverage">
+                    <span class="nav-icon">👥</span>
+                    Coverage Requirements
+                </li>
+                <li class="nav-item" data-view="locations">
+                    <span class="nav-icon">📍</span>
+                    Locations
+                </li>
+                <li class="nav-item" data-view="clinicians">
+                    <span class="nav-icon">🩺</span>
+                    Clinicians
+                </li>
+                <li class="nav-item" data-view="settings">
+                    <span class="nav-icon">⚙️</span>
+                    Settings
+                </li>
+            </ul>
+            <div class="sidebar-footer">
+                <button class="btn btn-primary" id="shareLink">
+                    Share Request Link
+                </button>
+            </div>
+        </nav>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <!-- Dashboard View -->
+            <section id="dashboard-view" class="view active">
+                <header class="view-header">
+                    <h2>Dashboard</h2>
+                    <div class="header-actions">
+                        <span class="current-period" id="currentPeriod"></span>
+                    </div>
+                </header>
+                <div class="dashboard-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon pending">📋</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="pendingRequests">0</span>
+                            <span class="stat-label">Pending Requests</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon approved">✓</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="approvedRequests">0</span>
+                            <span class="stat-label">Approved</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon coverage">👥</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="coverageStatus">0%</span>
+                            <span class="stat-label">Coverage Met</span>
+                        </div>
+                    </div>
+                    <div class="stat-card">
+                        <div class="stat-icon clinicians">🩺</div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="totalClinicians">0</span>
+                            <span class="stat-label">Clinicians</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="dashboard-sections">
+                    <div class="section-card">
+                        <h3>Upcoming Time Off</h3>
+                        <div class="upcoming-list" id="upcomingTimeOff">
+                            <p class="empty-state">No upcoming time off scheduled</p>
+                        </div>
+                    </div>
+                    <div class="section-card">
+                        <h3>Coverage Alerts</h3>
+                        <div class="alerts-list" id="coverageAlerts">
+                            <p class="empty-state">No coverage alerts</p>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Calendar View -->
+            <section id="calendar-view" class="view">
+                <header class="view-header">
+                    <h2>Calendar</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-secondary" id="prevMonth">← Prev</button>
+                        <span class="calendar-month" id="calendarMonth"></span>
+                        <button class="btn btn-secondary" id="nextMonth">Next →</button>
+                    </div>
+                </header>
+                <div class="calendar-container">
+                    <div class="calendar-grid" id="calendarGrid">
+                        <!-- Calendar will be rendered here -->
+                    </div>
+                </div>
+                <div class="calendar-legend">
+                    <span class="legend-item"><span class="legend-color pending"></span> Pending</span>
+                    <span class="legend-item"><span class="legend-color approved"></span> Approved</span>
+                    <span class="legend-item"><span class="legend-color denied"></span> Denied</span>
+                    <span class="legend-item"><span class="legend-color coverage-issue"></span> Coverage Issue</span>
+                </div>
+            </section>
+
+            <!-- Time Off Requests View -->
+            <section id="requests-view" class="view">
+                <header class="view-header">
+                    <h2>Time Off Requests</h2>
+                    <div class="header-actions">
+                        <select id="requestFilter" class="filter-select">
+                            <option value="all">All Requests</option>
+                            <option value="pending">Pending</option>
+                            <option value="approved">Approved</option>
+                            <option value="denied">Denied</option>
+                        </select>
+                        <button class="btn btn-primary" id="newRequest">+ New Request</button>
+                    </div>
+                </header>
+                <div class="requests-table-container">
+                    <table class="requests-table">
+                        <thead>
+                            <tr>
+                                <th>Clinician</th>
+                                <th>Type</th>
+                                <th>Start Date</th>
+                                <th>End Date</th>
+                                <th>Status</th>
+                                <th>Submitted</th>
+                                <th>Actions</th>
+                            </tr>
+                        </thead>
+                        <tbody id="requestsTableBody">
+                            <!-- Requests will be rendered here -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <!-- Coverage Requirements View -->
+            <section id="coverage-view" class="view">
+                <header class="view-header">
+                    <h2>Coverage Requirements</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="addCoverage">+ Add Requirement</button>
+                    </div>
+                </header>
+                <div class="coverage-grid" id="coverageGrid">
+                    <!-- Coverage cards will be rendered here -->
+                </div>
+            </section>
+
+            <!-- Locations View -->
+            <section id="locations-view" class="view">
+                <header class="view-header">
+                    <h2>Locations</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="addLocation">+ Add Location</button>
+                    </div>
+                </header>
+                <div class="locations-list" id="locationsList">
+                    <!-- Locations will be rendered here -->
+                </div>
+            </section>
+
+            <!-- Clinicians View -->
+            <section id="clinicians-view" class="view">
+                <header class="view-header">
+                    <h2>Clinicians</h2>
+                    <div class="header-actions">
+                        <button class="btn btn-primary" id="addClinician">+ Add Clinician</button>
+                    </div>
+                </header>
+                <div class="clinicians-grid" id="cliniciansGrid">
+                    <!-- Clinicians will be rendered here -->
+                </div>
+            </section>
+
+            <!-- Settings View -->
+            <section id="settings-view" class="view">
+                <header class="view-header">
+                    <h2>Settings</h2>
+                </header>
+                <div class="settings-container">
+                    <div class="settings-section">
+                        <h3>Request Window</h3>
+                        <p class="settings-description">Configure when clinicians can submit time-off requests</p>
+                        <div class="form-group">
+                            <label>Minimum Days in Advance</label>
+                            <input type="number" id="minDaysAdvance" class="form-input" value="14" min="0">
+                        </div>
+                        <div class="form-group">
+                            <label>Maximum Days in Advance</label>
+                            <input type="number" id="maxDaysAdvance" class="form-input" value="365" min="1">
+                        </div>
+                        <div class="form-group">
+                            <label>Request Window Open</label>
+                            <input type="date" id="windowOpen" class="form-input">
+                        </div>
+                        <div class="form-group">
+                            <label>Request Window Close</label>
+                            <input type="date" id="windowClose" class="form-input">
+                        </div>
+                    </div>
+                    <div class="settings-section">
+                        <h3>Blackout Dates</h3>
+                        <p class="settings-description">Dates when time off cannot be requested</p>
+                        <div class="blackout-dates" id="blackoutDates">
+                            <!-- Blackout dates will be listed here -->
+                        </div>
+                        <button class="btn btn-secondary" id="addBlackout">+ Add Blackout Period</button>
+                    </div>
+                    <div class="settings-section">
+                        <h3>Department Info</h3>
+                        <div class="form-group">
+                            <label>Department Name</label>
+                            <input type="text" id="departmentName" class="form-input" placeholder="e.g., Emergency Medicine">
+                        </div>
+                        <div class="form-group">
+                            <label>Manager Email</label>
+                            <input type="email" id="managerEmail" class="form-input" placeholder="manager@hospital.com">
+                        </div>
+                    </div>
+                    <button class="btn btn-primary" id="saveSettings">Save Settings</button>
+                </div>
+            </section>
+        </main>
+    </div>
+
+    <!-- Modal Container -->
+    <div class="modal-overlay" id="modalOverlay">
+        <div class="modal" id="modal">
+            <div class="modal-header">
+                <h3 id="modalTitle">Modal Title</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body" id="modalBody">
+                <!-- Modal content will be injected here -->
+            </div>
+        </div>
+    </div>
+
+    <!-- Share Link Modal -->
+    <div class="modal-overlay" id="shareLinkModal">
+        <div class="modal">
+            <div class="modal-header">
+                <h3>Share Request Link</h3>
+                <button class="modal-close" onclick="closeShareModal()">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p>Share this link with clinicians to submit their time-off requests:</p>
+                <div class="share-link-container">
+                    <input type="text" id="shareableLink" class="form-input" readonly>
+                    <button class="btn btn-primary" id="copyLink">Copy</button>
+                </div>
+                <div class="share-options">
+                    <h4>Send via Email</h4>
+                    <div class="form-group">
+                        <label>Email Addresses (comma separated)</label>
+                        <textarea id="emailRecipients" class="form-input" rows="3" placeholder="clinician1@hospital.com, clinician2@hospital.com"></textarea>
+                    </div>
+                    <button class="btn btn-primary" id="sendEmails">Send Invitation Emails</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="js/storage.js"></script>
+    <script src="js/schedule.js"></script>
+    <script src="js/app.js"></script>
+</body>
+</html>

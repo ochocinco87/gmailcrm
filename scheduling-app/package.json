@@ -1,0 +1,22 @@
+{
+  "name": "clinician-scheduling-app",
+  "version": "1.0.0",
+  "description": "A web application for managing clinician scheduling and time-off requests",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js"
+  },
+  "keywords": [
+    "scheduling",
+    "clinician",
+    "time-off",
+    "healthcare",
+    "coverage"
+  ],
+  "author": "",
+  "license": "MIT",
+  "engines": {
+    "node": ">=14.0.0"
+  }
+}
