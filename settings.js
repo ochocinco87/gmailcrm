@@ -120,16 +120,64 @@ document.getElementById('sign-in-btn').addEventListener('click', async () => {
       return;
     }
 
-    // Send message to background script to initialize Firebase and sign in
-    const response = await chrome.runtime.sendMessage({ action: 'signInWithGoogle' });
+    showAlert('general', 'info', 'Signing in...');
 
-    if (response.success) {
-      currentUser = response.user;
-      await chrome.storage.local.set({ currentUser: response.user });
-      updateUserInfo(response.user);
-      showAlert('general', 'success', 'Successfully signed in!');
-    } else {
-      showAlert('general', 'error', response.error || 'Sign-in failed');
+    // Get OAuth token directly (doesn't require background service worker)
+    const token = await new Promise((resolve, reject) => {
+      chrome.identity.getAuthToken({ interactive: true }, (token) => {
+        if (chrome.runtime.lastError) {
+          reject(new Error(chrome.runtime.lastError.message));
+        } else {
+          resolve(token);
+        }
+      });
+    });
+
+    // Fetch user info from Google
+    const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+      headers: { Authorization: `Bearer ${token}` }
+    });
+
+    if (!userInfoResponse.ok) {
+      throw new Error('Failed to fetch user info');
+    }
+
+    const userInfo = await userInfoResponse.json();
+    const email = userInfo.email;
+    const domain = email.split('@')[1];
+
+    // Check if domain is authorized (medivis.com only)
+    if (domain !== 'medivis.com') {
+      throw new Error(`Domain ${domain} is not authorized. Only medivis.com accounts are allowed.`);
+    }
+
+    // Create user object
+    const user = {
+      uid: userInfo.id,
+      email: email,
+      name: userInfo.name,
+      photoURL: userInfo.picture,
+      domain: domain,
+      role: 'admin', // First user is always admin; backend will adjust if needed
+      createdAt: new Date().toISOString(),
+      lastLoginAt: new Date().toISOString()
+    };
+
+    // Save user to storage
+    currentUser = user;
+    await chrome.storage.local.set({ currentUser: user });
+    updateUserInfo(user);
+    showAlert('general', 'success', 'Successfully signed in!');
+
+    // Try to notify background script (optional, with timeout)
+    try {
+      await Promise.race([
+        chrome.runtime.sendMessage({ action: 'userSignedIn', user: user }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+      ]);
+    } catch (bgError) {
+      console.warn('Could not notify background script (may be inactive):', bgError);
+      // This is OK - user is still signed in locally
     }
   } catch (error) {
     console.error('Sign-in error:', error);
@@ -140,11 +188,29 @@ document.getElementById('sign-in-btn').addEventListener('click', async () => {
 // Sign out
 document.getElementById('sign-out-btn').addEventListener('click', async () => {
   try {
-    await chrome.runtime.sendMessage({ action: 'signOut' });
+    // Clear OAuth token
+    chrome.identity.getAuthToken({ interactive: false }, (token) => {
+      if (token) {
+        chrome.identity.removeCachedAuthToken({ token: token });
+      }
+    });
+
+    // Clear local user data
     currentUser = null;
     await chrome.storage.local.remove('currentUser');
     updateUserInfo(null);
     showAlert('general', 'success', 'Successfully signed out');
+
+    // Try to notify background script (optional, with timeout)
+    try {
+      await Promise.race([
+        chrome.runtime.sendMessage({ action: 'signOut' }),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('timeout')), 2000))
+      ]);
+    } catch (bgError) {
+      console.warn('Could not notify background script (may be inactive):', bgError);
+      // This is OK - user is still signed out locally
+    }
   } catch (error) {
     console.error('Sign-out error:', error);
     showAlert('general', 'error', 'Sign-out failed: ' + error.message);
@@ -178,7 +244,7 @@ document.getElementById('save-firebase-btn').addEventListener('click', async () 
 // Test Firebase connection
 document.getElementById('test-firebase-btn').addEventListener('click', async () => {
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'testFirebaseConnection' });
+    const response = await sendMessageWithTimeout({ action: 'testFirebaseConnection' });
 
     if (response.success) {
       showAlert('firebase', 'success', 'Firebase connection successful!');
@@ -200,7 +266,7 @@ document.getElementById('migrate-data-btn').addEventListener('click', async () =
   try {
     showAlert('firebase', 'info', 'Migration in progress...');
 
-    const response = await chrome.runtime.sendMessage({ action: 'migrateDataToFirebase' });
+    const response = await sendMessageWithTimeout({ action: 'migrateDataToFirebase' }, 10000); // Longer timeout for migration
 
     if (response.success) {
       showAlert('firebase', 'success', `Migration complete! Migrated ${response.count} items.`);
@@ -221,7 +287,7 @@ async function loadUsers() {
   }
 
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'getOrgUsers' });
+    const response = await sendMessageWithTimeout({ action: 'getOrgUsers' });
 
     document.getElementById('users-loading').classList.add('hidden');
 
@@ -258,7 +324,7 @@ async function loadUsers() {
           const newRole = select.value;
 
           try {
-            const response = await chrome.runtime.sendMessage({
+            const response = await sendMessageWithTimeout({
               action: 'updateUserRole',
               email,
               role: newRole
@@ -292,7 +358,7 @@ async function loadOrganization() {
   }
 
   try {
-    const response = await chrome.runtime.sendMessage({ action: 'getOrganization' });
+    const response = await sendMessageWithTimeout({ action: 'getOrganization' });
 
     if (response.success && response.org) {
       const org = response.org;
@@ -319,7 +385,7 @@ document.getElementById('save-org-btn').addEventListener('click', async () => {
   try {
     const orgName = document.getElementById('org-name').value;
 
-    const response = await chrome.runtime.sendMessage({
+    const response = await sendMessageWithTimeout({
       action: 'updateOrganization',
       data: { name: orgName }
     });
@@ -335,6 +401,21 @@ document.getElementById('save-org-btn').addEventListener('click', async () => {
 });
 
 // Helper functions
+async function sendMessageWithTimeout(message, timeoutMs = 3000) {
+  try {
+    const response = await Promise.race([
+      chrome.runtime.sendMessage(message),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), timeoutMs))
+    ]);
+    return response;
+  } catch (error) {
+    if (error.message === 'Background script timeout') {
+      throw new Error('Background service worker is not responding. Try refreshing Gmail to activate it.');
+    }
+    throw error;
+  }
+}
+
 function updateFirebaseStatus(connected, text) {
   const dot = document.getElementById('firebase-status-dot');
   const statusText = document.getElementById('firebase-status-text');
