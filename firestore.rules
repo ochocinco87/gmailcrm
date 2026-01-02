@@ -1,0 +1,113 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function getUserEmail() {
+      return request.auth.token.email;
+    }
+
+    function getUserDomain() {
+      return request.auth.token.email.split('@')[1];
+    }
+
+    function isOrgMember(orgDomain) {
+      return isSignedIn() && getUserDomain() == orgDomain;
+    }
+
+    function getUserRole(orgDomain) {
+      return get(/databases/$(database)/documents/organizations/$(orgDomain)/users/$(getUserEmail())).data.role;
+    }
+
+    function isAdmin(orgDomain) {
+      return isOrgMember(orgDomain) && getUserRole(orgDomain) == 'admin';
+    }
+
+    function isEditor(orgDomain) {
+      return isOrgMember(orgDomain) && getUserRole(orgDomain) == 'editor';
+    }
+
+    function canEdit(orgDomain) {
+      return isOrgMember(orgDomain) && (getUserRole(orgDomain) == 'admin' || getUserRole(orgDomain) == 'editor');
+    }
+
+    function hasValidSubscription(orgDomain) {
+      let org = get(/databases/$(database)/documents/organizations/$(orgDomain));
+      return org.data.subscription.status == 'active' || org.data.subscription.status == 'trial';
+    }
+
+    // Organizations
+    match /organizations/{orgDomain} {
+      // Users can read their own organization if they belong to it and subscription is active
+      allow read: if isOrgMember(orgDomain) && hasValidSubscription(orgDomain);
+
+      // Only admins can update organization settings
+      allow update: if isAdmin(orgDomain);
+
+      // Organization creation is handled by the application during first user signup
+      allow create: if isSignedIn() && getUserDomain() == orgDomain;
+
+      // Users collection
+      match /users/{userEmail} {
+        // Users can read all users in their org
+        allow read: if isOrgMember(orgDomain);
+
+        // Users can update their own profile (but not their role)
+        allow update: if isOrgMember(orgDomain) &&
+                        getUserEmail() == userEmail &&
+                        !request.resource.data.diff(resource.data).affectedKeys().hasAny(['role']);
+
+        // Admins can update any user (including roles)
+        allow update: if isAdmin(orgDomain);
+
+        // User creation is handled by the application during signup
+        allow create: if isOrgMember(orgDomain);
+      }
+
+      // Deals collection
+      match /deals/{dealId} {
+        // All org members can read deals (even viewers)
+        allow read: if isOrgMember(orgDomain) && hasValidSubscription(orgDomain);
+
+        // Admins and editors can create/update/delete deals
+        allow create, update, delete: if canEdit(orgDomain) && hasValidSubscription(orgDomain);
+      }
+
+      // Pipelines collection
+      match /pipelines/{pipelineId} {
+        // All org members can read pipelines
+        allow read: if isOrgMember(orgDomain) && hasValidSubscription(orgDomain);
+
+        // Admins and editors can create/update/delete pipelines
+        allow create, update, delete: if canEdit(orgDomain) && hasValidSubscription(orgDomain);
+      }
+
+      // Settings collection (org-wide settings)
+      match /settings/{settingId} {
+        // All org members can read settings
+        allow read: if isOrgMember(orgDomain);
+
+        // Only admins can update settings
+        allow update, create: if isAdmin(orgDomain);
+      }
+
+      // Billing collection (for future billing integration)
+      match /billing/{doc} {
+        // Only admins can read billing info
+        allow read: if isAdmin(orgDomain);
+
+        // Billing updates are handled by Cloud Functions (not directly writable)
+        allow write: if false;
+      }
+    }
+
+    // Deny all other access
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
