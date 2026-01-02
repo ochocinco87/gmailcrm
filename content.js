@@ -2001,8 +2001,8 @@ class GmailCRM {
         return;
       }
 
-      // Group emails by sender/company
-      const groupedByCompany = {};
+      // Group emails by institution and track contacts
+      const groupedByInstitution = {};
 
       for (const emailData of emailRows) {
         // Filter by date range
@@ -2011,38 +2011,48 @@ class GmailCRM {
           continue;
         }
 
-        const companyKey = this.extractCompanyFromEmail(emailData.from);
         const isHospital = this.isHospitalOrHealthSystem(emailData.from, emailData.subject);
 
         // Skip if hospitals-only mode and this isn't a hospital
         if (hospitalsOnly && !isHospital) continue;
 
-        if (!groupedByCompany[companyKey]) {
-          groupedByCompany[companyKey] = {
-            company: companyKey,
+        // Use institution as the grouping key
+        const institutionKey = emailData.institution || 'Unknown Institution';
+
+        if (!groupedByInstitution[institutionKey]) {
+          groupedByInstitution[institutionKey] = {
+            institution: institutionKey,
+            domain: emailData.domain,
             emails: [],
+            contacts: new Set(), // Track unique contacts
             isHospital: isHospital
           };
         }
 
-        groupedByCompany[companyKey].emails.push(emailData);
+        // Add email and track contact
+        groupedByInstitution[institutionKey].emails.push(emailData);
+        groupedByInstitution[institutionKey].contacts.add(emailData.fromName);
       }
 
-      console.log('Gmail CRM: Grouped into', Object.keys(groupedByCompany).length, 'companies');
+      console.log('Gmail CRM: Grouped into', Object.keys(groupedByInstitution).length, 'institutions');
+      console.log('Gmail CRM: Total unique contacts:',
+        Array.from(Object.values(groupedByInstitution))
+          .reduce((sum, inst) => sum + inst.contacts.size, 0));
 
       let created = 0;
       let linked = 0;
 
-      // Create deals from grouped emails
-      for (const [companyKey, data] of Object.entries(groupedByCompany)) {
-        // Check if deal already exists for this company
+      // Create deals from grouped emails by institution
+      for (const [institutionKey, data] of Object.entries(groupedByInstitution)) {
+        // Check if deal already exists for this institution
         let deal = Object.values(this.deals).find(d =>
-          d.company === data.company ||
-          d.emailFrom === data.emails[0].from
+          d.institution === data.institution ||
+          d.domain === data.domain ||
+          d.company === data.institution
         );
 
         if (!deal) {
-          // Create new deal for this company
+          // Create new deal for this institution
           const firstEmail = data.emails[0];
           const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
@@ -2051,13 +2061,20 @@ class GmailCRM {
           const firstStage = salesPipeline?.stages?.[0];
           const firstStageId = firstStage?.id || 'lead';
 
+          // Convert Set to Array for contacts
+          const contactsArray = Array.from(data.contacts);
+
           deal = {
             id: dealId,
             pipelineId: 'sales',
             stageId: firstStageId,
-            emailSubject: `${data.company} - ${data.emails.length} email${data.emails.length > 1 ? 's' : ''}`,
+            emailSubject: `${data.institution} - ${contactsArray.length} contact${contactsArray.length > 1 ? 's' : ''}, ${data.emails.length} email${data.emails.length > 1 ? 's' : ''}`,
             emailFrom: firstEmail.from,
-            company: data.company,
+            company: data.institution,
+            institution: data.institution,
+            domain: data.domain,
+            contacts: contactsArray,
+            contactCount: contactsArray.length,
             status: 'Active',
             isHospital: data.isHospital,
             createdAt: firstEmail.date || new Date().toISOString(),
@@ -2069,11 +2086,20 @@ class GmailCRM {
 
           this.deals[dealId] = deal;
           created++;
-          console.log('Gmail CRM: Created deal for', data.company, 'in stage:', firstStageId);
+          console.log('Gmail CRM: Created deal for', data.institution, `(${contactsArray.length} contacts, ${data.emails.length} emails) in stage:`, firstStageId);
         }
 
-        // Link all emails from this company to the deal
+        // Link all emails from this institution to the deal
         if (!deal.linkedEmails) deal.linkedEmails = [];
+        if (!deal.contacts) deal.contacts = [];
+
+        // Update contacts list if new contacts are found
+        for (const contact of data.contacts) {
+          if (!deal.contacts.includes(contact)) {
+            deal.contacts.push(contact);
+          }
+        }
+        deal.contactCount = deal.contacts.length;
 
         for (const email of data.emails) {
           const alreadyLinked = deal.linkedEmails.some(e =>
@@ -2084,6 +2110,9 @@ class GmailCRM {
             deal.linkedEmails.push({
               subject: email.subject,
               from: email.from,
+              fromName: email.fromName,
+              institution: email.institution,
+              domain: email.domain,
               date: email.date || new Date().toISOString(),
               threadId: email.threadId,
               url: email.url,
@@ -2092,6 +2121,9 @@ class GmailCRM {
             linked++;
           }
         }
+
+        // Update deal subject with current contact/email counts
+        deal.emailSubject = `${deal.institution} - ${deal.contacts.length} contact${deal.contacts.length > 1 ? 's' : ''}, ${deal.linkedEmails.length} email${deal.linkedEmails.length > 1 ? 's' : ''}`;
       }
 
       // Save all deals
@@ -2135,6 +2167,8 @@ class GmailCRM {
   async scanGmailEmails() {
     const emails = [];
 
+    console.log('Gmail CRM: Scanning all visible email rows...');
+
     // Try to find email rows in Gmail inbox
     const emailRows = document.querySelectorAll('tr.zA, table.F tr');
 
@@ -2146,9 +2180,14 @@ class GmailCRM {
         const subjectEl = row.querySelector('.bog span[data-thread-id], .y6 span, span.bqe');
         const subject = subjectEl?.textContent?.trim() || 'No Subject';
 
-        // Extract sender
+        // Extract sender email and name
         const senderEl = row.querySelector('.yW span[email], .yX span, span.zF');
-        const from = senderEl?.getAttribute('email') || senderEl?.textContent?.trim() || 'Unknown';
+        const senderNameEl = row.querySelector('.yW span[name], .yX span, span.zF');
+
+        const fromEmail = senderEl?.getAttribute('email') || senderEl?.textContent?.trim() || 'Unknown';
+        const fromName = senderNameEl?.getAttribute('name') ||
+                        senderNameEl?.getAttribute('title') ||
+                        this.extractNameFromEmail(fromEmail);
 
         // Extract thread ID from data attribute or URL
         const threadId = subjectEl?.getAttribute('data-thread-id') ||
@@ -2162,11 +2201,18 @@ class GmailCRM {
         // Create URL for this thread
         const url = threadId ? `https://mail.google.com/mail/u/0/#inbox/${threadId}` : '';
 
+        // Extract domain/institution
+        const domain = this.extractDomainFromEmail(fromEmail);
+        const institution = this.extractInstitutionName(domain);
+
         // Only add if we have basic data
-        if (subject && from && subject !== 'No Subject') {
+        if (subject && fromEmail && subject !== 'No Subject') {
           emails.push({
             subject,
-            from,
+            from: fromEmail,
+            fromName,
+            domain,
+            institution,
             threadId,
             date: this.parseGmailDate(dateText),
             url
@@ -2177,7 +2223,8 @@ class GmailCRM {
       }
     });
 
-    return emails.slice(0, 50); // Limit to 50 emails for performance
+    console.log(`Gmail CRM: Successfully extracted ${emails.length} emails with contact/institution data`);
+    return emails; // Return all emails, no limit
   }
 
   parseGmailDate(dateText) {
@@ -2231,6 +2278,57 @@ class GmailCRM {
 
     // Check if any hospital keyword appears in the text
     return hospitalKeywords.some(keyword => textToCheck.includes(keyword));
+  }
+
+  extractNameFromEmail(email) {
+    // Extract name from email address (before @)
+    const match = email.match(/^([^@<]+)/);
+    if (match) {
+      let name = match[1].trim();
+
+      // Handle formats like "firstname.lastname" or "firstname_lastname"
+      name = name.replace(/[._-]/g, ' ');
+
+      // Capitalize each word
+      name = name.split(' ')
+        .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(' ');
+
+      return name;
+    }
+    return 'Unknown';
+  }
+
+  extractDomainFromEmail(email) {
+    // Extract full domain from email
+    const match = email.match(/@([^>]+)/);
+    if (match) {
+      return match[1].replace(/[<>]/g, '').trim();
+    }
+    return '';
+  }
+
+  extractInstitutionName(domain) {
+    // Convert domain to readable institution name
+    if (!domain) return 'Unknown Institution';
+
+    // Remove common TLDs and extract main part
+    const parts = domain.split('.');
+
+    // Handle special cases like "mail.google.com" -> "Google"
+    // or "email.stanford.edu" -> "Stanford"
+    let mainPart = parts[parts.length - 2] || parts[0];
+
+    // Skip common email service domains
+    const emailServices = ['gmail', 'yahoo', 'hotmail', 'outlook', 'aol', 'icloud', 'protonmail'];
+    if (emailServices.includes(mainPart.toLowerCase())) {
+      mainPart = parts[0]; // Use first part instead
+    }
+
+    // Capitalize
+    const institutionName = mainPart.charAt(0).toUpperCase() + mainPart.slice(1);
+
+    return institutionName;
   }
 }
 
