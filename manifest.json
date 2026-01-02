@@ -9,7 +9,7 @@
     "identity"
   ],
   "oauth2": {
-    "client_id": "YOUR_GOOGLE_OAUTH_CLIENT_ID.apps.googleusercontent.com",
+    "client_id": "892135221790-vrbs0kmib5uosbafqsmeb4tlnsq9hc1o.apps.googleusercontent.com",
     "scopes": [
       "https://www.googleapis.com/auth/userinfo.email",
       "https://www.googleapis.com/auth/userinfo.profile"
