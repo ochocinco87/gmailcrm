@@ -1,0 +1,32 @@
+{
+  "name": "compliance-code-analyzer",
+  "version": "1.0.0",
+  "description": "Analyze code for HIPAA and SOC2 compliance violations",
+  "main": "src/index.js",
+  "bin": {
+    "compliance-analyzer": "./src/index.js"
+  },
+  "scripts": {
+    "analyze": "node src/index.js",
+    "test": "node --test src/**/*.test.js"
+  },
+  "keywords": [
+    "hipaa",
+    "soc2",
+    "compliance",
+    "security",
+    "code-analysis",
+    "static-analysis"
+  ],
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "chalk": "^4.1.2",
+    "commander": "^11.1.0",
+    "glob": "^10.3.10",
+    "ora": "^5.4.1"
+  },
+  "engines": {
+    "node": ">=16.0.0"
+  }
+}
