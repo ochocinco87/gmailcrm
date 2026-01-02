@@ -57,9 +57,10 @@ class GmailCRM {
 
   async loadData() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(['deals', 'pipelines'], (result) => {
+      chrome.storage.local.get(['deals', 'pipelines', 'pipelineViewMode'], (result) => {
         this.deals = result.deals || {};
         this.pipelines = result.pipelines || this.getDefaultPipelines();
+        this.pipelineViewMode = result.pipelineViewMode || 'table'; // default to table view
 
         if (!result.pipelines) {
           chrome.storage.local.set({ pipelines: this.pipelines });
@@ -299,6 +300,11 @@ class GmailCRM {
       </div>
     `).join('');
 
+    // Initialize view mode if not set
+    if (!this.pipelineViewMode) {
+      this.pipelineViewMode = 'table'; // default to table view
+    }
+
     this.pipelineView.innerHTML = `
       <div class="crm-pipeline-header">
         <div class="crm-pipeline-title">
@@ -306,6 +312,14 @@ class GmailCRM {
           <span class="crm-deal-count">${dealsInPipeline.length} ${pipeline.type === 'customer-tracking' ? 'Customer Sites' : 'Deals'}</span>
         </div>
         <div class="crm-pipeline-actions">
+          <div class="crm-view-toggle">
+            <button class="crm-view-btn ${this.pipelineViewMode === 'table' ? 'active' : ''}" id="crm-table-view-btn" title="Table View">
+              ☰
+            </button>
+            <button class="crm-view-btn ${this.pipelineViewMode === 'kanban' ? 'active' : ''}" id="crm-kanban-view-btn" title="Kanban View">
+              ▦
+            </button>
+          </div>
           ${pipeline.type === 'customer-tracking' ? '<button class="crm-btn" id="crm-dashboard-btn">📊 Dashboard</button>' : ''}
           <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
           <button class="crm-btn" id="crm-settings-btn">⚙️ Settings</button>
@@ -319,7 +333,7 @@ class GmailCRM {
       </div>
 
       <div class="crm-main-layout">
-        <div class="crm-deals-table-container">
+        <div class="crm-deals-table-container" id="crm-table-view" style="display: ${this.pipelineViewMode === 'table' ? 'block' : 'none'};">
           <table class="crm-deals-table">
             <thead>
               <tr>
@@ -339,6 +353,10 @@ class GmailCRM {
           </table>
         </div>
 
+        <div class="crm-kanban-view" id="crm-kanban-view" style="display: ${this.pipelineViewMode === 'kanban' ? 'flex' : 'none'};">
+          <!-- Kanban columns will be rendered here -->
+        </div>
+
         <div class="crm-deal-sidebar" id="crm-deal-sidebar">
           <div class="crm-deal-sidebar-content">
             <div class="crm-sidebar-placeholder">
@@ -349,10 +367,22 @@ class GmailCRM {
       </div>
     `;
 
-    // Render deals grouped by stage
-    this.renderDealsTable();
+    // Render deals based on current view mode
+    if (this.pipelineViewMode === 'table') {
+      this.renderDealsTable();
+    } else {
+      this.renderKanbanView();
+    }
 
     // Add event listeners
+    document.getElementById('crm-table-view-btn')?.addEventListener('click', () => {
+      this.switchViewMode('table');
+    });
+
+    document.getElementById('crm-kanban-view-btn')?.addEventListener('click', () => {
+      this.switchViewMode('kanban');
+    });
+
     document.getElementById('crm-add-deal-btn')?.addEventListener('click', () => {
       this.showAddDealDialog();
     });
@@ -368,6 +398,30 @@ class GmailCRM {
     document.getElementById('crm-dashboard-btn')?.addEventListener('click', () => {
       this.showDashboard();
     });
+  }
+
+  switchViewMode(mode) {
+    this.pipelineViewMode = mode;
+
+    // Save preference
+    chrome.storage.local.set({ pipelineViewMode: mode });
+
+    // Update view toggle buttons
+    document.querySelectorAll('.crm-view-btn').forEach(btn => {
+      btn.classList.remove('active');
+    });
+
+    if (mode === 'table') {
+      document.getElementById('crm-table-view-btn')?.classList.add('active');
+      document.getElementById('crm-table-view').style.display = 'block';
+      document.getElementById('crm-kanban-view').style.display = 'none';
+      this.renderDealsTable();
+    } else {
+      document.getElementById('crm-kanban-view-btn')?.classList.add('active');
+      document.getElementById('crm-table-view').style.display = 'none';
+      document.getElementById('crm-kanban-view').style.display = 'flex';
+      this.renderKanbanView();
+    }
   }
 
   renderDealsTable() {
@@ -402,6 +456,272 @@ class GmailCRM {
 
     // Make rows draggable
     this.enableDragAndDrop();
+  }
+
+  renderKanbanView() {
+    const kanbanView = document.getElementById('crm-kanban-view');
+    if (!kanbanView || !this.currentPipeline) return;
+
+    kanbanView.innerHTML = '';
+
+    // Create a column for each stage
+    this.currentPipeline.stages.forEach(stage => {
+      const dealsInStage = this.getDealsInStage(this.currentPipeline.id, stage.id);
+
+      const column = document.createElement('div');
+      column.className = 'crm-kanban-column';
+      column.dataset.stageId = stage.id;
+
+      column.innerHTML = `
+        <div class="crm-kanban-column-header" style="background-color: ${stage.color};">
+          <div class="crm-kanban-column-title">
+            <span class="crm-kanban-stage-name">${stage.name}</span>
+            <span class="crm-kanban-stage-count">${dealsInStage.length}</span>
+          </div>
+          <button class="crm-kanban-add-btn" data-stage-id="${stage.id}" title="Add deal to ${stage.name}">
+            +
+          </button>
+        </div>
+        <div class="crm-kanban-cards-container" data-stage-id="${stage.id}">
+          ${dealsInStage.map(deal => this.createKanbanCard(deal, stage)).join('')}
+        </div>
+      `;
+
+      kanbanView.appendChild(column);
+    });
+
+    // Enable drag and drop for kanban cards
+    this.enableKanbanDragAndDrop();
+
+    // Add event listeners for add buttons
+    kanbanView.querySelectorAll('.crm-kanban-add-btn').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const stageId = e.target.dataset.stageId;
+        this.showAddDealDialog(stageId);
+      });
+    });
+  }
+
+  createKanbanCard(deal, stage) {
+    const value = deal.value ? `$${deal.value.toLocaleString()}` : '-';
+    const priority = deal.priority || 'Medium';
+    const priorityColor = {
+      'High': '#ea4335',
+      'Medium': '#fbbc04',
+      'Low': '#34a853'
+    }[priority] || '#5f6368';
+
+    const contacts = deal.contacts && deal.contacts.length > 0
+      ? deal.contacts.join(', ')
+      : (deal.contactEmail || '-');
+
+    const company = deal.company || deal.institution || '-';
+
+    // Get last note if exists
+    const lastNote = deal.notesHistory && deal.notesHistory.length > 0
+      ? deal.notesHistory[deal.notesHistory.length - 1].text.substring(0, 60) + '...'
+      : '';
+
+    const linkedEmailsCount = deal.linkedEmails?.length || 0;
+
+    return `
+      <div class="crm-kanban-card"
+           draggable="true"
+           data-deal-id="${deal.id}"
+           data-stage-id="${stage.id}">
+        <div class="crm-kanban-card-header">
+          <div class="crm-kanban-card-title" title="${deal.emailSubject || deal.title || 'Untitled'}">
+            ${deal.emailSubject || deal.title || 'Untitled'}
+          </div>
+          <div class="crm-kanban-card-priority" style="background-color: ${priorityColor};" title="${priority} priority">
+          </div>
+        </div>
+
+        <div class="crm-kanban-card-body">
+          <div class="crm-kanban-card-company">
+            🏢 ${company}
+          </div>
+          <div class="crm-kanban-card-contact">
+            👤 ${contacts}
+          </div>
+          ${value !== '-' ? `
+          <div class="crm-kanban-card-value">
+            💰 ${value}
+          </div>
+          ` : ''}
+          ${lastNote ? `
+          <div class="crm-kanban-card-note">
+            📝 ${lastNote}
+          </div>
+          ` : ''}
+        </div>
+
+        <div class="crm-kanban-card-footer">
+          <span class="crm-kanban-card-status" title="Status: ${deal.status || 'Active'}">
+            ${deal.status || 'Active'}
+          </span>
+          ${linkedEmailsCount > 0 ? `
+          <span class="crm-kanban-card-emails" title="${linkedEmailsCount} linked emails">
+            📧 ${linkedEmailsCount}
+          </span>
+          ` : ''}
+          <span class="crm-kanban-card-date" title="Last updated: ${new Date(deal.lastUpdated).toLocaleString()}">
+            ${this.formatDateShort(deal.lastUpdated)}
+          </span>
+        </div>
+      </div>
+    `;
+  }
+
+  formatDateShort(dateString) {
+    if (!dateString) return '-';
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffTime = Math.abs(now - date);
+    const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24));
+
+    if (diffDays === 0) return 'Today';
+    if (diffDays === 1) return 'Yesterday';
+    if (diffDays < 7) return `${diffDays}d ago`;
+    if (diffDays < 30) return `${Math.floor(diffDays / 7)}w ago`;
+    if (diffDays < 365) return `${Math.floor(diffDays / 30)}mo ago`;
+    return `${Math.floor(diffDays / 365)}y ago`;
+  }
+
+  enableKanbanDragAndDrop() {
+    const cards = document.querySelectorAll('.crm-kanban-card');
+    const containers = document.querySelectorAll('.crm-kanban-cards-container');
+
+    let draggedCard = null;
+    let sourceStageId = null;
+
+    // Card drag events
+    cards.forEach(card => {
+      card.addEventListener('dragstart', (e) => {
+        draggedCard = card;
+        sourceStageId = card.dataset.stageId;
+        card.classList.add('crm-dragging');
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/html', card.innerHTML);
+      });
+
+      card.addEventListener('dragend', (e) => {
+        card.classList.remove('crm-dragging');
+        draggedCard = null;
+        sourceStageId = null;
+      });
+
+      // Click to open sidebar
+      card.addEventListener('click', (e) => {
+        if (!e.target.closest('.crm-kanban-card-priority')) {
+          const dealId = card.dataset.dealId;
+          this.openDealSidebar(dealId);
+        }
+      });
+    });
+
+    // Container drop events
+    containers.forEach(container => {
+      container.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+
+        const afterElement = this.getDragAfterElement(container, e.clientY);
+        if (afterElement == null) {
+          container.appendChild(draggedCard);
+        } else {
+          container.insertBefore(draggedCard, afterElement);
+        }
+      });
+
+      container.addEventListener('drop', (e) => {
+        e.preventDefault();
+
+        if (draggedCard) {
+          const targetStageId = container.dataset.stageId;
+          const dealId = draggedCard.dataset.dealId;
+
+          // Update deal stage
+          if (targetStageId !== sourceStageId) {
+            this.moveDealToStage(dealId, targetStageId);
+
+            // Update card's stage ID
+            draggedCard.dataset.stageId = targetStageId;
+
+            // Update stage counts
+            this.updateKanbanStageCounts();
+          }
+        }
+      });
+
+      container.addEventListener('dragenter', (e) => {
+        e.preventDefault();
+        container.classList.add('crm-kanban-drag-over');
+      });
+
+      container.addEventListener('dragleave', (e) => {
+        if (e.target === container) {
+          container.classList.remove('crm-kanban-drag-over');
+        }
+      });
+    });
+  }
+
+  getDragAfterElement(container, y) {
+    const draggableElements = [...container.querySelectorAll('.crm-kanban-card:not(.crm-dragging)')];
+
+    return draggableElements.reduce((closest, child) => {
+      const box = child.getBoundingClientRect();
+      const offset = y - box.top - box.height / 2;
+
+      if (offset < 0 && offset > closest.offset) {
+        return { offset: offset, element: child };
+      } else {
+        return closest;
+      }
+    }, { offset: Number.NEGATIVE_INFINITY }).element;
+  }
+
+  updateKanbanStageCounts() {
+    this.currentPipeline.stages.forEach(stage => {
+      const dealsInStage = this.getDealsInStage(this.currentPipeline.id, stage.id);
+      const countElement = document.querySelector(`.crm-kanban-column[data-stage-id="${stage.id}"] .crm-kanban-stage-count`);
+      if (countElement) {
+        countElement.textContent = dealsInStage.length;
+      }
+
+      // Also update the stages bar counts
+      const stageHeaderCount = document.querySelector(`.crm-stage-header[data-stage-id="${stage.id}"] .crm-stage-count`);
+      if (stageHeaderCount) {
+        stageHeaderCount.textContent = dealsInStage.length;
+      }
+    });
+  }
+
+  moveDealToStage(dealId, newStageId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const oldStageId = deal.stageId;
+    deal.stageId = newStageId;
+    deal.lastUpdated = new Date().toISOString();
+
+    // Add to status history
+    const stage = this.currentPipeline.stages.find(s => s.id === newStageId);
+    if (stage) {
+      if (!deal.statusHistory) {
+        deal.statusHistory = [];
+      }
+      deal.statusHistory.push({
+        status: stage.name,
+        changedAt: new Date().toISOString()
+      });
+    }
+
+    // Save to storage
+    chrome.storage.local.set({ deals: this.deals });
+
+    console.log(`Gmail CRM: Moved deal ${dealId} from ${oldStageId} to ${newStageId}`);
   }
 
   renderInstitutionsDirectory() {
