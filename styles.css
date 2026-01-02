@@ -693,6 +693,62 @@
   background: #f8f9fa;
 }
 
+/* Notes History */
+.crm-notes-history {
+  margin-bottom: 16px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.crm-note-item {
+  background: #f8f9fa;
+  border-left: 3px solid #1a73e8;
+  padding: 12px;
+  margin-bottom: 8px;
+  border-radius: 4px;
+}
+
+.crm-note-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 8px;
+}
+
+.crm-note-date {
+  font-size: 11px;
+  color: #5f6368;
+  font-weight: 500;
+}
+
+.crm-btn-icon-tiny {
+  background: transparent;
+  border: none;
+  color: #5f6368;
+  cursor: pointer;
+  font-size: 14px;
+  padding: 0;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.crm-btn-icon-tiny:hover {
+  background: #e8eaed;
+  color: #ea4335;
+}
+
+.crm-note-text {
+  font-size: 14px;
+  color: #202124;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
 /* Emails Section */
 .crm-emails-list {
   max-height: 300px;

@@ -714,6 +714,28 @@ class GmailCRM {
     }
   }
 
+  renderNotesHistory(deal) {
+    const notes = deal.notesHistory || [];
+
+    if (notes.length === 0) {
+      return '<p class="crm-empty-state">No notes yet</p>';
+    }
+
+    return `
+      <div class="crm-notes-history">
+        ${notes.map((note, idx) => `
+          <div class="crm-note-item">
+            <div class="crm-note-header">
+              <span class="crm-note-date">${new Date(note.createdAt).toLocaleString()}</span>
+              <button class="crm-btn-icon-tiny" data-note-idx="${idx}" title="Delete note">×</button>
+            </div>
+            <div class="crm-note-text">${note.text}</div>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
   renderDealSidebarContent(deal) {
     const sidebar = document.getElementById('crm-deal-sidebar');
     if (!sidebar) return;
@@ -840,8 +862,9 @@ class GmailCRM {
 
           <div class="crm-sidebar-section">
             <h4>Notes</h4>
-            <textarea id="crm-sidebar-notes" class="crm-textarea">${deal.notes || ''}</textarea>
-            <button class="crm-btn-small" id="crm-save-notes-btn">Save Notes</button>
+            ${this.renderNotesHistory(deal)}
+            <textarea id="crm-sidebar-notes" class="crm-textarea" placeholder="Add a new note..."></textarea>
+            <button class="crm-btn-small" id="crm-save-notes-btn">Add Note</button>
           </div>
         </div>
       </div>
@@ -857,13 +880,26 @@ class GmailCRM {
     });
 
     document.getElementById('crm-save-notes-btn')?.addEventListener('click', () => {
-      const notes = document.getElementById('crm-sidebar-notes')?.value;
-      if (notes !== undefined) {
-        deal.notes = notes;
+      const noteText = document.getElementById('crm-sidebar-notes')?.value;
+      if (noteText && noteText.trim()) {
+        // Initialize notes array if it doesn't exist
+        if (!deal.notesHistory) {
+          deal.notesHistory = [];
+        }
+
+        // Add new note to history
+        deal.notesHistory.push({
+          text: noteText.trim(),
+          createdAt: new Date().toISOString()
+        });
+
+        // Keep legacy 'notes' field for backwards compatibility
+        deal.notes = noteText.trim();
         deal.lastUpdated = new Date().toISOString();
+
         chrome.storage.local.set({ deals: this.deals }, () => {
-          this.showNotification('Notes saved');
-          this.renderPipelineBoard();
+          this.showNotification('Note added');
+          this.showDealSidebar(deal.id); // Refresh sidebar to show new note
         });
       }
     });
@@ -877,6 +913,21 @@ class GmailCRM {
         chrome.storage.local.set({ deals: this.deals }, () => {
           this.showDealSidebar(deal.id);
         });
+      });
+    });
+
+    // Delete note listeners
+    sidebar.querySelectorAll('.crm-btn-icon-tiny').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.target.dataset.noteIdx);
+        if (confirm('Delete this note?')) {
+          if (!deal.notesHistory) deal.notesHistory = [];
+          deal.notesHistory.splice(idx, 1);
+          chrome.storage.local.set({ deals: this.deals }, () => {
+            this.showDealSidebar(deal.id);
+            this.showNotification('Note deleted');
+          });
+        }
       });
     });
   }
