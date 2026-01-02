@@ -2150,8 +2150,12 @@ class GmailCRM {
     try {
       console.log('Gmail CRM: Starting sync from', fromDate, 'to', toDate);
 
-      // Scan Gmail emails
-      const emailRows = await this.scanGmailEmails();
+      // Convert string dates to Date objects
+      const fromDateObj = new Date(fromDate);
+      const toDateObj = new Date(toDate);
+
+      // Scan Gmail emails with auto-scroll and date range
+      const emailRows = await this.scanGmailEmails(fromDateObj, toDateObj);
       console.log('Gmail CRM: Found', emailRows.length, 'emails');
 
       if (emailRows.length === 0) {
@@ -2326,17 +2330,32 @@ class GmailCRM {
     }
   }
 
-  async scanGmailEmails() {
+  async scanGmailEmails(fromDate, toDate) {
     const emails = [];
 
-    console.log('Gmail CRM: Scanning all visible email rows...');
+    console.log('Gmail CRM: Starting comprehensive email scan...');
+    console.log('Gmail CRM: Date range:', fromDate?.toISOString?.(), 'to', toDate?.toISOString?.());
 
-    // Try to find email rows in Gmail inbox
+    // First, try to use Gmail search to load emails in date range
+    if (fromDate && toDate) {
+      await this.loadEmailsUsingSearch(fromDate, toDate);
+    }
+
+    // Now scan all visible email rows
     const emailRows = document.querySelectorAll('tr.zA, table.F tr');
+    console.log(`Gmail CRM: Found ${emailRows.length} email rows in current view`);
 
-    console.log(`Gmail CRM: Found ${emailRows.length} email rows`);
+    // If we have very few emails, try scrolling to load more
+    if (emailRows.length < 100) {
+      console.log('Gmail CRM: Few emails loaded, attempting to scroll and load more...');
+      await this.scrollToLoadMoreEmails();
+    }
 
-    emailRows.forEach((row, index) => {
+    // Re-query after scrolling
+    const allEmailRows = document.querySelectorAll('tr.zA, table.F tr');
+    console.log(`Gmail CRM: Total email rows after scroll: ${allEmailRows.length}`);
+
+    allEmailRows.forEach((row, index) => {
       try {
         // Extract subject
         const subjectEl = row.querySelector('.bog span[data-thread-id], .y6 span, span.bqe');
@@ -2386,7 +2405,84 @@ class GmailCRM {
     });
 
     console.log(`Gmail CRM: Successfully extracted ${emails.length} emails with contact/institution data`);
-    return emails; // Return all emails, no limit
+    return emails;
+  }
+
+  async loadEmailsUsingSearch(fromDate, toDate) {
+    try {
+      // Format dates for Gmail search (YYYY/MM/DD)
+      const formatDateForSearch = (date) => {
+        const d = new Date(date);
+        return `${d.getFullYear()}/${(d.getMonth() + 1).toString().padStart(2, '0')}/${d.getDate().toString().padStart(2, '0')}`;
+      };
+
+      const afterDate = formatDateForSearch(fromDate);
+      const beforeDate = formatDateForSearch(toDate);
+
+      // Construct Gmail search query
+      const searchQuery = `after:${afterDate} before:${beforeDate}`;
+      console.log('Gmail CRM: Using Gmail search:', searchQuery);
+
+      // Navigate to search results
+      const searchUrl = `https://mail.google.com/mail/u/0/#search/${encodeURIComponent(searchQuery)}`;
+      console.log('Gmail CRM: Would navigate to:', searchUrl);
+      console.log('Gmail CRM: Note: Automatic navigation disabled to prevent disruption. Emails will be scanned from current view.');
+
+      // Note: We don't actually navigate because it would disrupt the user
+      // Instead, we'll rely on scrolling to load more emails
+      return true;
+    } catch (error) {
+      console.error('Gmail CRM: Error in search setup:', error);
+      return false;
+    }
+  }
+
+  async scrollToLoadMoreEmails() {
+    return new Promise((resolve) => {
+      try {
+        console.log('Gmail CRM: Starting auto-scroll to load more emails...');
+
+        // Find the scrollable container (Gmail's email list)
+        const scrollContainer = document.querySelector('div[role="main"]') ||
+                               document.querySelector('.AO') ||
+                               document.querySelector('.Tm.aeJ');
+
+        if (!scrollContainer) {
+          console.log('Gmail CRM: Could not find scroll container');
+          resolve();
+          return;
+        }
+
+        let scrollCount = 0;
+        const maxScrolls = 10; // Limit scrolling to prevent infinite loops
+        let previousHeight = 0;
+
+        const scrollInterval = setInterval(() => {
+          const currentHeight = scrollContainer.scrollHeight;
+
+          // Scroll to bottom
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+
+          scrollCount++;
+          console.log(`Gmail CRM: Scroll ${scrollCount}/${maxScrolls}, height: ${currentHeight}`);
+
+          // Stop if we've reached max scrolls or height hasn't changed (no more content)
+          if (scrollCount >= maxScrolls || currentHeight === previousHeight) {
+            clearInterval(scrollInterval);
+            console.log(`Gmail CRM: Scroll complete. Total scrolls: ${scrollCount}`);
+
+            // Wait a bit for final emails to load
+            setTimeout(() => resolve(), 1000);
+          }
+
+          previousHeight = currentHeight;
+        }, 1500); // Wait 1.5 seconds between scrolls to allow emails to load
+
+      } catch (error) {
+        console.error('Gmail CRM: Error during scrolling:', error);
+        resolve();
+      }
+    });
   }
 
   parseGmailDate(dateText) {
@@ -2474,21 +2570,127 @@ class GmailCRM {
     // Convert domain to readable institution name
     if (!domain) return 'Unknown Institution';
 
-    // Remove common TLDs and extract main part
-    const parts = domain.split('.');
+    const lowerDomain = domain.toLowerCase();
 
-    // Handle special cases like "mail.google.com" -> "Google"
-    // or "email.stanford.edu" -> "Stanford"
-    let mainPart = parts[parts.length - 2] || parts[0];
+    // Known institution mappings (domain -> proper name)
+    const knownInstitutions = {
+      // Universities
+      'stanford.edu': 'Stanford University',
+      'mit.edu': 'Massachusetts Institute of Technology (MIT)',
+      'harvard.edu': 'Harvard University',
+      'yale.edu': 'Yale University',
+      'princeton.edu': 'Princeton University',
+      'columbia.edu': 'Columbia University',
+      'cornell.edu': 'Cornell University',
+      'upenn.edu': 'University of Pennsylvania',
+      'berkeley.edu': 'UC Berkeley',
+      'ucla.edu': 'UCLA',
+      'usc.edu': 'USC',
+      'nyu.edu': 'New York University',
+      'duke.edu': 'Duke University',
+      'northwestern.edu': 'Northwestern University',
+      'uchicago.edu': 'University of Chicago',
+      'caltech.edu': 'Caltech',
 
-    // Skip common email service domains
-    const emailServices = ['gmail', 'yahoo', 'hotmail', 'outlook', 'aol', 'icloud', 'protonmail'];
-    if (emailServices.includes(mainPart.toLowerCase())) {
-      mainPart = parts[0]; // Use first part instead
+      // Major Hospital Systems
+      'mayoclinic.org': 'Mayo Clinic',
+      'clevelandclinic.org': 'Cleveland Clinic',
+      'hopkinsmedicine.org': 'Johns Hopkins Medicine',
+      'mgh.harvard.edu': 'Massachusetts General Hospital',
+      'cedars-sinai.org': 'Cedars-Sinai Medical Center',
+      'sutterhealth.org': 'Sutter Health',
+      'kaiserpermanente.org': 'Kaiser Permanente',
+      'providence.org': 'Providence Health',
+      'dignityhealth.org': 'Dignity Health',
+      'adventhealth.com': 'AdventHealth',
+      'memorialhealth.com': 'Memorial Health',
+      'nyp.org': 'NewYork-Presbyterian Hospital',
+
+      // Tech Companies
+      'google.com': 'Google',
+      'apple.com': 'Apple',
+      'microsoft.com': 'Microsoft',
+      'amazon.com': 'Amazon',
+      'meta.com': 'Meta',
+      'facebook.com': 'Meta (Facebook)',
+      'netflix.com': 'Netflix',
+      'salesforce.com': 'Salesforce'
+    };
+
+    // Check for exact matches
+    if (knownInstitutions[lowerDomain]) {
+      return knownInstitutions[lowerDomain];
     }
 
-    // Capitalize
-    const institutionName = mainPart.charAt(0).toUpperCase() + mainPart.slice(1);
+    // Check for partial matches (e.g., subdomain.stanford.edu)
+    for (const [knownDomain, name] of Object.entries(knownInstitutions)) {
+      if (lowerDomain.endsWith(knownDomain)) {
+        return name;
+      }
+    }
+
+    // Parse domain intelligently
+    const parts = domain.split('.');
+
+    // Skip common email service domains
+    const emailServices = ['gmail', 'yahoo', 'hotmail', 'outlook', 'aol', 'icloud', 'protonmail', 'mail', 'email'];
+
+    // Filter out email service subdomains
+    const filteredParts = parts.filter(part => !emailServices.includes(part.toLowerCase()));
+
+    // Get the main part (usually second-to-last before TLD)
+    let mainPart;
+    if (filteredParts.length >= 2) {
+      mainPart = filteredParts[filteredParts.length - 2];
+    } else if (filteredParts.length === 1) {
+      mainPart = filteredParts[0];
+    } else {
+      mainPart = parts[parts.length - 2] || parts[0];
+    }
+
+    // Handle common patterns
+    const patterns = {
+      'health': ' Health',
+      'medical': ' Medical Center',
+      'hospital': ' Hospital',
+      'clinic': ' Clinic',
+      'university': ' University',
+      'college': ' College',
+      'institute': ' Institute',
+      'labs': ' Labs',
+      'pharma': ' Pharmaceuticals',
+      'bio': ' Biosciences'
+    };
+
+    // Clean up the name
+    let institutionName = mainPart
+      .replace(/-/g, ' ')
+      .replace(/_/g, ' ')
+      .split(' ')
+      .map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+      .join(' ');
+
+    // Add suffix if pattern matches
+    for (const [pattern, suffix] of Object.entries(patterns)) {
+      if (lowerDomain.includes(pattern) && !institutionName.toLowerCase().includes(pattern)) {
+        institutionName += suffix;
+        break;
+      }
+    }
+
+    // Handle common abbreviations
+    institutionName = institutionName
+      .replace(/\bUc\b/g, 'UC')
+      .replace(/\bMit\b/g, 'MIT')
+      .replace(/\bNyu\b/g, 'NYU')
+      .replace(/\bUcla\b/g, 'UCLA')
+      .replace(/\bUsc\b/g, 'USC')
+      .replace(/\bUcsf\b/g, 'UCSF')
+      .replace(/\bUcsd\b/g, 'UCSD')
+      .replace(/\bMgh\b/g, 'MGH')
+      .replace(/\bNih\b/g, 'NIH')
+      .replace(/\bCdc\b/g, 'CDC')
+      .replace(/\bFda\b/g, 'FDA');
 
     return institutionName;
   }
