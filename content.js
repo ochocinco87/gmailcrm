@@ -446,6 +446,7 @@ class GmailCRM {
         </div>
         <div class="crm-pipeline-actions">
           <input type="text" id="crm-institution-search" placeholder="Search institutions..." class="crm-input" style="width: 250px; margin-right: 10px;" />
+          <button class="crm-btn-primary" id="crm-reanalyze-btn">🔍 Re-analyze Institutions</button>
           <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
         </div>
       </div>
@@ -458,6 +459,10 @@ class GmailCRM {
     // Add event listeners
     document.getElementById('crm-refresh-btn')?.addEventListener('click', () => {
       this.loadData().then(() => this.renderPipelineBoard());
+    });
+
+    document.getElementById('crm-reanalyze-btn')?.addEventListener('click', () => {
+      this.reanalyzeInstitutions();
     });
 
     document.getElementById('crm-institution-search')?.addEventListener('input', (e) => {
@@ -533,6 +538,123 @@ class GmailCRM {
       const matches = institutionName.includes(normalizedSearch);
       card.style.display = matches ? 'block' : 'none';
     });
+  }
+
+  async reanalyzeInstitutions() {
+    console.log('Gmail CRM: Starting institution re-analysis...');
+    this.showNotification('🔍 Re-analyzing institutions...');
+
+    let updated = 0;
+    let merged = 0;
+
+    // Go through all deals and re-extract institution names
+    for (const [dealId, deal] of Object.entries(this.deals)) {
+      if (deal.domain) {
+        // Re-extract institution name using improved detection
+        const oldInstitution = deal.institution;
+        const newInstitution = this.extractInstitutionName(deal.domain);
+
+        if (newInstitution !== oldInstitution) {
+          console.log(`Gmail CRM: Updating "${oldInstitution}" -> "${newInstitution}" for domain ${deal.domain}`);
+          deal.institution = newInstitution;
+          deal.company = newInstitution;
+
+          // Update deal subject
+          if (deal.contacts && deal.linkedEmails) {
+            deal.emailSubject = `${newInstitution} - ${deal.contacts.length} contact${deal.contacts.length !== 1 ? 's' : ''}, ${deal.linkedEmails.length} email${deal.linkedEmails.length !== 1 ? 's' : ''}`;
+          }
+
+          updated++;
+        }
+      }
+
+      // Also update linked emails institution names
+      if (deal.linkedEmails) {
+        deal.linkedEmails.forEach(email => {
+          if (email.domain) {
+            const newInstitution = this.extractInstitutionName(email.domain);
+            if (email.institution !== newInstitution) {
+              email.institution = newInstitution;
+            }
+          }
+        });
+      }
+    }
+
+    // Now merge deals that belong to the same institution
+    const institutionGroups = {};
+
+    for (const [dealId, deal] of Object.entries(this.deals)) {
+      const inst = deal.institution || 'Unknown Institution';
+      if (!institutionGroups[inst]) {
+        institutionGroups[inst] = [];
+      }
+      institutionGroups[inst].push(dealId);
+    }
+
+    // Merge deals in each institution group
+    for (const [institution, dealIds] of Object.entries(institutionGroups)) {
+      if (dealIds.length > 1) {
+        console.log(`Gmail CRM: Merging ${dealIds.length} deals for ${institution}`);
+
+        // Keep the first deal, merge others into it
+        const primaryDealId = dealIds[0];
+        const primaryDeal = this.deals[primaryDealId];
+
+        for (let i = 1; i < dealIds.length; i++) {
+          const mergeDealId = dealIds[i];
+          const mergeDeal = this.deals[mergeDealId];
+
+          // Merge contacts
+          if (mergeDeal.contacts) {
+            if (!primaryDeal.contacts) primaryDeal.contacts = [];
+            mergeDeal.contacts.forEach(contact => {
+              if (!primaryDeal.contacts.includes(contact)) {
+                primaryDeal.contacts.push(contact);
+              }
+            });
+          }
+
+          // Merge linked emails
+          if (mergeDeal.linkedEmails) {
+            if (!primaryDeal.linkedEmails) primaryDeal.linkedEmails = [];
+            mergeDeal.linkedEmails.forEach(email => {
+              const alreadyLinked = primaryDeal.linkedEmails.some(e =>
+                e.threadId === email.threadId || e.subject === email.subject
+              );
+              if (!alreadyLinked) {
+                primaryDeal.linkedEmails.push(email);
+              }
+            });
+          }
+
+          // Merge other fields
+          if (!primaryDeal.domain && mergeDeal.domain) {
+            primaryDeal.domain = mergeDeal.domain;
+          }
+
+          // Delete the merged deal
+          delete this.deals[mergeDealId];
+          merged++;
+        }
+
+        // Update primary deal counts
+        primaryDeal.contactCount = primaryDeal.contacts?.length || 0;
+        primaryDeal.emailSubject = `${institution} - ${primaryDeal.contacts.length} contact${primaryDeal.contacts.length !== 1 ? 's' : ''}, ${primaryDeal.linkedEmails.length} email${primaryDeal.linkedEmails.length !== 1 ? 's' : ''}`;
+      }
+    }
+
+    // Save updated deals
+    await new Promise(resolve => {
+      chrome.storage.local.set({ deals: this.deals }, resolve);
+    });
+
+    console.log(`Gmail CRM: Re-analysis complete. Updated ${updated} institutions, merged ${merged} deals`);
+    this.showNotification(`✓ Re-analysis complete! Updated ${updated} institutions, merged ${merged} duplicate deals`);
+
+    // Reload and refresh
+    await this.loadData();
+    this.renderPipelineBoard();
   }
 
   createDealRow(deal, stage) {
