@@ -260,23 +260,34 @@ class GmailCRM {
         ${stagesHeader}
       </div>
 
-      <div class="crm-deals-table-container">
-        <table class="crm-deals-table">
-          <thead>
-            <tr>
-              <th class="crm-th-checkbox"><input type="checkbox" /></th>
-              <th class="crm-th-name">Name</th>
-              <th class="crm-th-priority">Priority</th>
-              <th class="crm-th-value">Deal Size</th>
-              <th class="crm-th-prob">Prob</th>
-              <th class="crm-th-contact">Contact</th>
-              <th class="crm-th-assigned">Assigned To</th>
-              <th class="crm-th-date">Date Last Updated</th>
-              <th class="crm-th-notes">Notes</th>
-            </tr>
-          </thead>
-          <tbody id="crm-deals-tbody"></tbody>
-        </table>
+      <div class="crm-main-layout">
+        <div class="crm-deals-table-container">
+          <table class="crm-deals-table">
+            <thead>
+              <tr>
+                <th class="crm-th-checkbox"><input type="checkbox" /></th>
+                <th class="crm-th-name">Name</th>
+                <th class="crm-th-status">Status</th>
+                <th class="crm-th-priority">Priority</th>
+                <th class="crm-th-value">Deal Size</th>
+                <th class="crm-th-prob">Prob</th>
+                <th class="crm-th-contact">Contact</th>
+                <th class="crm-th-assigned">Assigned To</th>
+                <th class="crm-th-date">Date Last Updated</th>
+                <th class="crm-th-notes">Notes</th>
+              </tr>
+            </thead>
+            <tbody id="crm-deals-tbody"></tbody>
+          </table>
+        </div>
+
+        <div class="crm-deal-sidebar" id="crm-deal-sidebar">
+          <div class="crm-deal-sidebar-content">
+            <div class="crm-sidebar-placeholder">
+              Select a deal to view details
+            </div>
+          </div>
+        </div>
       </div>
     `;
 
@@ -312,7 +323,7 @@ class GmailCRM {
         const stageRow = document.createElement('tr');
         stageRow.className = 'crm-stage-row';
         stageRow.innerHTML = `
-          <td colspan="9" class="crm-stage-group" style="background-color: ${stage.color}20; border-left: 4px solid ${stage.color};">
+          <td colspan="10" class="crm-stage-group" style="background-color: ${stage.color}20; border-left: 4px solid ${stage.color};">
             <strong>${stage.name}</strong>
             <button class="crm-add-to-stage" data-stage-id="${stage.id}">+ Add</button>
           </td>
@@ -341,11 +352,27 @@ class GmailCRM {
     const formattedValue = deal.value ? `$${Number(deal.value).toLocaleString()}` : '';
     const formattedDate = deal.lastUpdated ? new Date(deal.lastUpdated).toLocaleDateString() : '';
 
+    // Status options
+    const statusOptions = [
+      'Active', 'On Hold', 'Waiting Response', 'In Review',
+      'Negotiating', 'Pending Approval', 'Closed Won', 'Closed Lost'
+    ];
+    const currentStatus = deal.status || 'Active';
+
+    const statusDropdown = `
+      <select class="crm-status-select" data-deal-id="${deal.id}">
+        ${statusOptions.map(status =>
+          `<option value="${status}" ${status === currentStatus ? 'selected' : ''}>${status}</option>`
+        ).join('')}
+      </select>
+    `;
+
     row.innerHTML = `
       <td class="crm-td-checkbox"><input type="checkbox" /></td>
       <td class="crm-td-name">
-        <a href="#inbox/${deal.threadId}" class="crm-deal-link">${deal.emailSubject || 'Untitled'}</a>
+        <span class="crm-deal-link" data-deal-id="${deal.id}">${deal.emailSubject || 'Untitled'}</span>
       </td>
+      <td class="crm-td-status">${statusDropdown}</td>
       <td class="crm-td-priority">${deal.priority || 'High'}</td>
       <td class="crm-td-value">${formattedValue}</td>
       <td class="crm-td-prob">${deal.probability || '90'}%</td>
@@ -354,6 +381,28 @@ class GmailCRM {
       <td class="crm-td-date">${formattedDate}</td>
       <td class="crm-td-notes">${deal.notes || ''}</td>
     `;
+
+    // Add click handler for deal name
+    setTimeout(() => {
+      const dealLink = row.querySelector('.crm-deal-link');
+      if (dealLink) {
+        dealLink.addEventListener('click', (e) => {
+          e.stopPropagation();
+          this.showDealSidebar(deal.id);
+        });
+      }
+
+      // Add status change handler
+      const statusSelect = row.querySelector('.crm-status-select');
+      if (statusSelect) {
+        statusSelect.addEventListener('change', (e) => {
+          e.stopPropagation();
+          this.updateDealStatus(deal.id, e.target.value);
+        });
+        // Prevent drag when clicking dropdown
+        statusSelect.addEventListener('mousedown', (e) => e.stopPropagation());
+      }
+    }, 0);
 
     return row;
   }
@@ -608,6 +657,276 @@ class GmailCRM {
 
     this.currentPipeline = null;
     this.renderPipelinesList();
+  }
+
+  updateDealStatus(dealId, newStatus) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const oldStatus = deal.status || 'Active';
+
+    // Initialize status history if it doesn't exist
+    if (!deal.statusHistory) {
+      deal.statusHistory = [];
+    }
+
+    // Add to history
+    deal.statusHistory.push({
+      status: oldStatus,
+      changedAt: new Date().toISOString(),
+      changedTo: newStatus
+    });
+
+    // Update current status
+    deal.status = newStatus;
+    deal.lastUpdated = new Date().toISOString();
+
+    chrome.storage.local.set({ deals: this.deals }, () => {
+      this.showNotification(`Status updated: ${oldStatus} → ${newStatus}`);
+
+      // Refresh sidebar if it's showing this deal
+      const sidebar = document.getElementById('crm-deal-sidebar');
+      if (sidebar && sidebar.classList.contains('active') && sidebar.dataset.dealId === dealId) {
+        this.showDealSidebar(dealId);
+      }
+    });
+  }
+
+  showDealSidebar(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const sidebar = document.getElementById('crm-deal-sidebar');
+    if (!sidebar) return;
+
+    sidebar.classList.add('active');
+    sidebar.dataset.dealId = dealId;
+
+    // Render sidebar content
+    this.renderDealSidebarContent(deal);
+  }
+
+  closeDealSidebar() {
+    const sidebar = document.getElementById('crm-deal-sidebar');
+    if (sidebar) {
+      sidebar.classList.remove('active');
+      sidebar.dataset.dealId = '';
+    }
+  }
+
+  renderDealSidebarContent(deal) {
+    const sidebar = document.getElementById('crm-deal-sidebar');
+    if (!sidebar) return;
+
+    const stageName = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.name || 'Unknown';
+    const stageColor = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.color || '#4285f4';
+
+    // Build status history timeline
+    const statusHistory = deal.statusHistory || [];
+    const historyHTML = statusHistory.length > 0 ? `
+      <div class="crm-sidebar-section">
+        <h4>Status History</h4>
+        <div class="crm-status-timeline">
+          ${statusHistory.map(h => `
+            <div class="crm-timeline-item">
+              <div class="crm-timeline-dot"></div>
+              <div class="crm-timeline-content">
+                <div class="crm-timeline-status">${h.changedTo}</div>
+                <div class="crm-timeline-date">${new Date(h.changedAt).toLocaleString()}</div>
+              </div>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    ` : '';
+
+    // Calls section
+    const calls = deal.calls || [];
+    const callsHTML = `
+      <div class="crm-sidebar-section">
+        <h4>Calls</h4>
+        <div class="crm-calls-list" id="crm-calls-list">
+          ${calls.map((call, idx) => `
+            <div class="crm-call-item">
+              <a href="${call.url}" target="_blank" class="crm-call-link">
+                📹 ${call.title || `Call ${idx + 1}`}
+              </a>
+              <span class="crm-call-date">${call.date ? new Date(call.date).toLocaleDateString() : ''}</span>
+              <button class="crm-btn-icon-small" data-call-idx="${idx}">×</button>
+            </div>
+          `).join('')}
+          ${calls.length === 0 ? '<p class="crm-empty-state">No calls added yet</p>' : ''}
+        </div>
+        <button class="crm-btn-small" id="crm-add-call-btn">+ Add Call Link</button>
+      </div>
+    `;
+
+    // Emails section (grouped)
+    const emails = deal.emails || [];
+    const emailsHTML = `
+      <div class="crm-sidebar-section">
+        <h4>Related Emails (${emails.length})</h4>
+        <div class="crm-emails-list">
+          ${emails.map(email => `
+            <div class="crm-email-item">
+              <div class="crm-email-subject">${email.subject}</div>
+              <div class="crm-email-meta">
+                <span>${email.from}</span> • <span>${new Date(email.date).toLocaleDateString()}</span>
+              </div>
+            </div>
+          `).join('')}
+          ${emails.length === 0 ? '<p class="crm-empty-state">No emails linked yet</p>' : ''}
+        </div>
+      </div>
+    `;
+
+    sidebar.innerHTML = `
+      <div class="crm-deal-sidebar-content">
+        <div class="crm-sidebar-header">
+          <h3>${deal.emailSubject || 'Untitled Deal'}</h3>
+          <button class="crm-close-sidebar" id="crm-close-sidebar-btn">×</button>
+        </div>
+
+        <div class="crm-sidebar-scroll">
+          <div class="crm-sidebar-section">
+            <h4>Stage</h4>
+            <div class="crm-stage-badge" style="background-color: ${stageColor};">
+              ${stageName}
+            </div>
+          </div>
+
+          <div class="crm-sidebar-section">
+            <h4>Status</h4>
+            <div class="crm-current-status">
+              <strong>${deal.status || 'Active'}</strong>
+            </div>
+          </div>
+
+          <div class="crm-sidebar-section">
+            <h4>Deal Information</h4>
+            <div class="crm-info-grid">
+              <div class="crm-info-item">
+                <label>Deal Size</label>
+                <div>${deal.value ? `$${Number(deal.value).toLocaleString()}` : 'Not set'}</div>
+              </div>
+              <div class="crm-info-item">
+                <label>Probability</label>
+                <div>${deal.probability || '90'}%</div>
+              </div>
+              <div class="crm-info-item">
+                <label>Priority</label>
+                <div>${deal.priority || 'High'}</div>
+              </div>
+              <div class="crm-info-item">
+                <label>Contact</label>
+                <div>${deal.contactEmail || 'Not set'}</div>
+              </div>
+              <div class="crm-info-item">
+                <label>Assigned To</label>
+                <div>${deal.assignedTo || 'Unassigned'}</div>
+              </div>
+              <div class="crm-info-item">
+                <label>Last Updated</label>
+                <div>${new Date(deal.lastUpdated).toLocaleString()}</div>
+              </div>
+            </div>
+          </div>
+
+          ${callsHTML}
+
+          ${historyHTML}
+
+          ${emailsHTML}
+
+          <div class="crm-sidebar-section">
+            <h4>Notes</h4>
+            <textarea id="crm-sidebar-notes" class="crm-textarea">${deal.notes || ''}</textarea>
+            <button class="crm-btn-small" id="crm-save-notes-btn">Save Notes</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add event listeners
+    document.getElementById('crm-close-sidebar-btn')?.addEventListener('click', () => {
+      this.closeDealSidebar();
+    });
+
+    document.getElementById('crm-add-call-btn')?.addEventListener('click', () => {
+      this.showAddCallDialog(deal.id);
+    });
+
+    document.getElementById('crm-save-notes-btn')?.addEventListener('click', () => {
+      const notes = document.getElementById('crm-sidebar-notes')?.value;
+      if (notes !== undefined) {
+        deal.notes = notes;
+        deal.lastUpdated = new Date().toISOString();
+        chrome.storage.local.set({ deals: this.deals }, () => {
+          this.showNotification('Notes saved');
+          this.renderPipelineBoard();
+        });
+      }
+    });
+
+    // Remove call listeners
+    sidebar.querySelectorAll('.crm-btn-icon-small').forEach(btn => {
+      btn.addEventListener('click', (e) => {
+        const idx = parseInt(e.target.dataset.callIdx);
+        if (!deal.calls) deal.calls = [];
+        deal.calls.splice(idx, 1);
+        chrome.storage.local.set({ deals: this.deals }, () => {
+          this.showDealSidebar(deal.id);
+        });
+      });
+    });
+  }
+
+  showAddCallDialog(dealId) {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>Add Call Link</h2>
+        <div class="crm-form-group">
+          <label>Call Title</label>
+          <input type="text" id="crm-call-title" class="crm-input" placeholder="e.g., Discovery Call" />
+        </div>
+        <div class="crm-form-group">
+          <label>tldv.io Link (or any URL)</label>
+          <input type="url" id="crm-call-url" class="crm-input" placeholder="https://tldv.io/..." />
+        </div>
+        <div class="crm-form-group">
+          <label>Call Date</label>
+          <input type="date" id="crm-call-date" class="crm-input" />
+        </div>
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-call">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-call">Add Call</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-call')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-call')?.addEventListener('click', () => {
+      const deal = this.deals[dealId];
+      if (!deal) return;
+
+      if (!deal.calls) deal.calls = [];
+
+      deal.calls.push({
+        title: document.getElementById('crm-call-title').value,
+        url: document.getElementById('crm-call-url').value,
+        date: document.getElementById('crm-call-date').value
+      });
+
+      chrome.storage.local.set({ deals: this.deals }, () => {
+        modal.remove();
+        this.showDealSidebar(dealId);
+        this.showNotification('Call added successfully!');
+      });
+    });
   }
 
   showNotification(message) {
