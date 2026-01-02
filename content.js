@@ -2788,6 +2788,40 @@ class GmailCRM {
     }
   }
 
+  analyzeDomainType(domain) {
+    if (!domain) return 'unknown';
+
+    const lowerDomain = domain.toLowerCase();
+
+    // Check for educational institutions
+    if (lowerDomain.endsWith('.edu') || lowerDomain.includes('.edu.')) {
+      return 'edu';
+    }
+
+    // Check for organizations (often non-profits, hospitals, medical centers)
+    if (lowerDomain.endsWith('.org') || lowerDomain.includes('.org.')) {
+      return 'org';
+    }
+
+    // Check for government
+    if (lowerDomain.endsWith('.gov') || lowerDomain.includes('.gov.')) {
+      return 'gov';
+    }
+
+    // Check for healthcare-specific domains
+    if (lowerDomain.includes('hospital') || lowerDomain.includes('medical') ||
+        lowerDomain.includes('health') || lowerDomain.includes('clinic')) {
+      return 'healthcare';
+    }
+
+    // Commercial domains
+    if (lowerDomain.endsWith('.com') || lowerDomain.endsWith('.co')) {
+      return 'com';
+    }
+
+    return 'other';
+  }
+
   async scanGmailEmails(fromDate, toDate) {
     const emails = [];
 
@@ -2819,6 +2853,10 @@ class GmailCRM {
         const subjectEl = row.querySelector('.bog span[data-thread-id], .y6 span, span.bqe');
         const subject = subjectEl?.textContent?.trim() || 'No Subject';
 
+        // Extract email body snippet/preview
+        const snippetEl = row.querySelector('.y2, span.y2, .Zt');
+        const bodySnippet = snippetEl?.textContent?.trim() || '';
+
         // Extract sender email and name
         const senderEl = row.querySelector('.yW span[email], .yX span, span.zF');
         const senderNameEl = row.querySelector('.yW span[name], .yX span, span.zF');
@@ -2840,17 +2878,29 @@ class GmailCRM {
         // Create URL for this thread
         const url = threadId ? `https://mail.google.com/mail/u/0/#inbox/${threadId}` : '';
 
-        // Extract domain/institution
+        // Extract domain/institution with enhanced analysis
         const domain = this.extractDomainFromEmail(fromEmail);
         const institution = this.extractInstitutionName(domain);
+
+        // Analyze domain type for deal potential
+        const domainType = this.analyzeDomainType(domain);
+        const isEducational = domainType === 'edu';
+        const isOrganization = domainType === 'org';
+        const isHospital = domain.includes('hospital') || domain.includes('medical') ||
+                          domain.includes('health') || institution.toLowerCase().includes('hospital');
 
         // Only add if we have basic data
         if (subject && fromEmail && subject !== 'No Subject') {
           emails.push({
             subject,
+            bodySnippet,
             from: fromEmail,
             fromName,
             domain,
+            domainType,
+            isEducational,
+            isOrganization,
+            isHospital,
             institution,
             threadId,
             date: this.parseGmailDate(dateText),
@@ -3648,24 +3698,50 @@ class GmailCRM {
   async analyzeEmailBatchWithGemini(emails, apiKey) {
     const emailContext = emails.map(e => ({
       subject: e.subject,
+      bodyPreview: e.bodySnippet || '(no preview available)',
       from: e.fromName,
       fromEmail: e.from,
+      domain: e.domain,
+      domainType: e.domainType,
+      isEducational: e.isEducational,
+      isOrganization: e.isOrganization,
+      isHospital: e.isHospital,
       institution: e.institution,
       date: e.date
     }));
 
-    const prompt = `You are an expert CRM analyst. Analyze these emails and identify which ones represent potential sales deals or business opportunities for a surgical AR (augmented reality) company.
+    const prompt = `You are an expert CRM analyst for a surgical AR (augmented reality) company. Analyze these emails and identify which ones represent potential sales deals or business opportunities.
 
-For each email that represents a deal, extract:
-- dealTitle: Short descriptive title
-- institution: Hospital/institution name
+IMPORTANT CONTEXT:
+- Emails from .edu domains (educational institutions/universities) are HIGH PRIORITY - they often indicate hospital/medical school partnerships
+- Emails from .org domains (organizations) are HIGH PRIORITY - many hospitals and medical centers use .org domains
+- Look at BOTH the subject line AND the email body preview to understand context
+- Keywords like "demo", "meeting", "interested", "pricing", "proposal", "trial", "partnership" suggest potential deals
+- Healthcare-related domains (hospital, medical, health, clinic) are HIGH PRIORITY
+
+For each email that represents a potential deal, extract:
+- dealTitle: Short descriptive title based on subject AND body content
+- institution: Hospital/institution name (use the institution field provided, or infer from email content)
 - contact: Person's name
 - contactEmail: Email address
-- stage: Best guess at sales stage (lead, contacted, qualified, proposal, negotiation, closed-won, closed-lost)
-- dealValue: Estimated deal size in USD (if mentioned or can be inferred)
-- priority: High/Medium/Low
-- summary: 1-2 sentence summary of the opportunity
-- isHospital: true/false
+- stage: Best guess at sales stage based on email content:
+  * "lead" - initial inquiry, general interest
+  * "contacted" - active conversation, follow-up emails
+  * "qualified" - specific requirements discussed, budget mentioned
+  * "proposal" - formal proposal requested or sent
+  * "negotiation" - discussing terms, pricing, timeline
+  * "closed-won" - deal confirmed, contract signed
+  * "closed-lost" - opportunity lost or declined
+- dealValue: Estimated deal size in USD (if mentioned or can be inferred, otherwise 0)
+- priority: "High" for .edu/.org/healthcare domains or urgent requests, "Medium" for active discussions, "Low" for general inquiries
+- summary: 1-2 sentence summary combining subject and body preview context
+- isHospital: true if from hospital/medical center/healthcare facility
+
+ANALYZE CAREFULLY:
+- Read the bodyPreview field - it contains the actual email content
+- .edu/.org domains should be weighted heavily as potential deals
+- Don't just rely on subject line - use the body preview for context
+- If domainType is "edu", "org", or "healthcare", prioritize these emails
 
 Emails to analyze:
 ${JSON.stringify(emailContext, null, 2)}
