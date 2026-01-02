@@ -47,6 +47,13 @@ chrome.runtime.onInstalled.addListener((details) => {
     chrome.storage.local.set({
       pipelines: defaultPipelines,
       deals: {},
+      surgicalCases: {},
+      surgicalSettings: {
+        specialty: 'neurosurgery',
+        defaultRole: 'primary',
+        residencyYear: 'PGY-3',
+        programName: ''
+      },
       settings: {
         autoTrackEmails: true,
         showSidebar: true
@@ -108,6 +115,52 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  // Surgical Case Log handlers
+  if (request.action === 'getSurgicalCases') {
+    chrome.storage.local.get(['surgicalCases'], (result) => {
+      sendResponse({ cases: result.surgicalCases || {} });
+    });
+    return true;
+  }
+
+  if (request.action === 'saveSurgicalCase') {
+    chrome.storage.local.get(['surgicalCases'], (result) => {
+      const cases = result.surgicalCases || {};
+      cases[request.case.id] = request.case;
+
+      chrome.storage.local.set({ surgicalCases: cases }, () => {
+        sendResponse({ success: true });
+      });
+    });
+    return true;
+  }
+
+  if (request.action === 'deleteSurgicalCase') {
+    chrome.storage.local.get(['surgicalCases'], (result) => {
+      const cases = result.surgicalCases || {};
+      delete cases[request.caseId];
+
+      chrome.storage.local.set({ surgicalCases: cases }, () => {
+        sendResponse({ success: true });
+      });
+    });
+    return true;
+  }
+
+  if (request.action === 'getSurgicalSettings') {
+    chrome.storage.local.get(['surgicalSettings'], (result) => {
+      sendResponse({ settings: result.surgicalSettings || {} });
+    });
+    return true;
+  }
+
+  if (request.action === 'saveSurgicalSettings') {
+    chrome.storage.local.set({ surgicalSettings: request.settings }, () => {
+      sendResponse({ success: true });
+    });
+    return true;
+  }
 });
 
 // Listen for storage changes to sync across tabs
@@ -129,14 +182,16 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
   }
 });
 
-// Badge updates based on deals count
+// Badge updates based on deals and cases count
 async function updateBadge() {
-  chrome.storage.local.get(['deals'], (result) => {
+  chrome.storage.local.get(['deals', 'surgicalCases'], (result) => {
     const dealsCount = Object.keys(result.deals || {}).length;
+    const casesCount = Object.keys(result.surgicalCases || {}).length;
+    const totalCount = dealsCount + casesCount;
 
-    if (dealsCount > 0) {
-      chrome.action.setBadgeText({ text: dealsCount.toString() });
-      chrome.action.setBadgeBackgroundColor({ color: '#1a73e8' });
+    if (totalCount > 0) {
+      chrome.action.setBadgeText({ text: totalCount.toString() });
+      chrome.action.setBadgeBackgroundColor({ color: casesCount > 0 ? '#ea4335' : '#1a73e8' });
     } else {
       chrome.action.setBadgeText({ text: '' });
     }
@@ -145,7 +200,7 @@ async function updateBadge() {
 
 // Update badge on storage changes
 chrome.storage.onChanged.addListener((changes) => {
-  if (changes.deals) {
+  if (changes.deals || changes.surgicalCases) {
     updateBadge();
   }
 });

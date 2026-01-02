@@ -26,6 +26,9 @@ class GmailCRM {
     // Monitor for email views to inject link UI
     this.observeEmailView();
 
+    // Add surgical case log button
+    this.addSurgicalCaseLogNav();
+
     this.initialized = true;
     console.log('Gmail CRM: Initialized successfully');
   }
@@ -3342,6 +3345,1212 @@ Format: [{"dealTitle": "...", "institution": "...", "contact": "...", "contactEm
 
     this.deals[dealId] = deal;
     console.log('Gmail CRM: Created deal from AI analysis:', dealData.dealTitle);
+  }
+
+  // ========== Surgical Case Log Feature ==========
+
+  // Surgical specialty categories and procedures
+  getSurgicalCategories() {
+    return {
+      // Neurosurgery (ABNS compatible)
+      neurosurgery: {
+        name: 'Neurosurgery',
+        categories: [
+          { id: 'cranial-tumor', name: 'Cranial - Tumor', subcategories: ['Meningioma', 'Glioma', 'Metastatic', 'Pituitary', 'Acoustic Neuroma', 'Other'] },
+          { id: 'cranial-vascular', name: 'Cranial - Vascular', subcategories: ['Aneurysm', 'AVM', 'Cavernoma', 'Bypass', 'EC-IC', 'Other'] },
+          { id: 'cranial-trauma', name: 'Cranial - Trauma', subcategories: ['Subdural Hematoma', 'Epidural Hematoma', 'Depressed Skull Fracture', 'Decompressive Craniectomy', 'Other'] },
+          { id: 'cranial-functional', name: 'Cranial - Functional', subcategories: ['DBS', 'Epilepsy', 'Pain', 'Movement Disorder', 'Other'] },
+          { id: 'cranial-pediatric', name: 'Cranial - Pediatric', subcategories: ['Chiari', 'Craniosynostosis', 'Hydrocephalus', 'Tumor', 'Other'] },
+          { id: 'cranial-other', name: 'Cranial - Other', subcategories: ['Cranioplasty', 'VP Shunt', 'EVD', 'ICP Monitor', 'Other'] },
+          { id: 'spine-degenerative', name: 'Spine - Degenerative', subcategories: ['ACDF', 'Laminectomy', 'Discectomy', 'Fusion', 'Artificial Disc', 'Other'] },
+          { id: 'spine-tumor', name: 'Spine - Tumor', subcategories: ['Intradural', 'Extradural', 'Intramedullary', 'Metastatic', 'Other'] },
+          { id: 'spine-trauma', name: 'Spine - Trauma', subcategories: ['Fracture Fixation', 'Decompression', 'Fusion', 'Other'] },
+          { id: 'spine-deformity', name: 'Spine - Deformity', subcategories: ['Scoliosis', 'Kyphosis', 'Osteotomy', 'Other'] },
+          { id: 'peripheral-nerve', name: 'Peripheral Nerve', subcategories: ['Carpal Tunnel', 'Ulnar Nerve', 'Nerve Repair', 'Nerve Graft', 'Tumor', 'Other'] },
+          { id: 'endovascular', name: 'Endovascular', subcategories: ['Coiling', 'Flow Diverter', 'Thrombectomy', 'Stenting', 'Embolization', 'Other'] }
+        ]
+      },
+      // Orthopedic Surgery
+      orthopedic: {
+        name: 'Orthopedic Surgery',
+        categories: [
+          { id: 'arthroplasty', name: 'Arthroplasty', subcategories: ['Total Hip', 'Total Knee', 'Shoulder', 'Revision', 'Other'] },
+          { id: 'sports-medicine', name: 'Sports Medicine', subcategories: ['ACL', 'Meniscus', 'Rotator Cuff', 'Labrum', 'Other'] },
+          { id: 'trauma', name: 'Trauma', subcategories: ['Fracture Fixation', 'ORIF', 'External Fixation', 'Other'] },
+          { id: 'spine-ortho', name: 'Spine', subcategories: ['Fusion', 'Decompression', 'Deformity', 'Other'] },
+          { id: 'hand', name: 'Hand', subcategories: ['Carpal Tunnel', 'Trigger Finger', 'Fracture', 'Tendon', 'Other'] },
+          { id: 'foot-ankle', name: 'Foot & Ankle', subcategories: ['Bunion', 'Ankle Replacement', 'Fracture', 'Other'] },
+          { id: 'pediatric-ortho', name: 'Pediatric', subcategories: ['DDH', 'Clubfoot', 'Scoliosis', 'Other'] },
+          { id: 'oncology', name: 'Oncology', subcategories: ['Tumor Resection', 'Limb Salvage', 'Other'] }
+        ]
+      },
+      // General Surgery
+      general: {
+        name: 'General Surgery',
+        categories: [
+          { id: 'hepatobiliary', name: 'Hepatobiliary', subcategories: ['Cholecystectomy', 'Liver Resection', 'Whipple', 'Other'] },
+          { id: 'colorectal', name: 'Colorectal', subcategories: ['Colectomy', 'LAR', 'APR', 'Hemorrhoidectomy', 'Other'] },
+          { id: 'hernia', name: 'Hernia', subcategories: ['Inguinal', 'Ventral', 'Umbilical', 'Incisional', 'Other'] },
+          { id: 'breast', name: 'Breast', subcategories: ['Lumpectomy', 'Mastectomy', 'Sentinel Node', 'Other'] },
+          { id: 'bariatric', name: 'Bariatric', subcategories: ['Gastric Bypass', 'Sleeve', 'Band', 'Other'] },
+          { id: 'endocrine', name: 'Endocrine', subcategories: ['Thyroidectomy', 'Parathyroidectomy', 'Adrenalectomy', 'Other'] },
+          { id: 'acute-care', name: 'Acute Care', subcategories: ['Appendectomy', 'Bowel Obstruction', 'Trauma', 'Other'] }
+        ]
+      },
+      // Cardiac Surgery
+      cardiac: {
+        name: 'Cardiac Surgery',
+        categories: [
+          { id: 'cabg', name: 'CABG', subcategories: ['On-Pump', 'Off-Pump', 'Redo', 'Other'] },
+          { id: 'valve', name: 'Valve', subcategories: ['AVR', 'MVR', 'TAVR', 'Repair', 'Other'] },
+          { id: 'aorta', name: 'Aortic', subcategories: ['Ascending', 'Arch', 'Descending', 'TEVAR', 'Other'] },
+          { id: 'transplant', name: 'Transplant', subcategories: ['Heart', 'LVAD', 'Other'] },
+          { id: 'congenital', name: 'Congenital', subcategories: ['ASD', 'VSD', 'TOF', 'Other'] }
+        ]
+      },
+      // Vascular Surgery
+      vascular: {
+        name: 'Vascular Surgery',
+        categories: [
+          { id: 'aortic', name: 'Aortic', subcategories: ['AAA Repair', 'EVAR', 'Thoracic', 'Other'] },
+          { id: 'peripheral', name: 'Peripheral', subcategories: ['Bypass', 'Endarterectomy', 'Angioplasty', 'Other'] },
+          { id: 'carotid', name: 'Carotid', subcategories: ['CEA', 'CAS', 'Other'] },
+          { id: 'venous', name: 'Venous', subcategories: ['Varicose Veins', 'DVT', 'IVC Filter', 'Other'] },
+          { id: 'dialysis-access', name: 'Dialysis Access', subcategories: ['Fistula', 'Graft', 'Catheter', 'Other'] }
+        ]
+      },
+      // Plastic Surgery
+      plastic: {
+        name: 'Plastic Surgery',
+        categories: [
+          { id: 'reconstructive', name: 'Reconstructive', subcategories: ['Flap', 'Skin Graft', 'Wound', 'Other'] },
+          { id: 'hand-plastic', name: 'Hand', subcategories: ['Trauma', 'Nerve', 'Tendon', 'Other'] },
+          { id: 'craniofacial', name: 'Craniofacial', subcategories: ['Cleft', 'Craniosynostosis', 'Other'] },
+          { id: 'breast-plastic', name: 'Breast', subcategories: ['Reconstruction', 'Reduction', 'Augmentation', 'Other'] },
+          { id: 'aesthetic', name: 'Aesthetic', subcategories: ['Facelift', 'Rhinoplasty', 'Abdominoplasty', 'Other'] }
+        ]
+      },
+      // ENT / Otolaryngology
+      ent: {
+        name: 'ENT / Otolaryngology',
+        categories: [
+          { id: 'head-neck', name: 'Head & Neck', subcategories: ['Thyroidectomy', 'Parotidectomy', 'Neck Dissection', 'Other'] },
+          { id: 'otology', name: 'Otology', subcategories: ['Cochlear Implant', 'Mastoidectomy', 'Stapedectomy', 'Other'] },
+          { id: 'rhinology', name: 'Rhinology', subcategories: ['Septoplasty', 'FESS', 'Skull Base', 'Other'] },
+          { id: 'laryngology', name: 'Laryngology', subcategories: ['Laryngectomy', 'Microlaryngoscopy', 'Other'] },
+          { id: 'pediatric-ent', name: 'Pediatric', subcategories: ['T&A', 'Myringotomy', 'Other'] }
+        ]
+      },
+      // Urology
+      urology: {
+        name: 'Urology',
+        categories: [
+          { id: 'oncology-uro', name: 'Oncology', subcategories: ['Prostatectomy', 'Nephrectomy', 'Cystectomy', 'TURBT', 'Other'] },
+          { id: 'endourology', name: 'Endourology', subcategories: ['TURP', 'URS', 'PCNL', 'Other'] },
+          { id: 'reconstruction-uro', name: 'Reconstruction', subcategories: ['Urethroplasty', 'Pyeloplasty', 'Other'] },
+          { id: 'female-pelvic', name: 'Female Pelvic', subcategories: ['Sling', 'Prolapse', 'Other'] },
+          { id: 'pediatric-uro', name: 'Pediatric', subcategories: ['Hypospadias', 'Orchiopexy', 'Other'] }
+        ]
+      }
+    };
+  }
+
+  // Role options for case logging
+  getSurgeonRoles() {
+    return [
+      { id: 'primary', name: 'Primary Surgeon', description: 'Performed the critical portions of the case' },
+      { id: 'first-assist', name: 'First Assistant', description: 'Assisted primary surgeon throughout case' },
+      { id: 'second-assist', name: 'Second Assistant', description: 'Additional assistance during case' },
+      { id: 'teaching-assist', name: 'Teaching Assistant', description: 'Supervised and taught during case' },
+      { id: 'observation', name: 'Observation Only', description: 'Observed the case' }
+    ];
+  }
+
+  // Initialize surgical case log
+  async initSurgicalCaseLog() {
+    // Load cases from storage
+    return new Promise((resolve) => {
+      chrome.storage.local.get(['surgicalCases', 'surgicalSettings'], (result) => {
+        this.surgicalCases = result.surgicalCases || {};
+        this.surgicalSettings = result.surgicalSettings || {
+          specialty: 'neurosurgery',
+          defaultRole: 'primary',
+          residencyYear: 'PGY-3',
+          programName: ''
+        };
+        resolve();
+      });
+    });
+  }
+
+  // Show surgical case log button in navigation
+  addSurgicalCaseLogNav() {
+    // Check if already added
+    if (document.getElementById('crm-surgical-case-log-btn')) return;
+
+    const syncSection = this.pipelinesNav?.querySelector('.crm-sync-section');
+    if (!syncSection) return;
+
+    const caseLogBtn = document.createElement('button');
+    caseLogBtn.id = 'crm-surgical-case-log-btn';
+    caseLogBtn.className = 'crm-sync-btn-case';
+    caseLogBtn.title = 'Log surgical cases';
+    caseLogBtn.innerHTML = '🏥 Case Log';
+
+    caseLogBtn.addEventListener('click', () => {
+      this.showSurgicalCaseLog();
+    });
+
+    syncSection.insertBefore(caseLogBtn, syncSection.firstChild);
+  }
+
+  // Show surgical case log main view
+  async showSurgicalCaseLog() {
+    await this.initSurgicalCaseLog();
+
+    // Hide Gmail's main content
+    const gmailMain = document.querySelector('div[role="main"]');
+    if (gmailMain) {
+      gmailMain.style.display = 'none';
+    }
+
+    // Remove existing pipeline view
+    const existing = document.getElementById('crm-pipeline-view');
+    if (existing) {
+      existing.remove();
+    }
+
+    // Create case log view
+    this.pipelineView = document.createElement('div');
+    this.pipelineView.id = 'crm-pipeline-view';
+    this.pipelineView.className = 'crm-pipeline-container crm-case-log-view';
+
+    // Insert view
+    const parent = gmailMain?.parentElement || document.body;
+    parent.appendChild(this.pipelineView);
+
+    this.renderSurgicalCaseLogDashboard();
+  }
+
+  // Render the case log dashboard
+  renderSurgicalCaseLogDashboard() {
+    const cases = Object.values(this.surgicalCases || {}).sort((a, b) =>
+      new Date(b.dateOfSurgery) - new Date(a.dateOfSurgery)
+    );
+
+    // Calculate statistics
+    const stats = this.calculateCaseStats(cases);
+    const categories = this.getSurgicalCategories();
+    const currentSpecialty = categories[this.surgicalSettings?.specialty || 'neurosurgery'];
+
+    this.pipelineView.innerHTML = `
+      <div class="crm-pipeline-header">
+        <div class="crm-pipeline-title">
+          <h1>🏥 Surgical Case Log</h1>
+          <span class="crm-deal-count">${cases.length} Cases Logged • ${currentSpecialty?.name || 'Neurosurgery'}</span>
+        </div>
+        <div class="crm-pipeline-actions">
+          <button class="crm-btn" id="crm-case-settings-btn">⚙️ Settings</button>
+          <button class="crm-btn" id="crm-export-cases-btn">📤 Export</button>
+          <button class="crm-btn-primary" id="crm-add-case-btn">+ Log New Case</button>
+        </div>
+      </div>
+
+      <div class="crm-case-stats-bar">
+        <div class="crm-case-stat">
+          <span class="crm-stat-value">${stats.totalCases}</span>
+          <span class="crm-stat-label">Total Cases</span>
+        </div>
+        <div class="crm-case-stat">
+          <span class="crm-stat-value">${stats.primaryCases}</span>
+          <span class="crm-stat-label">As Primary</span>
+        </div>
+        <div class="crm-case-stat">
+          <span class="crm-stat-value">${stats.firstAssistCases}</span>
+          <span class="crm-stat-label">First Assist</span>
+        </div>
+        <div class="crm-case-stat">
+          <span class="crm-stat-value">${stats.thisMonth}</span>
+          <span class="crm-stat-label">This Month</span>
+        </div>
+        <div class="crm-case-stat">
+          <span class="crm-stat-value">${stats.thisYear}</span>
+          <span class="crm-stat-label">This Year</span>
+        </div>
+      </div>
+
+      <div class="crm-case-log-layout">
+        <div class="crm-case-input-panel">
+          <div class="crm-case-input-header">
+            <h3>📝 Quick Case Entry</h3>
+            <p>Describe your case in plain text - AI will extract the details</p>
+          </div>
+          <textarea id="crm-case-text-input" class="crm-case-textarea" placeholder="Example: Today I did an L4-5 microdiscectomy on a 45 year old male with radiculopathy. I was the primary surgeon with Dr. Smith attending. The case went well with no complications.
+
+Or try: Right frontal craniotomy for meningioma resection, 62yo female, first assist to Dr. Johnson, EBL 200cc, GTR achieved"></textarea>
+          <button class="crm-btn-primary crm-btn-full" id="crm-parse-case-btn">
+            🤖 Parse Case with AI
+          </button>
+          <div class="crm-divider-or">
+            <span>or</span>
+          </div>
+          <button class="crm-btn crm-btn-full" id="crm-manual-case-btn">
+            ✏️ Enter Manually
+          </button>
+        </div>
+
+        <div class="crm-case-list-panel">
+          <div class="crm-case-list-header">
+            <h3>📋 Recent Cases</h3>
+            <input type="text" id="crm-case-search" placeholder="Search cases..." class="crm-input" />
+          </div>
+          <div class="crm-case-list" id="crm-case-list">
+            ${cases.length === 0 ? `
+              <div class="crm-empty-state">
+                <div class="crm-empty-icon">📋</div>
+                <p>No cases logged yet</p>
+                <p class="crm-empty-hint">Use the quick entry panel to log your first case!</p>
+              </div>
+            ` : cases.map(c => this.renderCaseCard(c)).join('')}
+          </div>
+        </div>
+
+        <div class="crm-case-breakdown-panel">
+          <h3>📊 Case Breakdown</h3>
+          <div class="crm-breakdown-section">
+            <h4>By Category</h4>
+            ${this.renderCategoryBreakdown(stats.byCategory)}
+          </div>
+          <div class="crm-breakdown-section">
+            <h4>By Role</h4>
+            ${this.renderRoleBreakdown(stats.byRole)}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add event listeners
+    document.getElementById('crm-add-case-btn')?.addEventListener('click', () => {
+      this.showManualCaseEntry();
+    });
+
+    document.getElementById('crm-manual-case-btn')?.addEventListener('click', () => {
+      this.showManualCaseEntry();
+    });
+
+    document.getElementById('crm-parse-case-btn')?.addEventListener('click', () => {
+      this.parseCaseWithAI();
+    });
+
+    document.getElementById('crm-export-cases-btn')?.addEventListener('click', () => {
+      this.showExportOptions();
+    });
+
+    document.getElementById('crm-case-settings-btn')?.addEventListener('click', () => {
+      this.showCaseLogSettings();
+    });
+
+    document.getElementById('crm-case-search')?.addEventListener('input', (e) => {
+      this.filterCases(e.target.value);
+    });
+
+    // Add click handlers for case cards
+    document.querySelectorAll('.crm-case-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const caseId = card.dataset.caseId;
+        this.showCaseDetails(caseId);
+      });
+    });
+  }
+
+  // Calculate case statistics
+  calculateCaseStats(cases) {
+    const now = new Date();
+    const thisMonth = now.getMonth();
+    const thisYear = now.getFullYear();
+
+    const stats = {
+      totalCases: cases.length,
+      primaryCases: 0,
+      firstAssistCases: 0,
+      thisMonth: 0,
+      thisYear: 0,
+      byCategory: {},
+      byRole: {}
+    };
+
+    cases.forEach(c => {
+      const caseDate = new Date(c.dateOfSurgery);
+
+      // Role counts
+      if (c.role === 'primary') stats.primaryCases++;
+      if (c.role === 'first-assist') stats.firstAssistCases++;
+
+      // Time-based counts
+      if (caseDate.getMonth() === thisMonth && caseDate.getFullYear() === thisYear) {
+        stats.thisMonth++;
+      }
+      if (caseDate.getFullYear() === thisYear) {
+        stats.thisYear++;
+      }
+
+      // Category breakdown
+      const category = c.category || 'Other';
+      stats.byCategory[category] = (stats.byCategory[category] || 0) + 1;
+
+      // Role breakdown
+      const role = c.role || 'primary';
+      stats.byRole[role] = (stats.byRole[role] || 0) + 1;
+    });
+
+    return stats;
+  }
+
+  // Render a case card
+  renderCaseCard(caseData) {
+    const date = new Date(caseData.dateOfSurgery);
+    const formattedDate = date.toLocaleDateString('en-US', {
+      month: 'short',
+      day: 'numeric',
+      year: date.getFullYear() !== new Date().getFullYear() ? 'numeric' : undefined
+    });
+
+    const roleLabels = {
+      'primary': 'Primary',
+      'first-assist': '1st Assist',
+      'second-assist': '2nd Assist',
+      'teaching-assist': 'Teaching',
+      'observation': 'Observed'
+    };
+
+    const roleColors = {
+      'primary': '#34a853',
+      'first-assist': '#4285f4',
+      'second-assist': '#fbbc05',
+      'teaching-assist': '#9c27b0',
+      'observation': '#9aa0a6'
+    };
+
+    return `
+      <div class="crm-case-card" data-case-id="${caseData.id}">
+        <div class="crm-case-card-header">
+          <span class="crm-case-date">${formattedDate}</span>
+          <span class="crm-case-role" style="background: ${roleColors[caseData.role] || '#9aa0a6'}">
+            ${roleLabels[caseData.role] || 'Unknown'}
+          </span>
+        </div>
+        <div class="crm-case-procedure">${caseData.procedure || 'Unknown Procedure'}</div>
+        <div class="crm-case-details">
+          <span class="crm-case-category">${caseData.category || 'General'}</span>
+          ${caseData.patientAge ? `<span>• ${caseData.patientAge}${caseData.patientGender ? ` ${caseData.patientGender}` : ''}</span>` : ''}
+        </div>
+        ${caseData.attending ? `<div class="crm-case-attending">w/ Dr. ${caseData.attending}</div>` : ''}
+      </div>
+    `;
+  }
+
+  // Render category breakdown
+  renderCategoryBreakdown(byCategory) {
+    const entries = Object.entries(byCategory).sort((a, b) => b[1] - a[1]);
+    if (entries.length === 0) {
+      return '<p class="crm-empty-hint">No cases yet</p>';
+    }
+
+    return entries.slice(0, 8).map(([category, count]) => `
+      <div class="crm-breakdown-item">
+        <span class="crm-breakdown-label">${category}</span>
+        <span class="crm-breakdown-count">${count}</span>
+      </div>
+    `).join('');
+  }
+
+  // Render role breakdown
+  renderRoleBreakdown(byRole) {
+    const roleLabels = {
+      'primary': 'Primary',
+      'first-assist': 'First Assist',
+      'second-assist': 'Second Assist',
+      'teaching-assist': 'Teaching',
+      'observation': 'Observation'
+    };
+
+    const entries = Object.entries(byRole);
+    if (entries.length === 0) {
+      return '<p class="crm-empty-hint">No cases yet</p>';
+    }
+
+    return entries.map(([role, count]) => `
+      <div class="crm-breakdown-item">
+        <span class="crm-breakdown-label">${roleLabels[role] || role}</span>
+        <span class="crm-breakdown-count">${count}</span>
+      </div>
+    `).join('');
+  }
+
+  // Parse case description with Gemini AI
+  async parseCaseWithAI() {
+    const textInput = document.getElementById('crm-case-text-input');
+    const caseDescription = textInput?.value?.trim();
+
+    if (!caseDescription) {
+      this.showNotification('⚠️ Please enter a case description first');
+      return;
+    }
+
+    // Check Gemini settings
+    const settings = await new Promise(resolve => {
+      chrome.storage.local.get(['geminiApiKey', 'geminiEnabled'], resolve);
+    });
+
+    if (!settings.geminiApiKey) {
+      this.showNotification('⚠️ Please configure Gemini API key in settings first');
+      this.showGeminiSettings();
+      return;
+    }
+
+    const parseBtn = document.getElementById('crm-parse-case-btn');
+    if (parseBtn) {
+      parseBtn.disabled = true;
+      parseBtn.innerHTML = '⏳ Parsing...';
+    }
+
+    try {
+      const caseData = await this.analyzeCaseWithGemini(caseDescription, settings.geminiApiKey);
+
+      if (caseData) {
+        // Show the parsed case for review/edit
+        this.showCaseReview(caseData, caseDescription);
+      } else {
+        this.showNotification('❌ Could not parse case description. Please try again or enter manually.');
+      }
+    } catch (error) {
+      console.error('Error parsing case:', error);
+      this.showNotification('❌ Error parsing case. Please try again.');
+    } finally {
+      if (parseBtn) {
+        parseBtn.disabled = false;
+        parseBtn.innerHTML = '🤖 Parse Case with AI';
+      }
+    }
+  }
+
+  // Analyze case with Gemini
+  async analyzeCaseWithGemini(description, apiKey) {
+    const categories = this.getSurgicalCategories();
+    const specialty = this.surgicalSettings?.specialty || 'neurosurgery';
+    const specialtyData = categories[specialty];
+
+    const prompt = `You are a surgical case log assistant. Parse the following surgical case description and extract structured data.
+
+Specialty: ${specialtyData?.name || 'Neurosurgery'}
+Available categories: ${specialtyData?.categories.map(c => c.name).join(', ')}
+
+Case description:
+"${description}"
+
+Extract the following information (use null if not mentioned):
+- procedure: The main surgical procedure performed (be specific)
+- category: Best matching category from the list above
+- subcategory: More specific type of procedure
+- patientAge: Patient age (number only)
+- patientGender: M, F, or null
+- role: One of: primary, first-assist, second-assist, teaching-assist, observation
+- attending: Name of attending/supervising surgeon (without Dr. prefix)
+- dateOfSurgery: Date of surgery (ISO format) or "today" if mentioned as today
+- duration: Case duration in minutes (number only)
+- ebl: Estimated blood loss in mL (number only)
+- complications: Any complications mentioned (string or null)
+- notes: Any additional relevant notes
+- diagnosis: Primary diagnosis
+- approach: Surgical approach if mentioned (e.g., open, laparoscopic, robotic, microscopic)
+- cptCodes: Array of likely CPT codes for this procedure (common codes)
+
+Return ONLY valid JSON in this exact format:
+{
+  "procedure": "string",
+  "category": "string",
+  "subcategory": "string",
+  "patientAge": number or null,
+  "patientGender": "M" or "F" or null,
+  "role": "string",
+  "attending": "string or null",
+  "dateOfSurgery": "ISO date string or null",
+  "duration": number or null,
+  "ebl": number or null,
+  "complications": "string or null",
+  "notes": "string or null",
+  "diagnosis": "string or null",
+  "approach": "string or null",
+  "cptCodes": ["array", "of", "codes"]
+}`;
+
+    try {
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${apiKey}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{
+              text: prompt
+            }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Gemini API error: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+
+      console.log('Case parse response:', text);
+
+      // Extract JSON from response
+      const jsonMatch = text.match(/\{[\s\S]*\}/);
+      if (jsonMatch) {
+        const parsed = JSON.parse(jsonMatch[0]);
+
+        // Handle "today" date
+        if (parsed.dateOfSurgery === 'today' || !parsed.dateOfSurgery) {
+          parsed.dateOfSurgery = new Date().toISOString().split('T')[0];
+        }
+
+        return parsed;
+      }
+
+      return null;
+    } catch (error) {
+      console.error('Error calling Gemini API for case parsing:', error);
+      return null;
+    }
+  }
+
+  // Show case review modal after AI parsing
+  showCaseReview(caseData, originalDescription) {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+
+    const categories = this.getSurgicalCategories();
+    const specialty = this.surgicalSettings?.specialty || 'neurosurgery';
+    const specialtyData = categories[specialty];
+    const roles = this.getSurgeonRoles();
+
+    modal.innerHTML = `
+      <div class="crm-modal-content crm-modal-large">
+        <h2>✅ Review Parsed Case</h2>
+        <p class="crm-modal-subtitle">AI has extracted the following details. Please review and edit if needed.</p>
+
+        <div class="crm-case-form-grid">
+          <div class="crm-form-group">
+            <label>Procedure *</label>
+            <input type="text" id="crm-case-procedure" class="crm-input" value="${caseData.procedure || ''}" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>Date of Surgery *</label>
+            <input type="date" id="crm-case-date" class="crm-input" value="${caseData.dateOfSurgery || new Date().toISOString().split('T')[0]}" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>Category</label>
+            <select id="crm-case-category" class="crm-input">
+              ${specialtyData?.categories.map(cat =>
+                `<option value="${cat.id}" ${cat.name === caseData.category ? 'selected' : ''}>${cat.name}</option>`
+              ).join('')}
+            </select>
+          </div>
+
+          <div class="crm-form-group">
+            <label>Your Role *</label>
+            <select id="crm-case-role" class="crm-input">
+              ${roles.map(r =>
+                `<option value="${r.id}" ${r.id === caseData.role ? 'selected' : ''}>${r.name}</option>`
+              ).join('')}
+            </select>
+          </div>
+
+          <div class="crm-form-group">
+            <label>Patient Age</label>
+            <input type="number" id="crm-case-age" class="crm-input" value="${caseData.patientAge || ''}" placeholder="e.g., 45" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>Patient Gender</label>
+            <select id="crm-case-gender" class="crm-input">
+              <option value="">Not specified</option>
+              <option value="M" ${caseData.patientGender === 'M' ? 'selected' : ''}>Male</option>
+              <option value="F" ${caseData.patientGender === 'F' ? 'selected' : ''}>Female</option>
+            </select>
+          </div>
+
+          <div class="crm-form-group">
+            <label>Attending Surgeon</label>
+            <input type="text" id="crm-case-attending" class="crm-input" value="${caseData.attending || ''}" placeholder="e.g., Smith" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>Duration (minutes)</label>
+            <input type="number" id="crm-case-duration" class="crm-input" value="${caseData.duration || ''}" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>Diagnosis</label>
+            <input type="text" id="crm-case-diagnosis" class="crm-input" value="${caseData.diagnosis || ''}" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>Approach</label>
+            <input type="text" id="crm-case-approach" class="crm-input" value="${caseData.approach || ''}" placeholder="e.g., microscopic, endoscopic" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>EBL (mL)</label>
+            <input type="number" id="crm-case-ebl" class="crm-input" value="${caseData.ebl || ''}" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>CPT Codes</label>
+            <input type="text" id="crm-case-cpt" class="crm-input" value="${(caseData.cptCodes || []).join(', ')}" placeholder="e.g., 63030, 63035" />
+          </div>
+
+          <div class="crm-form-group crm-form-full">
+            <label>Complications</label>
+            <input type="text" id="crm-case-complications" class="crm-input" value="${caseData.complications || ''}" placeholder="None" />
+          </div>
+
+          <div class="crm-form-group crm-form-full">
+            <label>Notes</label>
+            <textarea id="crm-case-notes" class="crm-input crm-textarea">${caseData.notes || ''}</textarea>
+          </div>
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-case">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-case">💾 Save Case</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-case')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-case')?.addEventListener('click', () => {
+      this.saveCaseFromForm(modal, originalDescription);
+    });
+  }
+
+  // Show manual case entry form
+  showManualCaseEntry() {
+    const caseData = {
+      procedure: '',
+      category: '',
+      role: this.surgicalSettings?.defaultRole || 'primary',
+      patientAge: null,
+      patientGender: '',
+      attending: '',
+      dateOfSurgery: new Date().toISOString().split('T')[0],
+      duration: null,
+      ebl: null,
+      complications: '',
+      notes: '',
+      diagnosis: '',
+      approach: '',
+      cptCodes: []
+    };
+
+    this.showCaseReview(caseData, '');
+  }
+
+  // Save case from form
+  async saveCaseFromForm(modal, originalDescription) {
+    const categories = this.getSurgicalCategories();
+    const specialty = this.surgicalSettings?.specialty || 'neurosurgery';
+    const specialtyData = categories[specialty];
+
+    const procedure = document.getElementById('crm-case-procedure')?.value?.trim();
+    const dateOfSurgery = document.getElementById('crm-case-date')?.value;
+    const role = document.getElementById('crm-case-role')?.value;
+
+    if (!procedure) {
+      this.showNotification('⚠️ Procedure is required');
+      return;
+    }
+
+    if (!dateOfSurgery) {
+      this.showNotification('⚠️ Date of surgery is required');
+      return;
+    }
+
+    const categoryId = document.getElementById('crm-case-category')?.value;
+    const categoryData = specialtyData?.categories.find(c => c.id === categoryId);
+
+    const caseId = 'case_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    const cptInput = document.getElementById('crm-case-cpt')?.value || '';
+    const cptCodes = cptInput.split(',').map(c => c.trim()).filter(c => c);
+
+    const surgicalCase = {
+      id: caseId,
+      procedure: procedure,
+      category: categoryData?.name || 'Other',
+      categoryId: categoryId,
+      role: role,
+      patientAge: parseInt(document.getElementById('crm-case-age')?.value) || null,
+      patientGender: document.getElementById('crm-case-gender')?.value || null,
+      attending: document.getElementById('crm-case-attending')?.value?.trim() || null,
+      dateOfSurgery: dateOfSurgery,
+      duration: parseInt(document.getElementById('crm-case-duration')?.value) || null,
+      ebl: parseInt(document.getElementById('crm-case-ebl')?.value) || null,
+      complications: document.getElementById('crm-case-complications')?.value?.trim() || null,
+      notes: document.getElementById('crm-case-notes')?.value?.trim() || null,
+      diagnosis: document.getElementById('crm-case-diagnosis')?.value?.trim() || null,
+      approach: document.getElementById('crm-case-approach')?.value?.trim() || null,
+      cptCodes: cptCodes,
+      specialty: specialty,
+      originalDescription: originalDescription,
+      createdAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString()
+    };
+
+    // Save to storage
+    this.surgicalCases = this.surgicalCases || {};
+    this.surgicalCases[caseId] = surgicalCase;
+
+    await new Promise(resolve => {
+      chrome.storage.local.set({ surgicalCases: this.surgicalCases }, resolve);
+    });
+
+    modal.remove();
+    this.showNotification('✅ Case logged successfully!');
+
+    // Clear the text input and refresh dashboard
+    const textInput = document.getElementById('crm-case-text-input');
+    if (textInput) textInput.value = '';
+
+    this.renderSurgicalCaseLogDashboard();
+  }
+
+  // Show case details
+  showCaseDetails(caseId) {
+    const caseData = this.surgicalCases?.[caseId];
+    if (!caseData) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+
+    const roleLabels = {
+      'primary': 'Primary Surgeon',
+      'first-assist': 'First Assistant',
+      'second-assist': 'Second Assistant',
+      'teaching-assist': 'Teaching Assistant',
+      'observation': 'Observation'
+    };
+
+    const date = new Date(caseData.dateOfSurgery);
+    const formattedDate = date.toLocaleDateString('en-US', {
+      weekday: 'long',
+      year: 'numeric',
+      month: 'long',
+      day: 'numeric'
+    });
+
+    modal.innerHTML = `
+      <div class="crm-modal-content crm-modal-large">
+        <h2>📋 Case Details</h2>
+
+        <div class="crm-case-detail-grid">
+          <div class="crm-case-detail-main">
+            <h3>${caseData.procedure}</h3>
+            <p class="crm-case-detail-date">${formattedDate}</p>
+
+            <div class="crm-case-detail-badges">
+              <span class="crm-badge crm-badge-role">${roleLabels[caseData.role] || 'Unknown Role'}</span>
+              <span class="crm-badge crm-badge-category">${caseData.category || 'General'}</span>
+              ${caseData.approach ? `<span class="crm-badge">${caseData.approach}</span>` : ''}
+            </div>
+          </div>
+
+          <div class="crm-case-detail-row">
+            <div class="crm-case-detail-item">
+              <label>Patient</label>
+              <span>${caseData.patientAge ? `${caseData.patientAge}yo` : 'Unknown'} ${caseData.patientGender || ''}</span>
+            </div>
+            <div class="crm-case-detail-item">
+              <label>Diagnosis</label>
+              <span>${caseData.diagnosis || 'Not specified'}</span>
+            </div>
+            <div class="crm-case-detail-item">
+              <label>Attending</label>
+              <span>${caseData.attending ? `Dr. ${caseData.attending}` : 'Not specified'}</span>
+            </div>
+          </div>
+
+          <div class="crm-case-detail-row">
+            <div class="crm-case-detail-item">
+              <label>Duration</label>
+              <span>${caseData.duration ? `${caseData.duration} min` : 'Not recorded'}</span>
+            </div>
+            <div class="crm-case-detail-item">
+              <label>EBL</label>
+              <span>${caseData.ebl !== null ? `${caseData.ebl} mL` : 'Not recorded'}</span>
+            </div>
+            <div class="crm-case-detail-item">
+              <label>Complications</label>
+              <span>${caseData.complications || 'None'}</span>
+            </div>
+          </div>
+
+          ${caseData.cptCodes?.length ? `
+            <div class="crm-case-detail-section">
+              <label>CPT Codes</label>
+              <div class="crm-cpt-codes">
+                ${caseData.cptCodes.map(c => `<span class="crm-cpt-code">${c}</span>`).join('')}
+              </div>
+            </div>
+          ` : ''}
+
+          ${caseData.notes ? `
+            <div class="crm-case-detail-section">
+              <label>Notes</label>
+              <p>${caseData.notes}</p>
+            </div>
+          ` : ''}
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn crm-btn-danger" id="crm-delete-case">🗑️ Delete</button>
+          <button class="crm-btn" id="crm-edit-case">✏️ Edit</button>
+          <button class="crm-btn-primary" id="crm-close-case">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-close-case')?.addEventListener('click', () => modal.remove());
+
+    document.getElementById('crm-delete-case')?.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to delete this case?')) {
+        delete this.surgicalCases[caseId];
+        await new Promise(resolve => {
+          chrome.storage.local.set({ surgicalCases: this.surgicalCases }, resolve);
+        });
+        modal.remove();
+        this.showNotification('🗑️ Case deleted');
+        this.renderSurgicalCaseLogDashboard();
+      }
+    });
+
+    document.getElementById('crm-edit-case')?.addEventListener('click', () => {
+      modal.remove();
+      this.showCaseReview(caseData, caseData.originalDescription || '');
+    });
+  }
+
+  // Show export options
+  showExportOptions() {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>📤 Export Cases</h2>
+        <p style="color: #5f6368; margin-bottom: 20px;">Export your surgical case log for submission to residency boards or for your records.</p>
+
+        <div class="crm-export-options">
+          <button class="crm-export-btn" id="crm-export-abns">
+            <span class="crm-export-icon">🧠</span>
+            <span class="crm-export-title">ABNS Format</span>
+            <span class="crm-export-desc">American Board of Neurological Surgery</span>
+          </button>
+
+          <button class="crm-export-btn" id="crm-export-acgme">
+            <span class="crm-export-icon">📊</span>
+            <span class="crm-export-title">ACGME Format</span>
+            <span class="crm-export-desc">Standard residency case log format</span>
+          </button>
+
+          <button class="crm-export-btn" id="crm-export-csv">
+            <span class="crm-export-icon">📁</span>
+            <span class="crm-export-title">CSV Export</span>
+            <span class="crm-export-desc">For Excel, Google Sheets, etc.</span>
+          </button>
+
+          <button class="crm-export-btn" id="crm-export-json">
+            <span class="crm-export-icon">💾</span>
+            <span class="crm-export-title">JSON Backup</span>
+            <span class="crm-export-desc">Full data backup</span>
+          </button>
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-export">Close</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-export')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-export-abns')?.addEventListener('click', () => this.exportABNS(modal));
+    document.getElementById('crm-export-acgme')?.addEventListener('click', () => this.exportACGME(modal));
+    document.getElementById('crm-export-csv')?.addEventListener('click', () => this.exportCSV(modal));
+    document.getElementById('crm-export-json')?.addEventListener('click', () => this.exportJSON(modal));
+  }
+
+  // Export to ABNS format
+  exportABNS(modal) {
+    const cases = Object.values(this.surgicalCases || {});
+
+    // ABNS-compatible format
+    const headers = [
+      'Date', 'Procedure', 'Category', 'CPT Code(s)',
+      'Role', 'Patient Age', 'Patient Sex', 'Diagnosis',
+      'Attending', 'Duration (min)', 'EBL (mL)', 'Complications'
+    ];
+
+    const rows = cases.map(c => [
+      c.dateOfSurgery,
+      c.procedure,
+      c.category,
+      (c.cptCodes || []).join('; '),
+      this.formatRoleForExport(c.role),
+      c.patientAge || '',
+      c.patientGender || '',
+      c.diagnosis || '',
+      c.attending || '',
+      c.duration || '',
+      c.ebl || '',
+      c.complications || 'None'
+    ]);
+
+    this.downloadCSV(headers, rows, 'surgical_cases_abns.csv');
+    modal.remove();
+    this.showNotification('📥 ABNS export downloaded');
+  }
+
+  // Export to ACGME format
+  exportACGME(modal) {
+    const cases = Object.values(this.surgicalCases || {});
+
+    const headers = [
+      'Date of Service', 'Procedure Name', 'CPT Code',
+      'Resident Role', 'PGY Level', 'Patient Age', 'Patient Sex',
+      'Primary Diagnosis', 'Setting', 'Attending Physician'
+    ];
+
+    const rows = cases.map(c => [
+      c.dateOfSurgery,
+      c.procedure,
+      (c.cptCodes || [])[0] || '',
+      this.formatRoleForExport(c.role),
+      this.surgicalSettings?.residencyYear || '',
+      c.patientAge || '',
+      c.patientGender || '',
+      c.diagnosis || '',
+      'OR',
+      c.attending || ''
+    ]);
+
+    this.downloadCSV(headers, rows, 'surgical_cases_acgme.csv');
+    modal.remove();
+    this.showNotification('📥 ACGME export downloaded');
+  }
+
+  // Export to CSV
+  exportCSV(modal) {
+    const cases = Object.values(this.surgicalCases || {});
+
+    const headers = [
+      'ID', 'Date', 'Procedure', 'Category', 'Subcategory', 'Role',
+      'Patient Age', 'Patient Gender', 'Diagnosis', 'Approach',
+      'Attending', 'Duration (min)', 'EBL (mL)', 'Complications',
+      'CPT Codes', 'Notes', 'Created At'
+    ];
+
+    const rows = cases.map(c => [
+      c.id,
+      c.dateOfSurgery,
+      c.procedure,
+      c.category,
+      c.subcategory || '',
+      c.role,
+      c.patientAge || '',
+      c.patientGender || '',
+      c.diagnosis || '',
+      c.approach || '',
+      c.attending || '',
+      c.duration || '',
+      c.ebl || '',
+      c.complications || '',
+      (c.cptCodes || []).join('; '),
+      c.notes || '',
+      c.createdAt
+    ]);
+
+    this.downloadCSV(headers, rows, 'surgical_cases_full.csv');
+    modal.remove();
+    this.showNotification('📥 CSV export downloaded');
+  }
+
+  // Export to JSON
+  exportJSON(modal) {
+    const data = {
+      exportDate: new Date().toISOString(),
+      settings: this.surgicalSettings,
+      cases: this.surgicalCases
+    };
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'surgical_cases_backup.json';
+    a.click();
+    URL.revokeObjectURL(url);
+
+    modal.remove();
+    this.showNotification('📥 JSON backup downloaded');
+  }
+
+  // Helper: Download CSV
+  downloadCSV(headers, rows, filename) {
+    const escapeCSV = (val) => {
+      if (val === null || val === undefined) return '';
+      const str = String(val);
+      if (str.includes(',') || str.includes('"') || str.includes('\n')) {
+        return `"${str.replace(/"/g, '""')}"`;
+      }
+      return str;
+    };
+
+    const csv = [
+      headers.map(escapeCSV).join(','),
+      ...rows.map(row => row.map(escapeCSV).join(','))
+    ].join('\n');
+
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(url);
+  }
+
+  // Format role for export
+  formatRoleForExport(role) {
+    const mapping = {
+      'primary': 'Primary Surgeon',
+      'first-assist': 'First Assistant',
+      'second-assist': 'Second Assistant',
+      'teaching-assist': 'Teaching Assistant',
+      'observation': 'Observer'
+    };
+    return mapping[role] || role;
+  }
+
+  // Filter cases in the list
+  filterCases(searchTerm) {
+    const caseCards = document.querySelectorAll('.crm-case-card');
+    const term = searchTerm.toLowerCase();
+
+    caseCards.forEach(card => {
+      const caseId = card.dataset.caseId;
+      const caseData = this.surgicalCases?.[caseId];
+
+      if (!caseData) {
+        card.style.display = 'none';
+        return;
+      }
+
+      const searchText = [
+        caseData.procedure,
+        caseData.category,
+        caseData.diagnosis,
+        caseData.attending,
+        caseData.notes
+      ].filter(Boolean).join(' ').toLowerCase();
+
+      card.style.display = searchText.includes(term) ? 'block' : 'none';
+    });
+  }
+
+  // Show case log settings
+  showCaseLogSettings() {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+
+    const categories = this.getSurgicalCategories();
+    const roles = this.getSurgeonRoles();
+
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>⚙️ Case Log Settings</h2>
+
+        <div class="crm-form-group">
+          <label>Surgical Specialty</label>
+          <select id="crm-settings-specialty" class="crm-input">
+            ${Object.entries(categories).map(([id, data]) =>
+              `<option value="${id}" ${this.surgicalSettings?.specialty === id ? 'selected' : ''}>${data.name}</option>`
+            ).join('')}
+          </select>
+        </div>
+
+        <div class="crm-form-group">
+          <label>Default Role</label>
+          <select id="crm-settings-role" class="crm-input">
+            ${roles.map(r =>
+              `<option value="${r.id}" ${this.surgicalSettings?.defaultRole === r.id ? 'selected' : ''}>${r.name}</option>`
+            ).join('')}
+          </select>
+        </div>
+
+        <div class="crm-form-group">
+          <label>Residency Year</label>
+          <select id="crm-settings-pgy" class="crm-input">
+            ${['PGY-1', 'PGY-2', 'PGY-3', 'PGY-4', 'PGY-5', 'PGY-6', 'PGY-7', 'Fellow', 'Attending'].map(year =>
+              `<option value="${year}" ${this.surgicalSettings?.residencyYear === year ? 'selected' : ''}>${year}</option>`
+            ).join('')}
+          </select>
+        </div>
+
+        <div class="crm-form-group">
+          <label>Program Name</label>
+          <input type="text" id="crm-settings-program" class="crm-input"
+                 value="${this.surgicalSettings?.programName || ''}"
+                 placeholder="e.g., Johns Hopkins Neurosurgery" />
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-settings">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-settings">Save</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-settings')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-settings')?.addEventListener('click', async () => {
+      this.surgicalSettings = {
+        specialty: document.getElementById('crm-settings-specialty').value,
+        defaultRole: document.getElementById('crm-settings-role').value,
+        residencyYear: document.getElementById('crm-settings-pgy').value,
+        programName: document.getElementById('crm-settings-program').value.trim()
+      };
+
+      await new Promise(resolve => {
+        chrome.storage.local.set({ surgicalSettings: this.surgicalSettings }, resolve);
+      });
+
+      modal.remove();
+      this.showNotification('✅ Settings saved');
+      this.renderSurgicalCaseLogDashboard();
+    });
   }
 }
 
