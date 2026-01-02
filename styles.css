@@ -1,131 +1,266 @@
-/* Gmail CRM Styles */
+/* Gmail CRM Styles - Streak-like interface */
 
-/* Sidebar */
-.gmail-crm-sidebar {
-  position: fixed;
-  right: 0;
-  top: 0;
-  width: 350px;
-  height: 100vh;
-  background: #ffffff;
-  border-left: 1px solid #e0e0e0;
-  box-shadow: -2px 0 8px rgba(0, 0, 0, 0.1);
-  z-index: 9999;
-  display: flex;
-  flex-direction: column;
-  transition: transform 0.3s ease;
+/* ========== Pipelines Navigation (Left Sidebar) ========== */
+.crm-pipelines-section {
+  margin: 8px 0;
+  border-top: 1px solid #e8eaed;
+  padding-top: 8px;
 }
 
-.gmail-crm-sidebar.collapsed {
-  transform: translateX(100%);
-}
-
-.crm-sidebar-header {
-  background: #1a73e8;
-  color: white;
-  padding: 16px;
+.crm-nav-header {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  border-bottom: 1px solid #1557b0;
+  padding: 4px 16px 4px 24px;
+  margin-bottom: 4px;
 }
 
-.crm-sidebar-header h3 {
-  margin: 0;
-  font-size: 18px;
+.crm-nav-title {
+  font-size: 14px;
+  color: #5f6368;
   font-weight: 500;
+  letter-spacing: 0.25px;
 }
 
-#crm-close-btn {
+.crm-nav-add {
   background: transparent;
   border: none;
-  color: white;
-  font-size: 24px;
+  color: #5f6368;
+  font-size: 20px;
   cursor: pointer;
   padding: 0;
-  width: 30px;
-  height: 30px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
   display: flex;
   align-items: center;
   justify-content: center;
-  border-radius: 4px;
 }
 
-#crm-close-btn:hover {
-  background: rgba(255, 255, 255, 0.1);
+.crm-nav-add:hover {
+  background: #f1f3f4;
 }
 
-.crm-sidebar-content {
-  flex: 1;
-  overflow-y: auto;
-  padding: 16px;
+.crm-nav-list {
+  padding: 0;
 }
 
-/* Sections */
-.crm-section {
-  margin-bottom: 20px;
+.crm-nav-item {
+  display: flex;
+  align-items: center;
+  padding: 8px 16px 8px 24px;
+  cursor: pointer;
+  border-radius: 0 16px 16px 0;
+  margin-right: 8px;
+  transition: background-color 0.2s;
 }
 
-.crm-section h4 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
+.crm-nav-item:hover {
+  background: #f1f3f4;
+}
+
+.crm-nav-item.active {
+  background: #d3e3fd;
+}
+
+.crm-nav-item.active .crm-nav-name {
+  color: #001d35;
   font-weight: 500;
+}
+
+.crm-nav-icon {
+  margin-right: 12px;
+  font-size: 16px;
+}
+
+.crm-nav-name {
+  font-size: 14px;
   color: #202124;
 }
 
-.crm-section h5 {
-  margin: 0 0 8px 0;
-  font-size: 14px;
+/* ========== Pipeline View Container ========== */
+.crm-pipeline-container {
+  position: fixed;
+  top: 64px;
+  left: 256px;
+  right: 0;
+  bottom: 0;
+  background: #f8f9fa;
+  overflow: auto;
+  z-index: 100;
+}
+
+/* ========== Pipeline Header ========== */
+.crm-pipeline-header {
+  background: white;
+  padding: 16px 24px;
+  border-bottom: 1px solid #e8eaed;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.crm-pipeline-title h1 {
+  font-size: 22px;
+  font-weight: 400;
+  color: #202124;
+  margin: 0 0 4px 0;
+}
+
+.crm-deal-count {
+  font-size: 13px;
+  color: #5f6368;
+}
+
+.crm-pipeline-actions {
+  display: flex;
+  gap: 8px;
+}
+
+/* ========== Stage Headers Bar ========== */
+.crm-stages-bar {
+  display: flex;
+  background: white;
+  border-bottom: 1px solid #e8eaed;
+  overflow-x: auto;
+}
+
+.crm-stage-header {
+  flex: 1;
+  min-width: 100px;
+  padding: 12px 16px;
+  text-align: center;
+  color: white;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 4px;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.crm-stage-header:hover {
+  opacity: 0.9;
+}
+
+.crm-stage-count {
+  font-size: 20px;
+  font-weight: 600;
+}
+
+.crm-stage-name {
+  font-size: 12px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* ========== Deals Table ========== */
+.crm-deals-table-container {
+  background: white;
+  margin: 16px 24px;
+  border-radius: 8px;
+  box-shadow: 0 1px 2px rgba(60, 64, 67, 0.3), 0 1px 3px 1px rgba(60, 64, 67, 0.15);
+  overflow: hidden;
+}
+
+.crm-deals-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.crm-deals-table thead {
+  background: #f8f9fa;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.crm-deals-table th {
+  text-align: left;
+  padding: 12px 16px;
   font-weight: 500;
   color: #5f6368;
-}
-
-.crm-subtitle {
   font-size: 12px;
-  color: #5f6368;
-  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
 }
 
-.thread-id {
-  font-size: 12px;
-  color: #5f6368;
-  font-family: monospace;
-  margin-bottom: 16px;
+.crm-deals-table tbody {
+  background: white;
 }
 
-/* Form elements */
-.crm-select,
-.crm-input,
-.crm-textarea {
-  width: 100%;
-  padding: 8px 12px;
+/* Stage group row */
+.crm-stage-row {
+  background: #f8f9fa;
+  cursor: pointer;
+}
+
+.crm-stage-group {
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #202124;
+  position: relative;
+}
+
+.crm-stage-row.drag-over .crm-stage-group {
+  background: #e8f0fe !important;
+}
+
+.crm-add-to-stage {
+  float: right;
+  background: transparent;
   border: 1px solid #dadce0;
   border-radius: 4px;
-  font-size: 14px;
-  font-family: inherit;
-  box-sizing: border-box;
+  padding: 4px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  color: #1a73e8;
 }
 
-.crm-select:focus,
-.crm-input:focus,
-.crm-textarea:focus {
-  outline: none;
-  border-color: #1a73e8;
-  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
+.crm-add-to-stage:hover {
+  background: #f8f9fa;
 }
 
-.crm-textarea {
-  min-height: 100px;
-  resize: vertical;
+/* Deal rows */
+.crm-deal-row {
+  border-bottom: 1px solid #f1f3f4;
+  cursor: pointer;
+  transition: background-color 0.2s;
 }
 
-/* Buttons */
+.crm-deal-row:hover {
+  background: #f8f9fa;
+}
+
+.crm-deal-row.dragging {
+  opacity: 0.4;
+}
+
+.crm-deals-table td {
+  padding: 12px 16px;
+  color: #202124;
+}
+
+.crm-td-checkbox {
+  width: 40px;
+}
+
+.crm-deal-link {
+  color: #1a73e8;
+  text-decoration: none;
+}
+
+.crm-deal-link:hover {
+  text-decoration: underline;
+}
+
+/* ========== Buttons ========== */
 .crm-btn {
   padding: 8px 16px;
   border: 1px solid #dadce0;
   border-radius: 4px;
   background: white;
-  color: #1a73e8;
+  color: #5f6368;
   font-size: 14px;
   cursor: pointer;
   font-weight: 500;
@@ -134,15 +269,19 @@
 
 .crm-btn:hover {
   background: #f8f9fa;
-  border-color: #1a73e8;
+  border-color: #5f6368;
 }
 
 .crm-btn-primary {
   background: #1a73e8;
   color: white;
-  border-color: #1a73e8;
-  width: 100%;
-  margin-top: 8px;
+  border: 1px solid #1a73e8;
+  padding: 8px 16px;
+  border-radius: 4px;
+  font-size: 14px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
 }
 
 .crm-btn-primary:hover {
@@ -150,65 +289,21 @@
   border-color: #1557b0;
 }
 
-/* Floating Action Button */
-.gmail-crm-fab {
-  position: fixed;
-  bottom: 24px;
-  right: 374px;
-  z-index: 9998;
-}
-
-#crm-add-deal-btn {
-  width: 56px;
-  height: 56px;
-  border-radius: 50%;
-  background: #1a73e8;
-  color: white;
+.crm-btn-icon {
+  background: transparent;
   border: none;
-  font-size: 24px;
+  color: #ea4335;
+  font-size: 20px;
   cursor: pointer;
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: all 0.2s;
+  padding: 4px;
 }
 
-#crm-add-deal-btn:hover {
-  background: #1557b0;
-  box-shadow: 0 6px 12px rgba(0, 0, 0, 0.3);
-  transform: scale(1.05);
-}
-
-/* Loading state */
-.crm-loading {
-  text-align: center;
-  padding: 40px 20px;
-  color: #5f6368;
-}
-
-/* Notifications */
-.crm-notification {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%) translateY(100px);
-  background: #323232;
-  color: white;
-  padding: 12px 24px;
+.crm-btn-icon:hover {
+  background: #fce8e6;
   border-radius: 4px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-  z-index: 10000;
-  opacity: 0;
-  transition: all 0.3s ease;
 }
 
-.crm-notification.show {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-/* Modal */
+/* ========== Modal ========== */
 .crm-modal {
   position: fixed;
   top: 0;
@@ -219,98 +314,147 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 10001;
+  z-index: 10000;
 }
 
 .crm-modal-content {
   background: white;
   padding: 24px;
   border-radius: 8px;
-  max-width: 400px;
+  max-width: 500px;
   width: 90%;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  max-height: 80vh;
+  overflow-y: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.3);
 }
 
-.crm-modal-content h3 {
-  margin: 0 0 12px 0;
+.crm-modal-content h2 {
+  margin: 0 0 20px 0;
   font-size: 20px;
   color: #202124;
+  font-weight: 400;
 }
 
-.crm-modal-content p {
-  margin: 0 0 20px 0;
-  color: #5f6368;
+.crm-form-group {
+  margin-bottom: 16px;
 }
 
-.crm-modal-content .crm-btn {
-  margin-right: 8px;
-}
-
-/* Contact info */
-#crm-contact-info {
-  background: #f8f9fa;
-  padding: 12px;
-  border-radius: 4px;
-}
-
-/* Responsive adjustments */
-@media (max-width: 1400px) {
-  .gmail-crm-sidebar {
-    width: 300px;
-  }
-
-  .gmail-crm-fab {
-    right: 324px;
-  }
-}
-
-/* Pipeline badge */
-.crm-pipeline-badge {
-  display: inline-block;
-  padding: 4px 12px;
-  background: #e8f0fe;
-  color: #1a73e8;
-  border-radius: 12px;
-  font-size: 12px;
+.crm-form-group label {
+  display: block;
+  font-size: 13px;
   font-weight: 500;
+  color: #5f6368;
+  margin-bottom: 6px;
+}
+
+.crm-input {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font-size: 14px;
+  font-family: inherit;
+  box-sizing: border-box;
+}
+
+.crm-input:focus {
+  outline: none;
+  border-color: #1a73e8;
+  box-shadow: 0 0 0 2px rgba(26, 115, 232, 0.1);
+}
+
+.crm-modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+}
+
+/* ========== Pipeline Editor ========== */
+.crm-pipeline-editor {
+  max-width: 600px;
+}
+
+.crm-stage-edit-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
   margin-bottom: 8px;
 }
 
-/* Stage indicator */
-.crm-stage-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 12px;
+.crm-stage-color {
+  width: 50px;
+  height: 38px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  cursor: pointer;
 }
 
-.crm-stage-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  background: #34a853;
+.crm-stage-name-input {
+  flex: 1;
+  padding: 10px 12px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font-size: 14px;
 }
 
-.crm-stage-dot.lead {
-  background: #fbbc04;
+.crm-stage-name-input:focus {
+  outline: none;
+  border-color: #1a73e8;
 }
 
-.crm-stage-dot.contacted {
-  background: #4285f4;
+#crm-stages-editor {
+  margin-bottom: 12px;
 }
 
-.crm-stage-dot.qualified {
-  background: #34a853;
+/* ========== Notification ========== */
+.crm-notification {
+  position: fixed;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%) translateY(100px);
+  background: #323232;
+  color: white;
+  padding: 12px 24px;
+  border-radius: 4px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+  z-index: 10001;
+  opacity: 0;
+  transition: all 0.3s ease;
+  font-size: 14px;
 }
 
-.crm-stage-dot.proposal {
-  background: #9334e6;
+.crm-notification.show {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
 }
 
-.crm-stage-dot.closed-won {
-  background: #34a853;
+/* ========== Responsive ========== */
+@media (max-width: 1400px) {
+  .crm-pipeline-container {
+    left: 200px;
+  }
 }
 
-.crm-stage-dot.closed-lost {
-  background: #ea4335;
+/* ========== Scrollbar Styling ========== */
+.crm-deals-table-container::-webkit-scrollbar,
+.crm-stages-bar::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.crm-deals-table-container::-webkit-scrollbar-track,
+.crm-stages-bar::-webkit-scrollbar-track {
+  background: #f1f1f1;
+}
+
+.crm-deals-table-container::-webkit-scrollbar-thumb,
+.crm-stages-bar::-webkit-scrollbar-thumb {
+  background: #888;
+  border-radius: 4px;
+}
+
+.crm-deals-table-container::-webkit-scrollbar-thumb:hover,
+.crm-stages-bar::-webkit-scrollbar-thumb:hover {
+  background: #555;
 }

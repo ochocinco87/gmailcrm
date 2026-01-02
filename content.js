@@ -1,39 +1,37 @@
-// Gmail CRM Content Script - Injects CRM functionality into Gmail
+// Gmail CRM Content Script - Full Streak-like integration
 
 class GmailCRM {
   constructor() {
     this.initialized = false;
-    this.currentThreadId = null;
-    this.sidebar = null;
-    this.observerActive = false;
+    this.currentPipeline = null;
+    this.pipelinesNav = null;
+    this.pipelineView = null;
+    this.deals = {};
+    this.pipelines = [];
   }
 
-  // Initialize the CRM
   async init() {
     if (this.initialized) return;
-
     console.log('Gmail CRM: Initializing...');
 
-    // Wait for Gmail to load
     await this.waitForGmail();
+    await this.loadData();
 
-    // Inject sidebar
-    this.injectSidebar();
+    // Inject pipelines into left sidebar
+    this.injectPipelinesNav();
 
-    // Monitor for email thread changes
-    this.observeEmailChanges();
+    // Monitor for navigation
+    this.observeNavigation();
 
     this.initialized = true;
     console.log('Gmail CRM: Initialized successfully');
   }
 
-  // Wait for Gmail's UI to be ready
   waitForGmail() {
     return new Promise((resolve) => {
       const checkGmail = setInterval(() => {
-        // Check if Gmail's main view is loaded
-        const gmailView = document.querySelector('div[role="main"]');
-        if (gmailView) {
+        const leftNav = document.querySelector('div[role="navigation"]');
+        if (leftNav) {
           clearInterval(checkGmail);
           resolve();
         }
@@ -41,401 +39,561 @@ class GmailCRM {
     });
   }
 
-  // Inject the CRM sidebar into Gmail
-  injectSidebar() {
-    // Find Gmail's right sidebar area or create our own
-    const gmailBody = document.body;
-
-    // Create sidebar container
-    this.sidebar = document.createElement('div');
-    this.sidebar.id = 'gmail-crm-sidebar';
-    this.sidebar.className = 'gmail-crm-sidebar';
-
-    // Initial content
-    this.sidebar.innerHTML = `
-      <div class="crm-sidebar-header">
-        <h3>Gmail CRM</h3>
-        <button id="crm-close-btn" title="Toggle CRM">−</button>
-      </div>
-      <div class="crm-sidebar-content">
-        <div class="crm-loading">
-          <p>Select an email to view details</p>
-        </div>
-      </div>
-    `;
-
-    gmailBody.appendChild(this.sidebar);
-
-    // Add toggle functionality
-    document.getElementById('crm-close-btn')?.addEventListener('click', () => {
-      this.sidebar.classList.toggle('collapsed');
-    });
-
-    // Add floating action button to create deals quickly
-    this.injectFloatingButton();
-  }
-
-  // Add a floating action button
-  injectFloatingButton() {
-    const fab = document.createElement('div');
-    fab.id = 'gmail-crm-fab';
-    fab.className = 'gmail-crm-fab';
-    fab.innerHTML = `
-      <button id="crm-add-deal-btn" title="Add to Pipeline">
-        <span>+</span>
-      </button>
-    `;
-
-    document.body.appendChild(fab);
-
-    document.getElementById('crm-add-deal-btn')?.addEventListener('click', () => {
-      this.showAddDealModal();
-    });
-  }
-
-  // Observe changes in Gmail to detect when user opens different emails
-  observeEmailChanges() {
-    if (this.observerActive) return;
-
-    // Use MutationObserver to detect URL changes (Gmail is a SPA)
-    let lastUrl = location.href;
-
-    const observer = new MutationObserver(() => {
-      const currentUrl = location.href;
-      if (currentUrl !== lastUrl) {
-        lastUrl = currentUrl;
-        this.onUrlChange();
-      }
-    });
-
-    observer.observe(document.body, {
-      childList: true,
-      subtree: true
-    });
-
-    // Also listen for popstate events
-    window.addEventListener('popstate', () => this.onUrlChange());
-
-    this.observerActive = true;
-  }
-
-  // Handle URL changes (email thread changes)
-  onUrlChange() {
-    const threadId = this.extractThreadId();
-
-    if (threadId && threadId !== this.currentThreadId) {
-      this.currentThreadId = threadId;
-      this.loadThreadData(threadId);
-    } else if (!threadId) {
-      this.currentThreadId = null;
-      this.showDefaultView();
-    }
-  }
-
-  // Extract thread ID from Gmail URL
-  extractThreadId() {
-    const match = location.href.match(/\/mail\/u\/\d+\/#inbox\/([a-zA-Z0-9]+)/);
-    return match ? match[1] : null;
-  }
-
-  // Load CRM data for a specific thread
-  async loadThreadData(threadId) {
-    const sidebarContent = this.sidebar.querySelector('.crm-sidebar-content');
-
-    sidebarContent.innerHTML = `
-      <div class="crm-thread-info">
-        <h4>Email Thread</h4>
-        <p class="thread-id">ID: ${threadId}</p>
-
-        <div class="crm-section">
-          <h5>Pipeline</h5>
-          <select id="crm-pipeline-select" class="crm-select">
-            <option value="">Select pipeline...</option>
-          </select>
-        </div>
-
-        <div class="crm-section">
-          <h5>Stage</h5>
-          <select id="crm-stage-select" class="crm-select">
-            <option value="">Select stage...</option>
-          </select>
-        </div>
-
-        <div class="crm-section">
-          <h5>Contact Info</h5>
-          <div id="crm-contact-info">
-            <p class="crm-subtitle">Loading contact...</p>
-          </div>
-        </div>
-
-        <div class="crm-section">
-          <h5>Notes</h5>
-          <textarea id="crm-notes" class="crm-textarea" placeholder="Add notes about this conversation..."></textarea>
-          <button id="crm-save-notes" class="crm-btn">Save Notes</button>
-        </div>
-
-        <div class="crm-section">
-          <h5>Deal Value</h5>
-          <input type="number" id="crm-deal-value" class="crm-input" placeholder="$0" />
-        </div>
-
-        <div class="crm-section">
-          <button id="crm-create-deal" class="crm-btn crm-btn-primary">Create Deal</button>
-        </div>
-      </div>
-    `;
-
-    // Load data from storage
-    await this.populatePipelines();
-    await this.loadDealData(threadId);
-
-    // Add event listeners
-    this.attachEventListeners(threadId);
-  }
-
-  // Show default view when no email is selected
-  showDefaultView() {
-    const sidebarContent = this.sidebar.querySelector('.crm-sidebar-content');
-    sidebarContent.innerHTML = `
-      <div class="crm-loading">
-        <p>Select an email to view CRM details</p>
-        <button id="crm-manage-pipelines" class="crm-btn crm-btn-primary">Manage Pipelines</button>
-      </div>
-    `;
-
-    document.getElementById('crm-manage-pipelines')?.addEventListener('click', () => {
-      this.showPipelineManager();
-    });
-  }
-
-  // Populate pipeline dropdown
-  async populatePipelines() {
-    const pipelines = await this.getPipelines();
-    const pipelineSelect = document.getElementById('crm-pipeline-select');
-
-    if (pipelineSelect) {
-      pipelines.forEach(pipeline => {
-        const option = document.createElement('option');
-        option.value = pipeline.id;
-        option.textContent = pipeline.name;
-        pipelineSelect.appendChild(option);
-      });
-
-      // Listen for pipeline changes to update stages
-      pipelineSelect.addEventListener('change', (e) => {
-        this.updateStages(e.target.value);
-      });
-    }
-  }
-
-  // Update stage dropdown based on selected pipeline
-  async updateStages(pipelineId) {
-    const pipelines = await this.getPipelines();
-    const pipeline = pipelines.find(p => p.id === pipelineId);
-    const stageSelect = document.getElementById('crm-stage-select');
-
-    if (stageSelect && pipeline) {
-      stageSelect.innerHTML = '<option value="">Select stage...</option>';
-
-      pipeline.stages.forEach(stage => {
-        const option = document.createElement('option');
-        option.value = stage.id;
-        option.textContent = stage.name;
-        stageSelect.appendChild(option);
-      });
-    }
-  }
-
-  // Get pipelines from storage
-  async getPipelines() {
+  async loadData() {
     return new Promise((resolve) => {
-      chrome.storage.local.get(['pipelines'], (result) => {
-        const pipelines = result.pipelines || this.getDefaultPipelines();
-        resolve(pipelines);
-      });
-    });
-  }
+      chrome.storage.local.get(['deals', 'pipelines'], (result) => {
+        this.deals = result.deals || {};
+        this.pipelines = result.pipelines || this.getDefaultPipelines();
 
-  // Default pipelines
-  getDefaultPipelines() {
-    return [
-      {
-        id: 'sales',
-        name: 'Sales Pipeline',
-        stages: [
-          { id: 'lead', name: 'Lead' },
-          { id: 'contacted', name: 'Contacted' },
-          { id: 'qualified', name: 'Qualified' },
-          { id: 'proposal', name: 'Proposal' },
-          { id: 'negotiation', name: 'Negotiation' },
-          { id: 'closed-won', name: 'Closed Won' },
-          { id: 'closed-lost', name: 'Closed Lost' }
-        ]
-      },
-      {
-        id: 'support',
-        name: 'Support Pipeline',
-        stages: [
-          { id: 'new', name: 'New' },
-          { id: 'in-progress', name: 'In Progress' },
-          { id: 'waiting', name: 'Waiting on Customer' },
-          { id: 'resolved', name: 'Resolved' }
-        ]
-      }
-    ];
-  }
-
-  // Load existing deal data for thread
-  async loadDealData(threadId) {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(['deals'], (result) => {
-        const deals = result.deals || {};
-        const dealData = deals[threadId];
-
-        if (dealData) {
-          // Populate form with existing data
-          const pipelineSelect = document.getElementById('crm-pipeline-select');
-          const stageSelect = document.getElementById('crm-stage-select');
-          const notesTextarea = document.getElementById('crm-notes');
-          const dealValueInput = document.getElementById('crm-deal-value');
-
-          if (pipelineSelect) pipelineSelect.value = dealData.pipelineId || '';
-          if (dealData.pipelineId) this.updateStages(dealData.pipelineId);
-          setTimeout(() => {
-            if (stageSelect) stageSelect.value = dealData.stageId || '';
-          }, 100);
-          if (notesTextarea) notesTextarea.value = dealData.notes || '';
-          if (dealValueInput) dealValueInput.value = dealData.value || '';
+        if (!result.pipelines) {
+          chrome.storage.local.set({ pipelines: this.pipelines });
         }
-
         resolve();
       });
     });
   }
 
-  // Attach event listeners for the sidebar
-  attachEventListeners(threadId) {
-    const saveNotesBtn = document.getElementById('crm-save-notes');
-    const createDealBtn = document.getElementById('crm-create-deal');
-
-    if (saveNotesBtn) {
-      saveNotesBtn.addEventListener('click', () => this.saveNotes(threadId));
-    }
-
-    if (createDealBtn) {
-      createDealBtn.addEventListener('click', () => this.saveDeal(threadId));
-    }
+  getDefaultPipelines() {
+    return [
+      {
+        id: 'surgicalAR',
+        name: 'SurgicalAR',
+        stages: [
+          { id: 'pending-renewal', name: 'Pending Renewal', color: '#db4437' },
+          { id: 'current', name: 'Current', color: '#9c27b0' },
+          { id: 'upsell', name: 'Upsell', color: '#ff9800' },
+          { id: 'contract-sent', name: 'Contract Sent', color: '#ff6f00' },
+          { id: 'trial', name: 'Trial', color: '#8bc34a' },
+          { id: 'negotiating', name: 'Negotiating', color: '#4caf50' },
+          { id: 'limbo', name: 'Limbo', color: '#009688' },
+          { id: 'proposal-sent', name: 'Proposal Sent', color: '#00bcd4' },
+          { id: 'onsite-demo-1', name: 'Onsite Demo...', color: '#03a9f4' },
+          { id: 'onsite-demo-2', name: 'Onsite Demo...', color: '#2196f3' },
+          { id: 'onsite-demo-3', name: 'Onsite Demo...', color: '#7e57c2' }
+        ]
+      },
+      {
+        id: 'sales',
+        name: 'Sales Pipeline',
+        stages: [
+          { id: 'lead', name: 'Lead', color: '#f4b400' },
+          { id: 'contacted', name: 'Contacted', color: '#4285f4' },
+          { id: 'qualified', name: 'Qualified', color: '#34a853' },
+          { id: 'proposal', name: 'Proposal', color: '#9c27b0' },
+          { id: 'negotiation', name: 'Negotiation', color: '#ff6f00' },
+          { id: 'closed-won', name: 'Closed Won', color: '#0f9d58' },
+          { id: 'closed-lost', name: 'Closed Lost', color: '#db4437' }
+        ]
+      }
+    ];
   }
 
-  // Save notes for a thread
-  async saveNotes(threadId) {
-    const notesTextarea = document.getElementById('crm-notes');
-    const notes = notesTextarea?.value || '';
+  injectPipelinesNav() {
+    // Find Gmail's left navigation
+    const leftNav = document.querySelector('div[role="navigation"]');
+    if (!leftNav) return;
 
-    chrome.storage.local.get(['deals'], (result) => {
-      const deals = result.deals || {};
-      deals[threadId] = deals[threadId] || {};
-      deals[threadId].notes = notes;
-      deals[threadId].lastUpdated = new Date().toISOString();
+    // Create pipelines section
+    this.pipelinesNav = document.createElement('div');
+    this.pipelinesNav.id = 'crm-pipelines-nav';
+    this.pipelinesNav.className = 'crm-pipelines-section';
 
-      chrome.storage.local.set({ deals }, () => {
-        this.showNotification('Notes saved successfully!');
+    this.pipelinesNav.innerHTML = `
+      <div class="crm-nav-header">
+        <span class="crm-nav-title">Pipelines</span>
+        <button class="crm-nav-add" title="Add Pipeline">+</button>
+      </div>
+      <div class="crm-nav-list" id="crm-pipelines-list"></div>
+    `;
+
+    // Insert after Labels section or at the end
+    const labelsSection = leftNav.querySelector('div[data-tooltip="Labels"]')?.closest('.aAw, .Tma');
+    if (labelsSection && labelsSection.parentElement) {
+      labelsSection.parentElement.insertBefore(this.pipelinesNav, labelsSection.nextSibling);
+    } else {
+      leftNav.appendChild(this.pipelinesNav);
+    }
+
+    this.renderPipelinesList();
+
+    // Add pipeline button
+    this.pipelinesNav.querySelector('.crm-nav-add')?.addEventListener('click', () => {
+      this.showPipelineEditor();
+    });
+  }
+
+  renderPipelinesList() {
+    const list = document.getElementById('crm-pipelines-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    this.pipelines.forEach(pipeline => {
+      const item = document.createElement('div');
+      item.className = 'crm-nav-item';
+      item.dataset.pipelineId = pipeline.id;
+
+      if (this.currentPipeline?.id === pipeline.id) {
+        item.classList.add('active');
+      }
+
+      item.innerHTML = `
+        <span class="crm-nav-icon">📊</span>
+        <span class="crm-nav-name">${pipeline.name}</span>
+      `;
+
+      item.addEventListener('click', () => {
+        this.openPipeline(pipeline);
+      });
+
+      list.appendChild(item);
+    });
+  }
+
+  openPipeline(pipeline) {
+    this.currentPipeline = pipeline;
+
+    // Update active state
+    document.querySelectorAll('.crm-nav-item').forEach(item => {
+      item.classList.remove('active');
+    });
+    document.querySelector(`[data-pipeline-id="${pipeline.id}"]`)?.classList.add('active');
+
+    // Hide Gmail inbox and show pipeline view
+    this.showPipelineView();
+
+    // Update URL
+    window.history.pushState({}, '', `#crm/pipeline/${pipeline.id}`);
+  }
+
+  showPipelineView() {
+    // Hide Gmail's main content
+    const gmailMain = document.querySelector('div[role="main"]');
+    if (gmailMain) {
+      gmailMain.style.display = 'none';
+    }
+
+    // Remove existing pipeline view
+    const existing = document.getElementById('crm-pipeline-view');
+    if (existing) {
+      existing.remove();
+    }
+
+    // Create pipeline view
+    this.pipelineView = document.createElement('div');
+    this.pipelineView.id = 'crm-pipeline-view';
+    this.pipelineView.className = 'crm-pipeline-container';
+
+    // Insert pipeline view
+    const parent = gmailMain?.parentElement || document.body;
+    parent.appendChild(this.pipelineView);
+
+    this.renderPipelineBoard();
+  }
+
+  renderPipelineBoard() {
+    if (!this.currentPipeline || !this.pipelineView) return;
+
+    const pipeline = this.currentPipeline;
+    const dealsInPipeline = this.getDealsInPipeline(pipeline.id);
+
+    // Calculate stage counts
+    const stageCounts = {};
+    pipeline.stages.forEach(stage => {
+      stageCounts[stage.id] = dealsInPipeline.filter(d => d.stageId === stage.id).length;
+    });
+
+    // Create header with stage indicators
+    const stagesHeader = pipeline.stages.map(stage => `
+      <div class="crm-stage-header" style="background-color: ${stage.color};" data-stage-id="${stage.id}">
+        <span class="crm-stage-count">${stageCounts[stage.id] || 0}</span>
+        <span class="crm-stage-name">${stage.name}</span>
+      </div>
+    `).join('');
+
+    this.pipelineView.innerHTML = `
+      <div class="crm-pipeline-header">
+        <div class="crm-pipeline-title">
+          <h1>${pipeline.name}</h1>
+          <span class="crm-deal-count">${dealsInPipeline.length} Count</span>
+        </div>
+        <div class="crm-pipeline-actions">
+          <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
+          <button class="crm-btn" id="crm-settings-btn">⚙️ Settings</button>
+          <button class="crm-btn" id="crm-share-btn">🔗 Share</button>
+          <button class="crm-btn-primary" id="crm-add-deal-btn">+ Add Deal</button>
+        </div>
+      </div>
+
+      <div class="crm-stages-bar">
+        ${stagesHeader}
+      </div>
+
+      <div class="crm-deals-table-container">
+        <table class="crm-deals-table">
+          <thead>
+            <tr>
+              <th class="crm-th-checkbox"><input type="checkbox" /></th>
+              <th class="crm-th-name">Name</th>
+              <th class="crm-th-priority">Priority</th>
+              <th class="crm-th-value">Deal Size</th>
+              <th class="crm-th-prob">Prob</th>
+              <th class="crm-th-contact">Contact</th>
+              <th class="crm-th-assigned">Assigned To</th>
+              <th class="crm-th-date">Date Last Updated</th>
+              <th class="crm-th-notes">Notes</th>
+            </tr>
+          </thead>
+          <tbody id="crm-deals-tbody"></tbody>
+        </table>
+      </div>
+    `;
+
+    // Render deals grouped by stage
+    this.renderDealsTable();
+
+    // Add event listeners
+    document.getElementById('crm-add-deal-btn')?.addEventListener('click', () => {
+      this.showAddDealDialog();
+    });
+
+    document.getElementById('crm-settings-btn')?.addEventListener('click', () => {
+      this.showPipelineEditor(pipeline);
+    });
+
+    document.getElementById('crm-refresh-btn')?.addEventListener('click', () => {
+      this.loadData().then(() => this.renderPipelineBoard());
+    });
+  }
+
+  renderDealsTable() {
+    const tbody = document.getElementById('crm-deals-tbody');
+    if (!tbody || !this.currentPipeline) return;
+
+    tbody.innerHTML = '';
+
+    // Group deals by stage
+    this.currentPipeline.stages.forEach(stage => {
+      const dealsInStage = this.getDealsInStage(this.currentPipeline.id, stage.id);
+
+      if (dealsInStage.length > 0 || true) { // Always show stage even if empty
+        // Stage group header
+        const stageRow = document.createElement('tr');
+        stageRow.className = 'crm-stage-row';
+        stageRow.innerHTML = `
+          <td colspan="9" class="crm-stage-group" style="background-color: ${stage.color}20; border-left: 4px solid ${stage.color};">
+            <strong>${stage.name}</strong>
+            <button class="crm-add-to-stage" data-stage-id="${stage.id}">+ Add</button>
+          </td>
+        `;
+        tbody.appendChild(stageRow);
+
+        // Stage deals
+        dealsInStage.forEach(deal => {
+          const dealRow = this.createDealRow(deal, stage);
+          tbody.appendChild(dealRow);
+        });
+      }
+    });
+
+    // Make rows draggable
+    this.enableDragAndDrop();
+  }
+
+  createDealRow(deal, stage) {
+    const row = document.createElement('tr');
+    row.className = 'crm-deal-row';
+    row.draggable = true;
+    row.dataset.dealId = deal.id;
+    row.dataset.stageId = stage.id;
+
+    const formattedValue = deal.value ? `$${Number(deal.value).toLocaleString()}` : '';
+    const formattedDate = deal.lastUpdated ? new Date(deal.lastUpdated).toLocaleDateString() : '';
+
+    row.innerHTML = `
+      <td class="crm-td-checkbox"><input type="checkbox" /></td>
+      <td class="crm-td-name">
+        <a href="#inbox/${deal.threadId}" class="crm-deal-link">${deal.emailSubject || 'Untitled'}</a>
+      </td>
+      <td class="crm-td-priority">${deal.priority || 'High'}</td>
+      <td class="crm-td-value">${formattedValue}</td>
+      <td class="crm-td-prob">${deal.probability || '90'}%</td>
+      <td class="crm-td-contact">${deal.contactEmail || ''}</td>
+      <td class="crm-td-assigned">${deal.assignedTo || ''}</td>
+      <td class="crm-td-date">${formattedDate}</td>
+      <td class="crm-td-notes">${deal.notes || ''}</td>
+    `;
+
+    return row;
+  }
+
+  enableDragAndDrop() {
+    const rows = document.querySelectorAll('.crm-deal-row');
+    const stageRows = document.querySelectorAll('.crm-stage-row');
+
+    rows.forEach(row => {
+      row.addEventListener('dragstart', (e) => {
+        e.dataTransfer.effectAllowed = 'move';
+        e.dataTransfer.setData('text/plain', row.dataset.dealId);
+        row.classList.add('dragging');
+      });
+
+      row.addEventListener('dragend', () => {
+        row.classList.remove('dragging');
+      });
+    });
+
+    stageRows.forEach(stageRow => {
+      stageRow.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        stageRow.classList.add('drag-over');
+      });
+
+      stageRow.addEventListener('dragleave', () => {
+        stageRow.classList.remove('drag-over');
+      });
+
+      stageRow.addEventListener('drop', (e) => {
+        e.preventDefault();
+        stageRow.classList.remove('drag-over');
+
+        const dealId = e.dataTransfer.getData('text/plain');
+        const stageId = stageRow.querySelector('.crm-add-to-stage')?.dataset.stageId;
+
+        if (dealId && stageId) {
+          this.moveDealToStage(dealId, stageId);
+        }
       });
     });
   }
 
-  // Save deal information
-  async saveDeal(threadId) {
-    const pipelineSelect = document.getElementById('crm-pipeline-select');
-    const stageSelect = document.getElementById('crm-stage-select');
-    const notesTextarea = document.getElementById('crm-notes');
-    const dealValueInput = document.getElementById('crm-deal-value');
+  moveDealToStage(dealId, newStageId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
 
-    const dealData = {
-      threadId,
-      pipelineId: pipelineSelect?.value,
-      stageId: stageSelect?.value,
-      notes: notesTextarea?.value || '',
-      value: dealValueInput?.value || 0,
-      lastUpdated: new Date().toISOString(),
-      emailSubject: this.extractEmailSubject(),
-      contactEmail: this.extractContactEmail()
+    deal.stageId = newStageId;
+    deal.lastUpdated = new Date().toISOString();
+
+    chrome.storage.local.set({ deals: this.deals }, () => {
+      this.renderPipelineBoard();
+      this.showNotification('Deal moved successfully!');
+    });
+  }
+
+  getDealsInPipeline(pipelineId) {
+    return Object.entries(this.deals)
+      .filter(([_, deal]) => deal.pipelineId === pipelineId)
+      .map(([id, deal]) => ({ ...deal, id }))
+      .sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated));
+  }
+
+  getDealsInStage(pipelineId, stageId) {
+    return Object.entries(this.deals)
+      .filter(([_, deal]) => deal.pipelineId === pipelineId && deal.stageId === stageId)
+      .map(([id, deal]) => ({ ...deal, id }))
+      .sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated));
+  }
+
+  showAddDealDialog() {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>Add Deal</h2>
+        <div class="crm-form-group">
+          <label>Deal Name</label>
+          <input type="text" id="crm-deal-name" class="crm-input" placeholder="Enter deal name" />
+        </div>
+        <div class="crm-form-group">
+          <label>Stage</label>
+          <select id="crm-deal-stage" class="crm-input">
+            ${this.currentPipeline.stages.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+          </select>
+        </div>
+        <div class="crm-form-group">
+          <label>Deal Value</label>
+          <input type="number" id="crm-deal-value-input" class="crm-input" placeholder="$0" />
+        </div>
+        <div class="crm-form-group">
+          <label>Contact Email</label>
+          <input type="email" id="crm-deal-email" class="crm-input" placeholder="contact@example.com" />
+        </div>
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-deal">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-deal">Save Deal</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-deal')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-deal')?.addEventListener('click', () => {
+      const dealId = 'deal_' + Date.now();
+      this.deals[dealId] = {
+        id: dealId,
+        threadId: dealId,
+        pipelineId: this.currentPipeline.id,
+        stageId: document.getElementById('crm-deal-stage').value,
+        emailSubject: document.getElementById('crm-deal-name').value,
+        value: document.getElementById('crm-deal-value-input').value,
+        contactEmail: document.getElementById('crm-deal-email').value,
+        priority: 'High',
+        probability: 90,
+        lastUpdated: new Date().toISOString()
+      };
+
+      chrome.storage.local.set({ deals: this.deals }, () => {
+        modal.remove();
+        this.renderPipelineBoard();
+        this.showNotification('Deal added successfully!');
+      });
+    });
+  }
+
+  showPipelineEditor(pipeline = null) {
+    const isNew = !pipeline;
+    const editPipeline = pipeline || {
+      id: 'pipeline_' + Date.now(),
+      name: '',
+      stages: [{ id: 'stage_1', name: '', color: '#4285f4' }]
     };
 
-    chrome.storage.local.get(['deals'], (result) => {
-      const deals = result.deals || {};
-      deals[threadId] = dealData;
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content crm-pipeline-editor">
+        <h2>${isNew ? 'Create Pipeline' : 'Edit Pipeline'}</h2>
 
-      chrome.storage.local.set({ deals }, () => {
-        this.showNotification('Deal saved successfully!');
+        <div class="crm-form-group">
+          <label>Pipeline Name</label>
+          <input type="text" id="crm-pipeline-name" class="crm-input" value="${editPipeline.name}" />
+        </div>
+
+        <div class="crm-form-group">
+          <label>Stages</label>
+          <div id="crm-stages-editor"></div>
+          <button class="crm-btn" id="crm-add-stage">+ Add Stage</button>
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-pipeline">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-pipeline">Save</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    const renderStages = () => {
+      const container = document.getElementById('crm-stages-editor');
+      container.innerHTML = editPipeline.stages.map((stage, idx) => `
+        <div class="crm-stage-edit-row">
+          <input type="color" value="${stage.color}" data-idx="${idx}" class="crm-stage-color" />
+          <input type="text" value="${stage.name}" data-idx="${idx}" class="crm-stage-name-input" placeholder="Stage name" />
+          <button class="crm-btn-icon" data-idx="${idx}" data-action="remove">×</button>
+        </div>
+      `).join('');
+
+      container.querySelectorAll('.crm-stage-color').forEach(input => {
+        input.addEventListener('change', (e) => {
+          editPipeline.stages[e.target.dataset.idx].color = e.target.value;
+        });
+      });
+
+      container.querySelectorAll('.crm-stage-name-input').forEach(input => {
+        input.addEventListener('input', (e) => {
+          editPipeline.stages[e.target.dataset.idx].name = e.target.value;
+        });
+      });
+
+      container.querySelectorAll('[data-action="remove"]').forEach(btn => {
+        btn.addEventListener('click', (e) => {
+          editPipeline.stages.splice(e.target.dataset.idx, 1);
+          renderStages();
+        });
+      });
+    };
+
+    renderStages();
+
+    document.getElementById('crm-add-stage').addEventListener('click', () => {
+      editPipeline.stages.push({
+        id: 'stage_' + Date.now(),
+        name: '',
+        color: '#' + Math.floor(Math.random()*16777215).toString(16)
+      });
+      renderStages();
+    });
+
+    document.getElementById('crm-cancel-pipeline').addEventListener('click', () => modal.remove());
+
+    document.getElementById('crm-save-pipeline').addEventListener('click', () => {
+      editPipeline.name = document.getElementById('crm-pipeline-name').value;
+
+      if (isNew) {
+        this.pipelines.push(editPipeline);
+      } else {
+        const idx = this.pipelines.findIndex(p => p.id === editPipeline.id);
+        if (idx !== -1) this.pipelines[idx] = editPipeline;
+      }
+
+      chrome.storage.local.set({ pipelines: this.pipelines }, () => {
+        modal.remove();
+        this.renderPipelinesList();
+        if (this.currentPipeline?.id === editPipeline.id) {
+          this.renderPipelineBoard();
+        }
       });
     });
   }
 
-  // Extract email subject from Gmail UI
-  extractEmailSubject() {
-    const subjectElement = document.querySelector('h2.hP');
-    return subjectElement?.textContent || 'Unknown Subject';
+  observeNavigation() {
+    window.addEventListener('popstate', () => {
+      if (!location.hash.startsWith('#crm/')) {
+        this.closePipelineView();
+      }
+    });
+
+    // Clicking Gmail inbox should close pipeline view
+    document.addEventListener('click', (e) => {
+      if (e.target.closest('a[href="#inbox"]')) {
+        this.closePipelineView();
+      }
+    });
   }
 
-  // Extract contact email from Gmail UI
-  extractContactEmail() {
-    const emailElement = document.querySelector('span.gD');
-    return emailElement?.getAttribute('email') || 'unknown@email.com';
+  closePipelineView() {
+    const pipelineView = document.getElementById('crm-pipeline-view');
+    if (pipelineView) {
+      pipelineView.remove();
+    }
+
+    const gmailMain = document.querySelector('div[role="main"]');
+    if (gmailMain) {
+      gmailMain.style.display = '';
+    }
+
+    this.currentPipeline = null;
+    this.renderPipelinesList();
   }
 
-  // Show notification
   showNotification(message) {
     const notification = document.createElement('div');
     notification.className = 'crm-notification';
     notification.textContent = message;
     document.body.appendChild(notification);
 
-    setTimeout(() => {
-      notification.classList.add('show');
-    }, 10);
-
+    setTimeout(() => notification.classList.add('show'), 10);
     setTimeout(() => {
       notification.classList.remove('show');
       setTimeout(() => notification.remove(), 300);
     }, 3000);
   }
-
-  // Show add deal modal
-  showAddDealModal() {
-    // Quick modal for adding current email to a pipeline
-    const modal = document.createElement('div');
-    modal.className = 'crm-modal';
-    modal.innerHTML = `
-      <div class="crm-modal-content">
-        <h3>Add to Pipeline</h3>
-        <p>Add current email thread to a pipeline</p>
-        <button id="crm-modal-add" class="crm-btn crm-btn-primary">Add to Pipeline</button>
-        <button id="crm-modal-cancel" class="crm-btn">Cancel</button>
-      </div>
-    `;
-
-    document.body.appendChild(modal);
-
-    document.getElementById('crm-modal-add')?.addEventListener('click', () => {
-      if (this.currentThreadId) {
-        this.saveDeal(this.currentThreadId);
-      }
-      modal.remove();
-    });
-
-    document.getElementById('crm-modal-cancel')?.addEventListener('click', () => {
-      modal.remove();
-    });
-  }
-
-  // Show pipeline manager
-  showPipelineManager() {
-    alert('Pipeline manager coming soon! Use the popup to manage pipelines.');
-  }
 }
 
-// Initialize when DOM is ready
+// Initialize
 if (document.readyState === 'loading') {
   document.addEventListener('DOMContentLoaded', () => {
     const crm = new GmailCRM();
