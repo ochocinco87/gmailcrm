@@ -67,12 +67,16 @@ class FirebaseCRMSync {
     if (this.syncMode === 'firebase' && this.enabled) {
       // Load from Firebase via background script
       try {
-        const response = await chrome.runtime.sendMessage({ action: 'getFirebaseDeals' });
-        if (response.success) {
+        const response = await Promise.race([
+          chrome.runtime.sendMessage({ action: 'getFirebaseDeals' }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 2000))
+        ]);
+        if (response && response.success) {
           return response.deals;
         }
       } catch (error) {
-        console.error('Error loading deals from Firebase, falling back to local:', error);
+        console.warn('Error loading deals from Firebase, falling back to local:', error);
+        // Fall through to local storage
       }
     }
 
@@ -163,12 +167,16 @@ class FirebaseCRMSync {
   async loadPipelines() {
     if (this.syncMode === 'firebase' && this.enabled) {
       try {
-        const response = await chrome.runtime.sendMessage({ action: 'getFirebasePipelines' });
-        if (response.success) {
+        const response = await Promise.race([
+          chrome.runtime.sendMessage({ action: 'getFirebasePipelines' }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Background script timeout')), 2000))
+        ]);
+        if (response && response.success) {
           return response.pipelines;
         }
       } catch (error) {
-        console.error('Error loading pipelines from Firebase:', error);
+        console.warn('Error loading pipelines from Firebase, falling back to local:', error);
+        // Fall through to local storage
       }
     }
 
