@@ -635,7 +635,7 @@ class GmailCRM {
       card.addEventListener('dblclick', (e) => {
         if (!e.target.closest('.crm-kanban-card-priority')) {
           const dealId = card.dataset.dealId;
-          this.openDealSidebar(dealId);
+          this.showDealSidebar(dealId);
         }
       });
     });
@@ -863,7 +863,7 @@ class GmailCRM {
             <div style="margin-bottom: 8px;">
               <strong>👤 Contact:</strong> ${deal.contactEmail || '-'}
             </div>
-            <button class="crm-btn-small" onclick="window.gmailCRM.openDealSidebar('${deal.id}')">View Details</button>
+            <button class="crm-btn-small" onclick="window.gmailCRM.showDealSidebar('${deal.id}')">View Details</button>
           </div>
         </div>
       `;
@@ -875,7 +875,7 @@ class GmailCRM {
 
       // Open deal sidebar on click
       marker.on('click', () => {
-        this.openDealSidebar(deal.id);
+        this.showDealSidebar(deal.id);
       });
     });
 
