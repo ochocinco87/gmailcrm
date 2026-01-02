@@ -2095,11 +2095,25 @@ class GmailCRM {
       });
 
       console.log('Gmail CRM: Sync complete. Created:', created, 'Linked:', linked);
-      this.showNotification(`✓ Synced! Created ${created} deals, linked ${linked} emails`);
+      console.log('Gmail CRM: Total deals in storage:', Object.keys(this.deals).length);
 
-      // Refresh pipeline view if open
-      if (this.currentPipeline) {
+      // Reload data and refresh pipeline view
+      await this.loadData();
+      console.log('Gmail CRM: Data reloaded, current pipeline:', this.currentPipeline?.name);
+
+      // If Sales pipeline is currently open, refresh it
+      if (this.currentPipeline && this.currentPipeline.id === 'sales') {
+        console.log('Gmail CRM: Refreshing Sales pipeline view...');
         this.renderPipelineBoard();
+        this.showNotification(`✓ Synced! Created ${created} deals, linked ${linked} emails`);
+      } else {
+        // Otherwise, switch to Sales pipeline to show the new deals
+        console.log('Gmail CRM: Switching to Sales pipeline to show new deals...');
+        const salesPipeline = this.pipelines['sales'];
+        if (salesPipeline) {
+          this.openPipeline(salesPipeline);
+        }
+        this.showNotification(`✓ Synced! Created ${created} deals, linked ${linked} emails. Check Sales pipeline.`);
       }
 
     } catch (error) {
