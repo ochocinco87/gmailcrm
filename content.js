@@ -3546,6 +3546,9 @@ class GmailCRM {
       <div class="crm-modal-content crm-progress-modal">
         <div class="crm-progress-header">
           <h2>🤖 ${title}</h2>
+          <button class="crm-close-sidebar" id="crm-close-progress-btn" title="Close">
+            ×
+          </button>
         </div>
         <div class="crm-progress-body">
           <div class="crm-progress-bar-container">
@@ -3556,6 +3559,14 @@ class GmailCRM {
         </div>
       </div>
     `;
+
+    // Add close button event listener
+    const closeBtn = document.getElementById('crm-close-progress-btn');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', () => {
+        modal.remove();
+      });
+    }
   }
 
   updateSmartSyncProgress(message, progress) {
@@ -3578,10 +3589,8 @@ class GmailCRM {
   }
 
   closeSmartSyncProgress() {
-    const modal = document.getElementById('crm-smart-sync-progress');
-    if (modal) {
-      setTimeout(() => modal.remove(), 2000); // Close after 2 seconds
-    }
+    // No longer auto-closes - user must click X button to close
+    // Modal remains open so user can review the full log
   }
 
   async performSmartSync(fromDate, toDate, limit) {

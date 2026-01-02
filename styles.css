@@ -781,6 +781,9 @@
 }
 
 .crm-progress-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   border-bottom: 2px solid #e8eaed;
   padding-bottom: 16px;
   margin-bottom: 20px;
@@ -791,6 +794,7 @@
   font-size: 22px;
   color: #202124;
   font-weight: 500;
+  flex: 1;
 }
 
 .crm-progress-body {
