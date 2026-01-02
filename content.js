@@ -735,13 +735,13 @@ class GmailCRM {
     const toggleBtn = document.getElementById('crm-sidebar-toggle-btn');
     if (!toggleBtn) return;
 
-    // Check if we're viewing an email
+    // Always show the button
+    toggleBtn.style.display = 'flex';
+
+    // Check if we're viewing an email - if not, close sidebar
     const emailMetadata = this.extractEmailMetadata();
-    if (emailMetadata) {
-      toggleBtn.style.display = 'flex';
-    } else {
-      toggleBtn.style.display = 'none';
-      // Also hide sidebar if email is closed
+    if (!emailMetadata) {
+      // Not viewing an email, close sidebar if open
       const sidebar = document.getElementById('crm-email-deals-sidebar');
       if (sidebar) {
         sidebar.style.display = 'none';
