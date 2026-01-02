@@ -24,7 +24,7 @@
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
-      "js": ["leaflet/leaflet.js", "content.js"],
+      "js": ["leaflet/leaflet.js", "firebase-integration.js", "content.js"],
       "css": ["leaflet/leaflet.css", "styles.css"],
       "run_at": "document_idle"
     }

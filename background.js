@@ -199,6 +199,66 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  // Firebase Deals CRUD
+  if (request.action === 'getFirebaseDeals') {
+    getFirebaseDeals().then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'saveFirebaseDeal') {
+    saveFirebaseDeal(request.deal).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'deleteFirebaseDeal') {
+    deleteFirebaseDeal(request.dealId).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  // Firebase Pipelines CRUD
+  if (request.action === 'getFirebasePipelines') {
+    getFirebasePipelines().then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'saveFirebasePipeline') {
+    saveFirebasePipeline(request.pipeline).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  // Real-time subscriptions
+  if (request.action === 'subscribeToFirebaseDeals') {
+    subscribeToFirebaseDeals(sender.tab.id);
+    sendResponse({ success: true });
+    return true;
+  }
+
+  if (request.action === 'subscribeToFirebasePipelines') {
+    subscribeToFirebasePipelines(sender.tab.id);
+    sendResponse({ success: true });
+    return true;
+  }
 });
 
 // Listen for storage changes to sync across tabs
@@ -703,6 +763,181 @@ function toFirestoreValue(value) {
     return { mapValue: { fields } };
   }
   return { nullValue: null };
+}
+
+// Firebase Deals CRUD Operations
+async function getFirebaseDeals() {
+  try {
+    if (!currentUser) {
+      throw new Error('Not signed in');
+    }
+
+    const dealsSnapshot = await getFirestoreCollection(`organizations/${currentUser.domain}/deals`);
+    return { success: true, deals: dealsSnapshot || {} };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function saveFirebaseDeal(deal) {
+  try {
+    if (!currentUser) {
+      throw new Error('Not signed in');
+    }
+
+    if (currentUser.role === 'viewer') {
+      throw new Error('Viewers cannot edit deals');
+    }
+
+    await setFirestoreDocument(
+      `organizations/${currentUser.domain}/deals/${deal.id}`,
+      deal
+    );
+
+    return { success: true, deal };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function deleteFirebaseDeal(dealId) {
+  try {
+    if (!currentUser) {
+      throw new Error('Not signed in');
+    }
+
+    if (currentUser.role === 'viewer') {
+      throw new Error('Viewers cannot delete deals');
+    }
+
+    await deleteFirestoreDocument(`organizations/${currentUser.domain}/deals/${dealId}`);
+    return { success: true };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Firebase Pipelines CRUD Operations
+async function getFirebasePipelines() {
+  try {
+    if (!currentUser) {
+      throw new Error('Not signed in');
+    }
+
+    const pipelinesSnapshot = await getFirestoreCollection(`organizations/${currentUser.domain}/pipelines`);
+
+    // Convert object to array
+    const pipelines = [];
+    for (const id in pipelinesSnapshot) {
+      pipelines.push({ id, ...pipelinesSnapshot[id] });
+    }
+
+    return { success: true, pipelines };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+async function saveFirebasePipeline(pipeline) {
+  try {
+    if (!currentUser) {
+      throw new Error('Not signed in');
+    }
+
+    if (currentUser.role === 'viewer') {
+      throw new Error('Viewers cannot edit pipelines');
+    }
+
+    await setFirestoreDocument(
+      `organizations/${currentUser.domain}/pipelines/${pipeline.id}`,
+      pipeline
+    );
+
+    return { success: true, pipeline };
+  } catch (error) {
+    return { success: false, error: error.message };
+  }
+}
+
+// Real-time subscriptions
+const activeSubscriptions = new Map();
+
+async function subscribeToFirebaseDeals(tabId) {
+  if (!currentUser) return;
+
+  // Avoid duplicate subscriptions
+  if (activeSubscriptions.has(`deals-${tabId}`)) return;
+
+  // Poll for changes every 5 seconds (Firestore REST API doesn't support real-time listeners)
+  const intervalId = setInterval(async () => {
+    try {
+      const result = await getFirebaseDeals();
+      if (result.success) {
+        // Notify the tab
+        chrome.tabs.sendMessage(tabId, {
+          action: 'firebaseDealsUpdated',
+          deals: result.deals
+        }).catch(() => {
+          // Tab might be closed, clear subscription
+          clearInterval(intervalId);
+          activeSubscriptions.delete(`deals-${tabId}`);
+        });
+      }
+    } catch (error) {
+      console.error('Error polling Firebase deals:', error);
+    }
+  }, 5000);
+
+  activeSubscriptions.set(`deals-${tabId}`, intervalId);
+}
+
+async function subscribeToFirebasePipelines(tabId) {
+  if (!currentUser) return;
+
+  if (activeSubscriptions.has(`pipelines-${tabId}`)) return;
+
+  const intervalId = setInterval(async () => {
+    try {
+      const result = await getFirebasePipelines();
+      if (result.success) {
+        chrome.tabs.sendMessage(tabId, {
+          action: 'firebasePipelinesUpdated',
+          pipelines: result.pipelines
+        }).catch(() => {
+          clearInterval(intervalId);
+          activeSubscriptions.delete(`pipelines-${tabId}`);
+        });
+      }
+    } catch (error) {
+      console.error('Error polling Firebase pipelines:', error);
+    }
+  }, 5000);
+
+  activeSubscriptions.set(`pipelines-${tabId}`, intervalId);
+}
+
+// Delete Firestore document
+async function deleteFirestoreDocument(path) {
+  if (!firebaseConfig || !authToken) {
+    throw new Error('Firebase not configured or not signed in');
+  }
+
+  const response = await fetch(
+    `https://firestore.googleapis.com/v1/projects/${firebaseConfig.projectId}/databases/(default)/documents/${path}`,
+    {
+      method: 'DELETE',
+      headers: {
+        'Authorization': `Bearer ${authToken}`,
+        'Content-Type': 'application/json'
+      }
+    }
+  );
+
+  if (!response.ok) {
+    throw new Error(`Firestore delete error: ${response.statusText}`);
+  }
+
+  return true;
 }
 
 console.log('Gmail CRM background service worker loaded');
