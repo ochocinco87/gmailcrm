@@ -4132,7 +4132,7 @@ class GmailCRM {
 
             // Create deals from Gemini's analysis
             for (const dealData of deals) {
-              await this.createDealFromGeminiAnalysis(dealData);
+              await this.createDealFromGeminiAnalysis(dealData, batch);
               totalDeals++;
               this.updateSmartSyncProgress(
                 `  ✨ Created deal: "${dealData.dealTitle}" (${dealData.institution || 'Unknown'})`,
@@ -4295,7 +4295,7 @@ Return JSON array: [{"dealTitle":"...","institution":"...","institutionAddress":
     return { street: addressString, city: null, state: null, zip: null };
   }
 
-  async createDealFromGeminiAnalysis(dealData) {
+  async createDealFromGeminiAnalysis(dealData, sourceEmails = []) {
     const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
     // Map Gemini's stage to our stage IDs
@@ -4313,6 +4313,26 @@ Return JSON array: [{"dealTitle":"...","institution":"...","institutionAddress":
 
     // Parse institution address if provided
     let parsedAddress = this.parseAddress(dealData.institutionAddress);
+
+    // Find source email(s) that match this deal's contact email or institution
+    const linkedEmails = [];
+    for (const email of sourceEmails) {
+      // Match by contact email or institution/domain
+      const emailMatches = email.from.toLowerCase() === dealData.contactEmail?.toLowerCase() ||
+                          email.domain === this.extractDomainFromEmail(dealData.contactEmail || '') ||
+                          email.institution?.toLowerCase() === dealData.institution?.toLowerCase();
+
+      if (emailMatches && email.threadId) {
+        linkedEmails.push({
+          threadId: email.threadId,
+          subject: email.subject,
+          from: email.from,
+          date: email.date,
+          url: email.url,
+          snippet: email.bodySnippet
+        });
+      }
+    }
 
     const deal = {
       id: dealId,
@@ -4339,7 +4359,7 @@ Return JSON array: [{"dealTitle":"...","institution":"...","institutionAddress":
       addressConfirmed: parsedAddress.street ? false : null,
       createdAt: new Date().toISOString(),
       lastUpdated: new Date().toISOString(),
-      linkedEmails: [],
+      linkedEmails: linkedEmails,
       notesHistory: [{
         text: `AI Analysis: ${dealData.summary}`,
         createdAt: new Date().toISOString()
@@ -4350,7 +4370,7 @@ Return JSON array: [{"dealTitle":"...","institution":"...","institutionAddress":
     };
 
     this.deals[dealId] = deal;
-    console.log('Gmail CRM: Created deal from AI analysis:', dealData.dealTitle);
+    console.log('Gmail CRM: Created deal from AI analysis:', dealData.dealTitle, 'with', linkedEmails.length, 'linked emails');
   }
 }
 
