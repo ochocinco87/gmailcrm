@@ -388,6 +388,9 @@ class GmailCRM {
             <button class="crm-view-btn ${this.pipelineViewMode === 'map' ? 'active' : ''}" id="crm-map-view-btn" title="Map View">
               🗺️
             </button>
+            <button class="crm-view-btn ${this.pipelineViewMode === 'dashboard' ? 'active' : ''}" id="crm-dashboard-view-btn" title="Analytics Dashboard">
+              📊
+            </button>
           </div>
           ${pipeline.type === 'customer-tracking' ? '<button class="crm-btn" id="crm-dashboard-btn">📊 Dashboard</button>' : ''}
           <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
@@ -432,6 +435,10 @@ class GmailCRM {
           <div id="crm-map-container" style="width: 100%; height: 100%;"></div>
         </div>
 
+        <div class="crm-dashboard-view" id="crm-dashboard-view" style="display: ${this.pipelineViewMode === 'dashboard' ? 'block' : 'none'};">
+          <!-- Dashboard will be rendered here -->
+        </div>
+
         <div class="crm-deal-sidebar" id="crm-deal-sidebar">
           <div class="crm-deal-sidebar-content">
             <div class="crm-sidebar-placeholder">
@@ -449,6 +456,8 @@ class GmailCRM {
       this.renderKanbanView();
     } else if (this.pipelineViewMode === 'map') {
       this.renderMapView();
+    } else if (this.pipelineViewMode === 'dashboard') {
+      this.renderDashboard();
     }
 
     // Add event listeners
@@ -462,6 +471,10 @@ class GmailCRM {
 
     document.getElementById('crm-map-view-btn')?.addEventListener('click', () => {
       this.switchViewMode('map');
+    });
+
+    document.getElementById('crm-dashboard-view-btn')?.addEventListener('click', () => {
+      this.switchViewMode('dashboard');
     });
 
     document.getElementById('crm-add-deal-btn')?.addEventListener('click', () => {
@@ -497,12 +510,14 @@ class GmailCRM {
     const tableView = document.getElementById('crm-table-view');
     const kanbanView = document.getElementById('crm-kanban-view');
     const mapView = document.getElementById('crm-map-view');
+    const dashboardView = document.getElementById('crm-dashboard-view');
 
-    console.log('Gmail CRM: View elements found - table:', !!tableView, 'kanban:', !!kanbanView, 'map:', !!mapView);
+    console.log('Gmail CRM: View elements found - table:', !!tableView, 'kanban:', !!kanbanView, 'map:', !!mapView, 'dashboard:', !!dashboardView);
 
     if (tableView) tableView.style.display = 'none';
     if (kanbanView) kanbanView.style.display = 'none';
     if (mapView) mapView.style.display = 'none';
+    if (dashboardView) dashboardView.style.display = 'none';
 
     if (mode === 'table') {
       document.getElementById('crm-table-view-btn')?.classList.add('active');
@@ -520,6 +535,14 @@ class GmailCRM {
         console.log('Gmail CRM: Map view display set to block');
       }
       this.renderMapView();
+    } else if (mode === 'dashboard') {
+      console.log('Gmail CRM: Activating dashboard view');
+      document.getElementById('crm-dashboard-view-btn')?.classList.add('active');
+      if (dashboardView) {
+        dashboardView.style.display = 'block';
+        console.log('Gmail CRM: Dashboard view display set to block');
+      }
+      this.renderDashboard();
     }
   }
 
@@ -979,6 +1002,163 @@ class GmailCRM {
 
     // Make gmailCRM globally accessible for onclick handlers
     window.gmailCRM = this;
+  }
+
+  renderDashboard() {
+    const dashboardContainer = document.getElementById('crm-dashboard-view');
+    if (!dashboardContainer || !this.currentPipeline) return;
+
+    const dealsInPipeline = this.getDealsInPipeline(this.currentPipeline.id);
+
+    // Calculate analytics
+    const totalDeals = dealsInPipeline.length;
+    const totalValue = dealsInPipeline.reduce((sum, d) => sum + (parseFloat(d.value) || 0), 0);
+    const weightedValue = dealsInPipeline.reduce((sum, d) => {
+      const magic = this.getMagicColumns(d);
+      return sum + magic.weightedValue;
+    }, 0);
+
+    const activeDeals = dealsInPipeline.filter(d => d.status !== 'Closed Won' && d.status !== 'Closed Lost').length;
+    const wonDeals = dealsInPipeline.filter(d => d.status === 'Closed Won').length;
+    const lostDeals = dealsInPipeline.filter(d => d.status === 'Closed Lost').length;
+    const winRate = totalDeals > 0 ? ((wonDeals / (wonDeals + lostDeals || 1)) * 100).toFixed(1) : 0;
+
+    const avgDealAge = totalDeals > 0 ? Math.round(dealsInPipeline.reduce((sum, d) => sum + this.calculateDealAge(d), 0) / totalDeals) : 0;
+    const avgDealValue = totalDeals > 0 ? Math.round(totalValue / totalDeals) : 0;
+
+    // Deals by stage
+    const dealsByStage = this.currentPipeline.stages.map(stage => ({
+      stage,
+      deals: this.getDealsInStage(this.currentPipeline.id, stage.id),
+      value: this.getDealsInStage(this.currentPipeline.id, stage.id).reduce((sum, d) => sum + (parseFloat(d.value) || 0), 0)
+    }));
+
+    const maxStageDeals = Math.max(...dealsByStage.map(s => s.deals.length), 1);
+    const maxStageValue = Math.max(...dealsByStage.map(s => s.value), 1);
+
+    // Activity analysis
+    const coldDeals = dealsInPipeline.filter(d => this.calculateDaysSinceLastActivity(d) > 14).length;
+    const warmDeals = dealsInPipeline.filter(d => {
+      const days = this.calculateDaysSinceLastActivity(d);
+      return days >= 7 && days <= 14;
+    }).length;
+    const hotDeals = dealsInPipeline.filter(d => this.calculateDaysSinceLastActivity(d) < 7).length;
+
+    dashboardContainer.innerHTML = `
+      <div class="crm-dashboard-container">
+        <h2 class="crm-dashboard-title">📊 Pipeline Analytics</h2>
+
+        <!-- Key Metrics Cards -->
+        <div class="crm-metrics-grid">
+          <div class="crm-metric-card">
+            <div class="crm-metric-label">Total Pipeline Value</div>
+            <div class="crm-metric-value">$${totalValue.toLocaleString()}</div>
+          </div>
+          <div class="crm-metric-card">
+            <div class="crm-metric-label">Weighted Value</div>
+            <div class="crm-metric-value" style="color: #1a73e8;">$${Math.round(weightedValue).toLocaleString()}</div>
+          </div>
+          <div class="crm-metric-card">
+            <div class="crm-metric-label">Active Deals</div>
+            <div class="crm-metric-value">${activeDeals}</div>
+          </div>
+          <div class="crm-metric-card">
+            <div class="crm-metric-label">Win Rate</div>
+            <div class="crm-metric-value" style="color: ${parseFloat(winRate) > 50 ? '#34a853' : '#ea4335'};">${winRate}%</div>
+          </div>
+          <div class="crm-metric-card">
+            <div class="crm-metric-label">Avg Deal Size</div>
+            <div class="crm-metric-value">$${avgDealValue.toLocaleString()}</div>
+          </div>
+          <div class="crm-metric-card">
+            <div class="crm-metric-label">Avg Deal Age</div>
+            <div class="crm-metric-value">${avgDealAge} days</div>
+          </div>
+        </div>
+
+        <!-- Charts Section -->
+        <div class="crm-charts-grid">
+          <!-- Deals by Stage -->
+          <div class="crm-chart-card">
+            <h3 class="crm-chart-title">Deals by Stage</h3>
+            <div class="crm-chart-bars">
+              ${dealsByStage.map(s => `
+                <div class="crm-chart-bar-row">
+                  <div class="crm-chart-bar-label">${s.stage.name}</div>
+                  <div class="crm-chart-bar-container">
+                    <div class="crm-chart-bar" style="width: ${(s.deals.length / maxStageDeals) * 100}%; background-color: ${s.stage.color};"></div>
+                    <span class="crm-chart-bar-value">${s.deals.length}</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Value by Stage -->
+          <div class="crm-chart-card">
+            <h3 class="crm-chart-title">Value by Stage</h3>
+            <div class="crm-chart-bars">
+              ${dealsByStage.map(s => `
+                <div class="crm-chart-bar-row">
+                  <div class="crm-chart-bar-label">${s.stage.name}</div>
+                  <div class="crm-chart-bar-container">
+                    <div class="crm-chart-bar" style="width: ${(s.value / maxStageValue) * 100}%; background-color: ${s.stage.color};"></div>
+                    <span class="crm-chart-bar-value">$${Math.round(s.value / 1000)}k</span>
+                  </div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Deal Health -->
+          <div class="crm-chart-card">
+            <h3 class="crm-chart-title">Deal Activity Health</h3>
+            <div class="crm-health-bars">
+              <div class="crm-health-bar-row">
+                <div class="crm-health-label" style="color: #34a853;">🔥 Hot (< 7 days)</div>
+                <div class="crm-health-bar-container">
+                  <div class="crm-health-bar" style="width: ${totalDeals > 0 ? (hotDeals / totalDeals) * 100 : 0}%; background-color: #34a853;"></div>
+                  <span class="crm-health-value">${hotDeals}</span>
+                </div>
+              </div>
+              <div class="crm-health-bar-row">
+                <div class="crm-health-label" style="color: #fbbc04;">⚠️ Warm (7-14 days)</div>
+                <div class="crm-health-bar-container">
+                  <div class="crm-health-bar" style="width: ${totalDeals > 0 ? (warmDeals / totalDeals) * 100 : 0}%; background-color: #fbbc04;"></div>
+                  <span class="crm-health-value">${warmDeals}</span>
+                </div>
+              </div>
+              <div class="crm-health-bar-row">
+                <div class="crm-health-label" style="color: #ea4335;">❄️ Cold (> 14 days)</div>
+                <div class="crm-health-bar-container">
+                  <div class="crm-health-bar" style="width: ${totalDeals > 0 ? (coldDeals / totalDeals) * 100 : 0}%; background-color: #ea4335;"></div>
+                  <span class="crm-health-value">${coldDeals}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Win/Loss Analysis -->
+          <div class="crm-chart-card">
+            <h3 class="crm-chart-title">Win/Loss Analysis</h3>
+            <div class="crm-win-loss-chart">
+              <div class="crm-win-loss-bar">
+                <div class="crm-win-section" style="width: ${wonDeals > 0 ? (wonDeals / (wonDeals + lostDeals || 1)) * 100 : 0}%;">
+                  <span>${wonDeals} Won</span>
+                </div>
+                <div class="crm-loss-section" style="width: ${lostDeals > 0 ? (lostDeals / (wonDeals + lostDeals || 1)) * 100 : 0}%;">
+                  <span>${lostDeals} Lost</span>
+                </div>
+              </div>
+              <div class="crm-win-loss-stats">
+                <div class="crm-win-stat">✅ ${wonDeals} Closed Won</div>
+                <div class="crm-loss-stat">❌ ${lostDeals} Closed Lost</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
   }
 
   renderInstitutionsDirectory() {

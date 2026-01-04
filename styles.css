@@ -3342,3 +3342,205 @@
   font-size: 13px;
   white-space: nowrap;
 }
+
+/* ========== Dashboard/Analytics Styles ========== */
+.crm-dashboard-container {
+  padding: 24px;
+  background: #f8f9fa;
+  min-height: 100vh;
+}
+
+.crm-dashboard-title {
+  font-size: 28px;
+  font-weight: 600;
+  color: #202124;
+  margin-bottom: 24px;
+}
+
+.crm-metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+
+.crm-metric-card {
+  background: white;
+  border-radius: 8px;
+  padding: 20px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.crm-metric-label {
+  font-size: 13px;
+  color: #5f6368;
+  margin-bottom: 8px;
+  font-weight: 500;
+}
+
+.crm-metric-value {
+  font-size: 32px;
+  font-weight: 700;
+  color: #202124;
+}
+
+.crm-charts-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(400px, 1fr));
+  gap: 24px;
+}
+
+.crm-chart-card {
+  background: white;
+  border-radius: 8px;
+  padding: 24px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+}
+
+.crm-chart-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #202124;
+  margin-bottom: 20px;
+}
+
+.crm-chart-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.crm-chart-bar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.crm-chart-bar-label {
+  min-width: 100px;
+  font-size: 13px;
+  color: #5f6368;
+}
+
+.crm-chart-bar-container {
+  flex: 1;
+  height: 28px;
+  background: #f1f3f4;
+  border-radius: 4px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.crm-chart-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.crm-chart-bar-value {
+  position: absolute;
+  right: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  color: #202124;
+}
+
+.crm-health-bars {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.crm-health-bar-row {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.crm-health-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.crm-health-bar-container {
+  height: 32px;
+  background: #f1f3f4;
+  border-radius: 4px;
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.crm-health-bar {
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.3s ease;
+  min-width: 2px;
+}
+
+.crm-health-value {
+  position: absolute;
+  right: 8px;
+  font-size: 14px;
+  font-weight: 700;
+  color: #202124;
+}
+
+.crm-win-loss-chart {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.crm-win-loss-bar {
+  display: flex;
+  height: 48px;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.crm-win-section {
+  background: #34a853;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  transition: width 0.3s ease;
+}
+
+.crm-loss-section {
+  background: #ea4335;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: white;
+  font-weight: 600;
+  font-size: 14px;
+  transition: width 0.3s ease;
+}
+
+.crm-win-loss-stats {
+  display: flex;
+  justify-content: space-around;
+  padding: 12px;
+  background: #f8f9fa;
+  border-radius: 8px;
+}
+
+.crm-win-stat,
+.crm-loss-stat {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.crm-win-stat {
+  color: #34a853;
+}
+
+.crm-loss-stat {
+  color: #ea4335;
+}
