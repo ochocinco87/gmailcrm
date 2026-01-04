@@ -333,6 +333,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="general">General</button>
       <button class="tab" data-tab="firebase">Firebase</button>
+      <button class="tab" data-tab="billing">Billing</button>
       <button class="tab" data-tab="automation">Automation</button>
       <button class="tab" data-tab="sequences">Sequences</button>
       <button class="tab" data-tab="exports">Exports</button>
@@ -429,6 +430,94 @@
         <div class="form-hint">
           <strong>CSV Format:</strong> Deal Name, Stage, Contact Email, Deal Value, Priority, Status, Notes<br>
           Export creates a CSV with all your deals. Import expects the same format.
+        </div>
+      </div>
+    </div>
+
+    <!-- Billing Tab -->
+    <div class="tab-content" data-content="billing">
+      <div class="section">
+        <h2 class="section-title">💳 Subscription & Billing</h2>
+
+        <div id="subscription-status-card" style="border: 1px solid #dadce0; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
+          <!-- Subscription status will be rendered here -->
+        </div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">📊 Pricing Plans</h2>
+
+        <div id="pricing-plans" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 20px;">
+          <!-- Starter Plan -->
+          <div class="pricing-card" data-plan="starter">
+            <div style="border: 2px solid #dadce0; border-radius: 8px; padding: 20px;">
+              <div style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Starter</div>
+              <div style="font-size: 32px; font-weight: 700; color: #1a73e8; margin-bottom: 16px;">
+                $15<span style="font-size: 16px; font-weight: 400; color: #5f6368;">/user/month</span>
+              </div>
+              <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; color: #5f6368; font-size: 14px; line-height: 2;">
+                <li>✓ Up to 5 users</li>
+                <li>✓ Unlimited pipelines</li>
+                <li>✓ Email tracking</li>
+                <li>✓ Basic automation</li>
+                <li>✓ Email support</li>
+              </ul>
+              <button class="btn btn-secondary select-plan-btn" data-plan="starter">Select Plan</button>
+            </div>
+          </div>
+
+          <!-- Pro Plan -->
+          <div class="pricing-card" data-plan="pro">
+            <div style="border: 2px solid #1a73e8; border-radius: 8px; padding: 20px; position: relative;">
+              <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #1a73e8; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;">RECOMMENDED</div>
+              <div style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Pro</div>
+              <div style="font-size: 32px; font-weight: 700; color: #1a73e8; margin-bottom: 16px;">
+                $29<span style="font-size: 16px; font-weight: 400; color: #5f6368;">/user/month</span>
+              </div>
+              <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; color: #5f6368; font-size: 14px; line-height: 2;">
+                <li>✓ Up to 50 users</li>
+                <li>✓ Everything in Starter</li>
+                <li>✓ Advanced automation</li>
+                <li>✓ Contact enrichment</li>
+                <li>✓ Email sequences</li>
+                <li>✓ Priority support</li>
+              </ul>
+              <button class="btn btn-primary select-plan-btn" data-plan="pro">Select Plan</button>
+            </div>
+          </div>
+
+          <!-- Enterprise Plan -->
+          <div class="pricing-card" data-plan="enterprise">
+            <div style="border: 2px solid #dadce0; border-radius: 8px; padding: 20px;">
+              <div style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Enterprise</div>
+              <div style="font-size: 32px; font-weight: 700; color: #1a73e8; margin-bottom: 16px;">
+                Custom
+              </div>
+              <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; color: #5f6368; font-size: 14px; line-height: 2;">
+                <li>✓ Unlimited users</li>
+                <li>✓ Everything in Pro</li>
+                <li>✓ Custom integrations</li>
+                <li>✓ Dedicated support</li>
+                <li>✓ SLA guarantee</li>
+                <li>✓ On-premise option</li>
+              </ul>
+              <button class="btn btn-secondary select-plan-btn" data-plan="enterprise">Contact Sales</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">👥 Seat Management</h2>
+        <div id="seat-management">
+          <!-- Seat usage will be rendered here -->
+        </div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">📜 Billing History</h2>
+        <div id="billing-history">
+          <!-- Billing history will be rendered here -->
         </div>
       </div>
     </div>

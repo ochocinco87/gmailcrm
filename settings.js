@@ -1696,5 +1696,392 @@ document.getElementById('add-export-schedule-btn')?.addEventListener('click', ()
 // Load scheduled exports when settings page opens
 loadScheduledExports();
 
+// ========== Billing & Subscription Management ==========
+
+// Stripe publishable key (replace with your actual key)
+const STRIPE_PUBLISHABLE_KEY = 'pk_test_51QeN7SC91zxj0WOi7VPl9yFJR4O9v8z4QjDPTBRh2zdz2
+
+FTCd9D8xvzfvzQP3f4k7tSRnC2SRCTzB7YGWzX3JrwmP00dYqMpBK2';
+
+// Pricing plans configuration
+const PRICING_PLANS = {
+  starter: {
+    name: 'Starter',
+    pricePerSeat: 15,
+    maxSeats: 5,
+    stripePriceId: 'price_starter_monthly',
+    features: ['Up to 5 users', 'Unlimited pipelines', 'Email tracking', 'Basic automation', 'Email support']
+  },
+  pro: {
+    name: 'Pro',
+    pricePerSeat: 29,
+    maxSeats: 50,
+    stripePriceId: 'price_pro_monthly',
+    features: ['Up to 50 users', 'Everything in Starter', 'Advanced automation', 'Contact enrichment', 'Email sequences', 'Priority support']
+  },
+  enterprise: {
+    name: 'Enterprise',
+    pricePerSeat: 'custom',
+    maxSeats: Infinity,
+    stripePriceId: null,
+    features: ['Unlimited users', 'Everything in Pro', 'Custom integrations', 'Dedicated support', 'SLA guarantee', 'On-premise option']
+  }
+};
+
+function loadBillingInfo() {
+  chrome.storage.local.get(['currentUser', 'firebaseConfig'], async (result) => {
+    if (!result.currentUser) {
+      showAlert('general', 'warning', 'Please sign in to view billing information');
+      renderSubscriptionStatus(null);
+      return;
+    }
+
+    // Get subscription from Firebase
+    try {
+      const subscription = await getOrganizationSubscription();
+      renderSubscriptionStatus(subscription);
+      renderSeatManagement(subscription);
+      renderBillingHistory(subscription);
+    } catch (error) {
+      console.error('Error loading billing info:', error);
+      renderSubscriptionStatus(null);
+    }
+  });
+}
+
+async function getOrganizationSubscription() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['currentUser'], async (result) => {
+      if (!result.currentUser) {
+        resolve(null);
+        return;
+      }
+
+      // Get subscription from Firestore
+      // For now, return mock data
+      const mockSubscription = {
+        status: 'active', // 'active', 'trial', 'cancelled', 'past_due'
+        plan: 'pro',
+        seats: 10,
+        seatsUsed: 5,
+        billingPeriodStart: new Date().toISOString(),
+        billingPeriodEnd: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+        amount: 290, // 10 seats × $29
+        stripeCustomerId: 'cus_mock',
+        stripeSubscriptionId: 'sub_mock'
+      };
+
+      resolve(mockSubscription);
+    });
+  });
+}
+
+function renderSubscriptionStatus(subscription) {
+  const container = document.getElementById('subscription-status-card');
+  if (!container) return;
+
+  if (!subscription) {
+    container.innerHTML = `
+      <div style="text-align: center; padding: 20px;">
+        <div style="font-size: 48px; margin-bottom: 16px;">💳</div>
+        <div style="font-size: 18px; font-weight: 600; margin-bottom: 8px;">No Active Subscription</div>
+        <div style="color: #5f6368; margin-bottom: 20px;">Choose a plan below to get started</div>
+      </div>
+    `;
+    return;
+  }
+
+  const statusColors = {
+    active: { bg: '#e6f4ea', text: '#137333', label: '✓ Active' },
+    trial: { bg: '#fef7e0', text: '#b06000', label: '⏱️ Trial' },
+    cancelled: { bg: '#fce8e6', text: '#c5221f', label: '⚠️ Cancelled' },
+    past_due: { bg: '#fce8e6', text: '#c5221f', label: '⚠️ Past Due' }
+  };
+
+  const statusInfo = statusColors[subscription.status] || statusColors.active;
+  const plan = PRICING_PLANS[subscription.plan] || PRICING_PLANS.pro;
+
+  container.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: start; flex-wrap: wrap; gap: 20px;">
+      <div style="flex: 1; min-width: 200px;">
+        <div style="display: inline-block; padding: 6px 12px; background: ${statusInfo.bg}; color: ${statusInfo.text}; border-radius: 4px; font-weight: 600; font-size: 13px; margin-bottom: 12px;">
+          ${statusInfo.label}
+        </div>
+        <div style="font-size: 24px; font-weight: 700; margin-bottom: 4px;">${plan.name} Plan</div>
+        <div style="color: #5f6368; margin-bottom: 16px;">
+          ${subscription.seatsUsed} of ${subscription.seats} seats used
+        </div>
+        <div style="color: #5f6368; font-size: 13px;">
+          <div><strong>Billing period:</strong> ${new Date(subscription.billingPeriodStart).toLocaleDateString()} - ${new Date(subscription.billingPeriodEnd).toLocaleDateString()}</div>
+          <div><strong>Amount:</strong> $${subscription.amount}/month</div>
+        </div>
+      </div>
+
+      <div style="text-align: right;">
+        <button class="btn btn-secondary" id="manage-subscription-btn">Manage Subscription</button>
+        <button class="btn btn-secondary" id="add-seats-btn" style="margin-top: 8px;">Add More Seats</button>
+      </div>
+    </div>
+  `;
+
+  // Add event listeners
+  document.getElementById('manage-subscription-btn')?.addEventListener('click', () => {
+    window.open('https://billing.stripe.com/p/login/test_mock', '_blank');
+  });
+
+  document.getElementById('add-seats-btn')?.addEventListener('click', () => {
+    showAddSeatsDialog(subscription);
+  });
+}
+
+function renderSeatManagement(subscription) {
+  const container = document.getElementById('seat-management');
+  if (!container) return;
+
+  if (!subscription) {
+    container.innerHTML = '<p style="color: #5f6368;">No subscription active</p>';
+    return;
+  }
+
+  const usagePercent = (subscription.seatsUsed / subscription.seats) * 100;
+
+  container.innerHTML = `
+    <div style="margin-bottom: 16px;">
+      <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+        <span style="font-weight: 500;">Seat Usage</span>
+        <span style="color: #5f6368;">${subscription.seatsUsed} / ${subscription.seats} seats</span>
+      </div>
+      <div style="background: #e8eaed; height: 8px; border-radius: 4px; overflow: hidden;">
+        <div style="background: ${usagePercent > 80 ? '#ea4335' : '#1a73e8'}; height: 100%; width: ${usagePercent}%; transition: width 0.3s;"></div>
+      </div>
+    </div>
+
+    <div style="color: #5f6368; font-size: 13px; margin-bottom: 12px;">
+      ${usagePercent > 80 ? '⚠️ You\'re running low on seats. Consider adding more.' : '✓ You have available seats'}
+    </div>
+
+    <button class="btn btn-primary btn-small" id="add-seats-btn-2">Add Seats</button>
+  `;
+
+  document.getElementById('add-seats-btn-2')?.addEventListener('click', () => {
+    showAddSeatsDialog(subscription);
+  });
+}
+
+function renderBillingHistory(subscription) {
+  const container = document.getElementById('billing-history');
+  if (!container) return;
+
+  if (!subscription) {
+    container.innerHTML = '<p style="color: #5f6368;">No billing history available</p>';
+    return;
+  }
+
+  // Mock billing history
+  const history = [
+    { date: new Date().toISOString(), amount: subscription.amount, status: 'paid', invoice: 'INV-001' },
+    { date: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(), amount: subscription.amount, status: 'paid', invoice: 'INV-002' }
+  ];
+
+  container.innerHTML = `
+    <div style="overflow-x: auto;">
+      <table style="width: 100%; border-collapse: collapse;">
+        <thead>
+          <tr style="border-bottom: 1px solid #e8eaed; text-align: left;">
+            <th style="padding: 12px; font-weight: 500; color: #5f6368;">Date</th>
+            <th style="padding: 12px; font-weight: 500; color: #5f6368;">Amount</th>
+            <th style="padding: 12px; font-weight: 500; color: #5f6368;">Status</th>
+            <th style="padding: 12px; font-weight: 500; color: #5f6368;">Invoice</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${history.map(item => `
+            <tr style="border-bottom: 1px solid #f1f3f4;">
+              <td style="padding: 12px;">${new Date(item.date).toLocaleDateString()}</td>
+              <td style="padding: 12px; font-weight: 500;">$${item.amount}</td>
+              <td style="padding: 12px;">
+                <span style="padding: 4px 8px; background: #e6f4ea; color: #137333; border-radius: 4px; font-size: 12px; font-weight: 600;">
+                  ${item.status.toUpperCase()}
+                </span>
+              </td>
+              <td style="padding: 12px;">
+                <a href="#" style="color: #1a73e8; text-decoration: none;">${item.invoice}</a>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function showAddSeatsDialog(subscription) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+
+  const plan = PRICING_PLANS[subscription.plan];
+  const currentSeats = subscription.seats;
+  const additionalSeats = 5;
+  const newTotal = currentSeats + additionalSeats;
+  const additionalCost = additionalSeats * plan.pricePerSeat;
+
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 500px; width: 90%;">
+      <h3 style="margin: 0 0 20px 0;">Add More Seats</h3>
+
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Number of seats to add</label>
+        <input type="number" id="seats-to-add" value="${additionalSeats}" min="1" max="${plan.maxSeats - currentSeats}"
+               style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+      </div>
+
+      <div style="background: #f8f9fa; padding: 16px; border-radius: 4px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span>Current seats:</span>
+          <span><strong>${currentSeats}</strong></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span>Additional seats:</span>
+          <span><strong id="additional-seats-display">${additionalSeats}</strong></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid #dadce0;">
+          <span style="font-weight: 600;">New total:</span>
+          <span style="font-weight: 600; color: #1a73e8;" id="new-total-display">${newTotal} seats</span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-top: 8px;">
+          <span>Monthly cost increase:</span>
+          <span style="color: #1a73e8; font-weight: 600;" id="cost-increase-display">+$${additionalCost}/mo</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button class="btn btn-secondary" id="cancel-seats">Cancel</button>
+        <button class="btn btn-primary" id="confirm-add-seats">Add Seats</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Update calculations on input change
+  const seatsInput = document.getElementById('seats-to-add');
+  seatsInput?.addEventListener('input', () => {
+    const seats = parseInt(seatsInput.value) || 0;
+    document.getElementById('additional-seats-display').textContent = seats;
+    document.getElementById('new-total-display').textContent = `${currentSeats + seats} seats`;
+    document.getElementById('cost-increase-display').textContent = `+$${seats * plan.pricePerSeat}/mo`;
+  });
+
+  document.getElementById('cancel-seats')?.addEventListener('click', () => modal.remove());
+
+  document.getElementById('confirm-add-seats')?.addEventListener('click', async () => {
+    const seatsToAdd = parseInt(document.getElementById('seats-to-add').value) || 0;
+
+    if (seatsToAdd < 1) {
+      alert('Please enter a valid number of seats');
+      return;
+    }
+
+    // Process seat addition via Stripe
+    showAlert('general', 'info', '⏳ Processing seat addition...');
+
+    // TODO: Implement Stripe API call to update subscription
+    // For now, just show success message
+    setTimeout(() => {
+      modal.remove();
+      showAlert('general', 'success', `✅ Successfully added ${seatsToAdd} seats!`);
+      loadBillingInfo(); // Reload billing info
+    }, 1500);
+  });
+}
+
+// Handle plan selection
+document.querySelectorAll('.select-plan-btn')?.forEach(btn => {
+  btn.addEventListener('click', () => {
+    const plan = btn.dataset.plan;
+
+    if (plan === 'enterprise') {
+      window.open('mailto:sales@yourcrm.com?subject=Enterprise Plan Inquiry', '_blank');
+      return;
+    }
+
+    showCheckoutModal(plan);
+  });
+});
+
+function showCheckoutModal(planId) {
+  const plan = PRICING_PLANS[planId];
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 500px; width: 90%;">
+      <h3 style="margin: 0 0 20px 0;">Subscribe to ${plan.name}</h3>
+
+      <div style="margin-bottom: 20px;">
+        <label style="display: block; margin-bottom: 8px; font-weight: 500;">Number of seats</label>
+        <input type="number" id="checkout-seats" value="5" min="1" max="${plan.maxSeats}"
+               style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+      </div>
+
+      <div style="background: #f8f9fa; padding: 16px; border-radius: 4px; margin-bottom: 20px;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span>${plan.name} Plan:</span>
+          <span><strong>$${plan.pricePerSeat}/user/month</strong></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 8px;">
+          <span>Seats:</span>
+          <span><strong id="checkout-seats-display">5</strong></span>
+        </div>
+        <div style="display: flex; justify-content: space-between; padding-top: 8px; border-top: 1px solid #dadce0;">
+          <span style="font-weight: 600;">Total monthly:</span>
+          <span style="font-weight: 600; color: #1a73e8; font-size: 20px;" id="checkout-total">$${plan.pricePerSeat * 5}</span>
+        </div>
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button class="btn btn-secondary" id="cancel-checkout">Cancel</button>
+        <button class="btn btn-primary" id="proceed-checkout">Proceed to Checkout</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Update calculations
+  const seatsInput = document.getElementById('checkout-seats');
+  seatsInput?.addEventListener('input', () => {
+    const seats = parseInt(seatsInput.value) || 0;
+    document.getElementById('checkout-seats-display').textContent = seats;
+    document.getElementById('checkout-total').textContent = `$${seats * plan.pricePerSeat}`;
+  });
+
+  document.getElementById('cancel-checkout')?.addEventListener('click', () => modal.remove());
+
+  document.getElementById('proceed-checkout')?.addEventListener('click', () => {
+    const seats = parseInt(document.getElementById('checkout-seats').value) || 0;
+
+    if (seats < 1) {
+      alert('Please enter a valid number of seats');
+      return;
+    }
+
+    // Redirect to Stripe Checkout
+    // TODO: Implement actual Stripe checkout
+    showAlert('general', 'info', '⏳ Redirecting to Stripe Checkout...');
+
+    // Mock success
+    setTimeout(() => {
+      modal.remove();
+      showAlert('general', 'success', '✅ Subscription activated!');
+      loadBillingInfo();
+    }, 2000);
+  });
+}
+
+// Load billing info when tab is shown
+loadBillingInfo();
+
 // Initialize
 loadSettings();
