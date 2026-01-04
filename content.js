@@ -2307,6 +2307,21 @@ class GmailCRM {
           ${this.currentPipeline?.type === 'customer-tracking' ? this.renderCasesSection(deal) : ''}
 
           <div class="crm-sidebar-section">
+            <div class="crm-section-header">
+              <h4>📧 Send Email</h4>
+            </div>
+            <p class="crm-section-hint">Compose a personalized email to this contact using templates</p>
+            <div style="display: flex; gap: 8px;">
+              <button class="crm-btn-small" id="crm-compose-email-btn" style="flex: 1;">
+                ✉️ Compose Email
+              </button>
+              <button class="crm-btn-small" id="crm-manage-templates-btn">
+                ⚙️ Templates
+              </button>
+            </div>
+          </div>
+
+          <div class="crm-sidebar-section">
             <h4>Tasks & Follow-ups</h4>
             ${this.renderTasksSection(deal)}
             <button class="crm-btn-small" id="crm-add-task-btn">+ Add Task</button>
@@ -2341,6 +2356,14 @@ class GmailCRM {
 
     document.getElementById('crm-generate-summary-btn')?.addEventListener('click', async () => {
       await this.generateAISummary(deal.id);
+    });
+
+    document.getElementById('crm-compose-email-btn')?.addEventListener('click', () => {
+      this.showComposeEmailDialog(deal.id);
+    });
+
+    document.getElementById('crm-manage-templates-btn')?.addEventListener('click', () => {
+      this.showTemplateManager();
     });
 
     // Task checkbox listeners (mark complete/incomplete)
@@ -4788,6 +4811,333 @@ Respond in JSON format:
     }
 
     return parts.join('\n');
+  }
+
+  // Mail Merge Methods
+
+  showComposeEmailDialog(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    // Load templates from storage
+    chrome.storage.local.get(['emailTemplates'], (result) => {
+      const templates = result.emailTemplates || this.getDefaultEmailTemplates();
+
+      const modal = document.createElement('div');
+      modal.className = 'crm-modal';
+      modal.innerHTML = `
+        <div class="crm-modal-content" style="max-width: 700px;">
+          <h2>📧 Compose Email</h2>
+
+          <div class="crm-form-group">
+            <label>Select Template</label>
+            <select id="crm-email-template-select" class="crm-input">
+              <option value="">-- Select a template --</option>
+              ${templates.map((t, idx) => `<option value="${idx}">${t.name}</option>`).join('')}
+            </select>
+          </div>
+
+          <div class="crm-form-group">
+            <label>To</label>
+            <input type="email" id="crm-email-to" class="crm-input" value="${deal.contactEmail || ''}" />
+          </div>
+
+          <div class="crm-form-group">
+            <label>Subject</label>
+            <input type="text" id="crm-email-subject" class="crm-input" placeholder="Email subject..." />
+          </div>
+
+          <div class="crm-form-group">
+            <label>Body</label>
+            <textarea id="crm-email-body" class="crm-textarea" rows="12" placeholder="Type your email here...
+
+Available variables:
+{{firstName}} - Contact's first name
+{{lastName}} - Contact's last name
+{{email}} - Contact's email
+{{dealName}} - Deal/email subject
+{{company}} - Company name
+{{value}} - Deal value
+{{stage}} - Current stage
+{{contactTitle}} - Contact's title"></textarea>
+          </div>
+
+          <div class="crm-form-group">
+            <div style="background: #f0f4ff; padding: 12px; border-radius: 4px; border-left: 3px solid #1a73e8;">
+              <strong>💡 Preview:</strong>
+              <div id="crm-email-preview" style="margin-top: 8px; white-space: pre-wrap; font-family: monospace; font-size: 13px;"></div>
+            </div>
+          </div>
+
+          <div class="crm-modal-actions">
+            <button class="crm-btn" id="crm-cancel-email">Cancel</button>
+            <button class="crm-btn-primary" id="crm-open-gmail-compose">Open in Gmail</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      const templateSelect = document.getElementById('crm-email-template-select');
+      const subjectInput = document.getElementById('crm-email-subject');
+      const bodyTextarea = document.getElementById('crm-email-body');
+      const previewDiv = document.getElementById('crm-email-preview');
+
+      // Update preview when body changes
+      const updatePreview = () => {
+        const subject = subjectInput.value;
+        const body = bodyTextarea.value;
+        const previewSubject = this.replaceTemplateVariables(subject, deal);
+        const previewBody = this.replaceTemplateVariables(body, deal);
+        previewDiv.innerHTML = `<strong>Subject:</strong> ${previewSubject || '(empty)'}<br><br>${previewBody || '(empty)'}`;
+      };
+
+      // Load template when selected
+      templateSelect.addEventListener('change', (e) => {
+        const templateIdx = parseInt(e.target.value);
+        if (!isNaN(templateIdx) && templates[templateIdx]) {
+          const template = templates[templateIdx];
+          subjectInput.value = template.subject;
+          bodyTextarea.value = template.body;
+          updatePreview();
+        }
+      });
+
+      subjectInput.addEventListener('input', updatePreview);
+      bodyTextarea.addEventListener('input', updatePreview);
+
+      document.getElementById('crm-cancel-email')?.addEventListener('click', () => modal.remove());
+
+      document.getElementById('crm-open-gmail-compose')?.addEventListener('click', () => {
+        const to = document.getElementById('crm-email-to').value;
+        const subject = this.replaceTemplateVariables(subjectInput.value, deal);
+        const body = this.replaceTemplateVariables(bodyTextarea.value, deal);
+
+        if (!to || !to.trim()) {
+          alert('Please enter a recipient email address');
+          return;
+        }
+
+        this.openGmailCompose(to, subject, body);
+        modal.remove();
+        this.showNotification('Opening Gmail compose...');
+      });
+
+      // Initial preview update
+      updatePreview();
+    });
+  }
+
+  showTemplateManager() {
+    chrome.storage.local.get(['emailTemplates'], (result) => {
+      let templates = result.emailTemplates || this.getDefaultEmailTemplates();
+
+      const renderTemplatesList = () => {
+        return templates.map((t, idx) => `
+          <div class="crm-template-item" style="padding: 12px; border: 1px solid #dadce0; border-radius: 4px; margin-bottom: 8px;">
+            <div style="display: flex; justify-content: space-between; align-items: start;">
+              <div style="flex: 1;">
+                <strong>${t.name}</strong>
+                <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">
+                  Subject: ${t.subject}
+                </div>
+              </div>
+              <div style="display: flex; gap: 8px;">
+                <button class="crm-btn-small crm-edit-template" data-idx="${idx}">Edit</button>
+                <button class="crm-btn-small crm-delete-template" data-idx="${idx}">Delete</button>
+              </div>
+            </div>
+          </div>
+        `).join('');
+      };
+
+      const modal = document.createElement('div');
+      modal.className = 'crm-modal';
+      modal.innerHTML = `
+        <div class="crm-modal-content" style="max-width: 700px;">
+          <h2>📝 Email Templates</h2>
+
+          <div id="crm-templates-list" style="margin-bottom: 16px; max-height: 400px; overflow-y: auto;">
+            ${renderTemplatesList()}
+          </div>
+
+          <button class="crm-btn-primary" id="crm-add-template">+ Add New Template</button>
+
+          <div class="crm-modal-actions" style="margin-top: 16px;">
+            <button class="crm-btn" id="crm-close-templates">Close</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      const refreshList = () => {
+        document.getElementById('crm-templates-list').innerHTML = renderTemplatesList();
+        attachListeners();
+      };
+
+      const attachListeners = () => {
+        modal.querySelectorAll('.crm-edit-template').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            this.showTemplateEditor(templates[idx], idx, templates, refreshList);
+          });
+        });
+
+        modal.querySelectorAll('.crm-delete-template').forEach(btn => {
+          btn.addEventListener('click', (e) => {
+            const idx = parseInt(e.target.dataset.idx);
+            if (confirm(`Delete template "${templates[idx].name}"?`)) {
+              templates.splice(idx, 1);
+              chrome.storage.local.set({ emailTemplates: templates }, () => {
+                refreshList();
+                this.showNotification('Template deleted');
+              });
+            }
+          });
+        });
+      };
+
+      attachListeners();
+
+      document.getElementById('crm-add-template')?.addEventListener('click', () => {
+        this.showTemplateEditor(null, -1, templates, refreshList);
+      });
+
+      document.getElementById('crm-close-templates')?.addEventListener('click', () => modal.remove());
+    });
+  }
+
+  showTemplateEditor(template, idx, templates, refreshCallback) {
+    const isNew = idx === -1;
+
+    const editorModal = document.createElement('div');
+    editorModal.className = 'crm-modal';
+    editorModal.innerHTML = `
+      <div class="crm-modal-content" style="max-width: 700px;">
+        <h2>${isNew ? 'New' : 'Edit'} Email Template</h2>
+
+        <div class="crm-form-group">
+          <label>Template Name</label>
+          <input type="text" id="crm-template-name" class="crm-input" value="${template?.name || ''}" placeholder="e.g., Follow-up Email" />
+        </div>
+
+        <div class="crm-form-group">
+          <label>Subject</label>
+          <input type="text" id="crm-template-subject" class="crm-input" value="${template?.subject || ''}" placeholder="Use {{variables}} for personalization" />
+        </div>
+
+        <div class="crm-form-group">
+          <label>Body</label>
+          <textarea id="crm-template-body" class="crm-textarea" rows="10" placeholder="Available variables:
+{{firstName}}, {{lastName}}, {{email}}, {{dealName}}, {{company}}, {{value}}, {{stage}}, {{contactTitle}}">${template?.body || ''}</textarea>
+        </div>
+
+        <div style="background: #f0f4ff; padding: 12px; border-radius: 4px; font-size: 13px;">
+          <strong>💡 Variables:</strong> {{firstName}}, {{lastName}}, {{email}}, {{dealName}}, {{company}}, {{value}}, {{stage}}, {{contactTitle}}
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-template-edit">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-template-edit">Save Template</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(editorModal);
+
+    document.getElementById('crm-cancel-template-edit')?.addEventListener('click', () => editorModal.remove());
+
+    document.getElementById('crm-save-template-edit')?.addEventListener('click', () => {
+      const name = document.getElementById('crm-template-name').value.trim();
+      const subject = document.getElementById('crm-template-subject').value.trim();
+      const body = document.getElementById('crm-template-body').value.trim();
+
+      if (!name || !subject || !body) {
+        alert('Please fill in all fields');
+        return;
+      }
+
+      const templateData = { name, subject, body };
+
+      if (isNew) {
+        templates.push(templateData);
+      } else {
+        templates[idx] = templateData;
+      }
+
+      chrome.storage.local.set({ emailTemplates: templates }, () => {
+        editorModal.remove();
+        refreshCallback();
+        this.showNotification(`Template ${isNew ? 'created' : 'updated'}!`);
+      });
+    });
+  }
+
+  replaceTemplateVariables(template, deal) {
+    if (!template || !deal) return template;
+
+    const contactName = deal.contactEmail ? this.extractNameFromEmail(deal.contactEmail) : '';
+    const nameParts = contactName.split(' ');
+    const firstName = nameParts[0] || '';
+    const lastName = nameParts.slice(1).join(' ') || '';
+    const company = deal.contactEmail ? this.extractCompanyFromEmail(deal.contactEmail) : '';
+    const stageName = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.name || '';
+
+    const variables = {
+      firstName: firstName,
+      lastName: lastName,
+      email: deal.contactEmail || '',
+      dealName: deal.emailSubject || 'Untitled Deal',
+      company: company,
+      value: deal.value ? `$${Number(deal.value).toLocaleString()}` : '',
+      stage: stageName,
+      contactTitle: deal.contactTitle || ''
+    };
+
+    let result = template;
+    for (const [key, value] of Object.entries(variables)) {
+      const regex = new RegExp(`{{${key}}}`, 'g');
+      result = result.replace(regex, value);
+    }
+
+    return result;
+  }
+
+  openGmailCompose(to, subject, body) {
+    // Construct Gmail compose URL
+    const params = new URLSearchParams();
+    if (to) params.append('to', to);
+    if (subject) params.append('su', subject);
+    if (body) params.append('body', body);
+
+    const composeUrl = `https://mail.google.com/mail/?view=cm&fs=1&${params.toString()}`;
+    window.open(composeUrl, '_blank');
+  }
+
+  getDefaultEmailTemplates() {
+    return [
+      {
+        name: 'Introduction Email',
+        subject: 'Introduction - {{company}}',
+        body: `Hi {{firstName}},\n\nI wanted to reach out to introduce myself and our company. We specialize in [your service/product].\n\nI noticed that {{company}} might benefit from our solutions. Would you be open to a brief call to discuss how we can help?\n\nBest regards,\n[Your name]`
+      },
+      {
+        name: 'Follow-up Email',
+        subject: 'Following up - {{dealName}}',
+        body: `Hi {{firstName}},\n\nI wanted to follow up on our previous conversation regarding {{dealName}}.\n\nDo you have any questions or would you like to schedule a call to discuss next steps?\n\nLooking forward to hearing from you.\n\nBest,\n[Your name]`
+      },
+      {
+        name: 'Proposal Email',
+        subject: 'Proposal for {{company}}',
+        body: `Hi {{firstName}},\n\nThank you for your interest in working with us. I've prepared a proposal for {{dealName}} with an estimated value of {{value}}.\n\nPlease review the attached proposal and let me know if you have any questions.\n\nI'm excited about the opportunity to work with {{company}}!\n\nBest regards,\n[Your name]`
+      },
+      {
+        name: 'Check-in Email',
+        subject: 'Checking in',
+        body: `Hi {{firstName}},\n\nI hope this email finds you well. I wanted to check in and see how things are progressing with {{dealName}}.\n\nIs there anything I can help with or any questions I can answer?\n\nBest,\n[Your name]`
+      }
+    ];
   }
 }
 
