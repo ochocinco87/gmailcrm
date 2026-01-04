@@ -15,6 +15,7 @@ class GmailCRM {
       sortBy: 'date'
     };
     this.automationRules = [];
+    this.followUpSequences = [];
   }
 
   async init() {
@@ -84,6 +85,12 @@ class GmailCRM {
       chrome.storage.local.get(['automationRules'], resolve);
     });
     this.automationRules = automationResult.automationRules || this.getDefaultAutomationRules();
+
+    // Load follow-up sequences from local storage
+    const sequencesResult = await new Promise(resolve => {
+      chrome.storage.local.get(['followUpSequences'], resolve);
+    });
+    this.followUpSequences = sequencesResult.followUpSequences || [];
 
     // Save default pipelines if none exist
     if (pipelines.length === 0) {
@@ -1957,6 +1964,157 @@ class GmailCRM {
 
     deal.comments.push(comment);
     await this.saveDeal(deal);
+  }
+
+  // ========== Follow-Up Sequences ==========
+
+  async enrollDealInSequence(dealId, sequenceId) {
+    const sequence = this.followUpSequences.find(s => s.id === sequenceId);
+    if (!sequence) {
+      this.showNotification('❌ Sequence not found');
+      return;
+    }
+
+    const deal = this.deals[dealId];
+    if (!deal) {
+      this.showNotification('❌ Deal not found');
+      return;
+    }
+
+    // Check if already enrolled
+    if (!sequence.enrollments) {
+      sequence.enrollments = [];
+    }
+
+    const existingEnrollment = sequence.enrollments.find(e => e.dealId === dealId);
+    if (existingEnrollment && existingEnrollment.status === 'active') {
+      this.showNotification('⚠️ Deal already enrolled in this sequence');
+      return;
+    }
+
+    // Enroll deal
+    sequence.enrollments.push({
+      dealId: dealId,
+      enrolledAt: new Date().toISOString(),
+      currentStep: 0,
+      status: 'active'
+    });
+
+    // Save sequences
+    await chrome.storage.local.set({ followUpSequences: this.followUpSequences });
+
+    this.showNotification(`✅ Enrolled in sequence: ${sequence.name}`);
+
+    // Log enrollment in deal comments
+    await this.addAutomationComment(dealId, `📧 Enrolled in follow-up sequence: ${sequence.name}`);
+  }
+
+  async unenrollDealFromSequence(dealId, sequenceId) {
+    const sequence = this.followUpSequences.find(s => s.id === sequenceId);
+    if (!sequence || !sequence.enrollments) return;
+
+    const enrollment = sequence.enrollments.find(e => e.dealId === dealId);
+    if (enrollment) {
+      enrollment.status = 'stopped';
+      await chrome.storage.local.set({ followUpSequences: this.followUpSequences });
+      this.showNotification('⏹️ Stopped follow-up sequence');
+
+      await this.addAutomationComment(dealId, `⏹️ Stopped follow-up sequence: ${sequence.name}`);
+    }
+  }
+
+  getDealSequenceStatus(dealId) {
+    const enrollments = [];
+
+    for (const sequence of this.followUpSequences) {
+      if (!sequence.enrollments) continue;
+
+      const enrollment = sequence.enrollments.find(e => e.dealId === dealId && e.status === 'active');
+      if (enrollment) {
+        enrollments.push({
+          sequenceId: sequence.id,
+          sequenceName: sequence.name,
+          currentStep: enrollment.currentStep,
+          totalSteps: sequence.steps.length,
+          enrolledAt: enrollment.enrolledAt
+        });
+      }
+    }
+
+    return enrollments;
+  }
+
+  renderFollowUpSequenceWidget(dealId) {
+    const enrollments = this.getDealSequenceStatus(dealId);
+
+    if (enrollments.length === 0) {
+      return `
+        <div class="crm-sequence-widget">
+          <div class="crm-section-title">📧 Follow-Up Sequences</div>
+          <p style="color: #5f6368; font-size: 13px; margin: 8px 0;">Not enrolled in any sequences</p>
+          <button class="crm-btn-small" onclick="window.gmailCRM.showSequenceEnrollmentDialog('${dealId}')">
+            Enroll in Sequence
+          </button>
+        </div>
+      `;
+    }
+
+    return `
+      <div class="crm-sequence-widget">
+        <div class="crm-section-title">📧 Active Follow-Up Sequences</div>
+        ${enrollments.map(e => `
+          <div style="padding: 8px; background: #e8f0fe; border-radius: 4px; margin: 8px 0;">
+            <div style="font-weight: 500; margin-bottom: 4px;">${e.sequenceName}</div>
+            <div style="font-size: 12px; color: #5f6368;">
+              Step ${e.currentStep + 1} of ${e.totalSteps}
+            </div>
+            <button class="crm-btn-small" style="margin-top: 6px;"
+                    onclick="window.gmailCRM.unenrollDealFromSequence('${dealId}', '${e.sequenceId}')">
+              Stop Sequence
+            </button>
+          </div>
+        `).join('')}
+      </div>
+    `;
+  }
+
+  showSequenceEnrollmentDialog(dealId) {
+    if (this.followUpSequences.length === 0) {
+      this.showNotification('⚠️ No sequences available. Create one in Settings first.');
+      return;
+    }
+
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>Enroll in Follow-Up Sequence</h2>
+
+        <div class="crm-form-group">
+          <label>Select Sequence</label>
+          <select id="crm-sequence-select" class="crm-input">
+            ${this.followUpSequences.map(s => `
+              <option value="${s.id}">${s.name} (${s.steps.length} steps)</option>
+            `).join('')}
+          </select>
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-enrollment">Cancel</button>
+          <button class="crm-btn-primary" id="crm-confirm-enrollment">Enroll</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-enrollment').addEventListener('click', () => modal.remove());
+    document.getElementById('crm-confirm-enrollment').addEventListener('click', async () => {
+      const sequenceId = document.getElementById('crm-sequence-select').value;
+      await this.enrollDealInSequence(dealId, sequenceId);
+      modal.remove();
+      this.renderDealDetailView(dealId);
+    });
   }
 
   showPipelineEditor(pipeline = null) {

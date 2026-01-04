@@ -1117,5 +1117,264 @@ document.getElementById('add-automation-rule-btn')?.addEventListener('click', ()
 // Load automation rules when settings page opens
 loadAutomationRules();
 
+// ========== Follow-Up Sequences Management ==========
+
+function loadSequences() {
+  chrome.storage.local.get(['followUpSequences'], (result) => {
+    const sequences = result.followUpSequences || [];
+    renderSequences(sequences);
+  });
+}
+
+function renderSequences(sequences) {
+  const container = document.getElementById('sequences-list');
+  if (!container) return;
+
+  if (sequences.length === 0) {
+    container.innerHTML = '<p style="color: #5f6368;">No sequences yet. Click "Create New Sequence" to get started.</p>';
+    return;
+  }
+
+  container.innerHTML = sequences.map((seq, idx) => {
+    const enrollmentCount = seq.enrollments ? seq.enrollments.filter(e => e.status === 'active').length : 0;
+
+    return `
+      <div class="sequence-item" style="border: 1px solid #dadce0; border-radius: 4px; padding: 16px; margin-bottom: 12px;">
+        <div style="display: flex; justify-content: space-between; align-items: start;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 15px; margin-bottom: 8px;">
+              📧 ${seq.name}
+            </div>
+            <div style="font-size: 13px; color: #5f6368; margin-bottom: 8px;">
+              ${seq.steps.length} steps • ${enrollmentCount} active enrollments
+            </div>
+            <div style="font-size: 12px; color: #5f6368;">
+              ${seq.steps.map((step, i) => `Step ${i + 1}: Day ${step.delay}`).join(' → ')}
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-left: 12px;">
+            <button class="btn btn-secondary btn-small view-sequence" data-idx="${idx}">View</button>
+            <button class="btn btn-secondary btn-small edit-sequence" data-idx="${idx}">Edit</button>
+            <button class="btn btn-secondary btn-small delete-sequence" data-idx="${idx}">Delete</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add event listeners
+  container.querySelectorAll('.view-sequence').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      showSequenceViewer(sequences[idx]);
+    });
+  });
+
+  container.querySelectorAll('.edit-sequence').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      showSequenceEditor(sequences[idx], idx, sequences);
+    });
+  });
+
+  container.querySelectorAll('.delete-sequence').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      if (confirm(`Delete sequence "${sequences[idx].name}"?`)) {
+        sequences.splice(idx, 1);
+        chrome.storage.local.set({ followUpSequences: sequences }, () => {
+          renderSequences(sequences);
+          showAlert('general', 'success', 'Sequence deleted');
+        });
+      }
+    });
+  });
+}
+
+function showSequenceViewer(sequence) {
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; overflow-y: auto; padding: 20px;';
+
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto;">
+      <h3 style="margin: 0 0 20px 0;">📧 ${sequence.name}</h3>
+
+      <div style="margin-bottom: 20px;">
+        ${sequence.steps.map((step, i) => `
+          <div style="border-left: 3px solid #1a73e8; padding: 12px; margin-bottom: 16px; background: #f8f9fa;">
+            <div style="font-weight: 600; margin-bottom: 8px;">
+              Step ${i + 1}: Day ${step.delay}
+            </div>
+            <div style="font-size: 13px; color: #5f6368; margin-bottom: 4px;">
+              <strong>Subject:</strong> ${step.subject}
+            </div>
+            <div style="font-size: 13px; color: #5f6368; white-space: pre-wrap; background: white; padding: 8px; border-radius: 4px;">
+              ${step.body}
+            </div>
+          </div>
+        `).join('')}
+      </div>
+
+      <button class="btn btn-primary" onclick="this.closest('div[style*=fixed]').remove()">Close</button>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+}
+
+function showSequenceEditor(sequence, idx, sequences) {
+  const isNew = idx === -1;
+  const editSequence = sequence || {
+    id: 'seq_' + Date.now(),
+    name: '',
+    steps: [
+      { id: 'step_1', delay: 0, subject: '', body: '' }
+    ],
+    enrollments: []
+  };
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; overflow-y: auto; padding: 20px;';
+
+  const renderEditor = () => {
+    modal.innerHTML = `
+      <div style="background: white; border-radius: 8px; padding: 24px; max-width: 700px; width: 100%; max-height: 90vh; overflow-y: auto;">
+        <h3 style="margin: 0 0 20px 0;">${isNew ? 'Create' : 'Edit'} Follow-Up Sequence</h3>
+
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 4px; font-weight: 500;">Sequence Name</label>
+          <input type="text" id="sequence-name" value="${editSequence.name}" placeholder="e.g., New Lead Nurture" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+        </div>
+
+        <div style="margin-bottom: 16px;">
+          <label style="display: block; margin-bottom: 8px; font-weight: 500;">Email Steps</label>
+          <div id="sequence-steps">
+            ${editSequence.steps.map((step, i) => `
+              <div class="sequence-step" data-idx="${i}" style="border: 1px solid #dadce0; border-radius: 4px; padding: 12px; margin-bottom: 12px;">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+                  <strong>Step ${i + 1}</strong>
+                  ${editSequence.steps.length > 1 ? `<button class="btn btn-secondary btn-small remove-step" data-idx="${i}">Remove</button>` : ''}
+                </div>
+
+                <div style="margin-bottom: 8px;">
+                  <label style="display: block; font-size: 12px; margin-bottom: 4px;">Delay (days after enrollment)</label>
+                  <input type="number" class="step-delay" data-idx="${i}" value="${step.delay}" min="0" style="width: 100px; padding: 6px; border: 1px solid #dadce0; border-radius: 4px;">
+                </div>
+
+                <div style="margin-bottom: 8px;">
+                  <label style="display: block; font-size: 12px; margin-bottom: 4px;">Subject</label>
+                  <input type="text" class="step-subject" data-idx="${i}" value="${step.subject}" placeholder="Email subject" style="width: 100%; padding: 6px; border: 1px solid #dadce0; border-radius: 4px;">
+                </div>
+
+                <div>
+                  <label style="display: block; font-size: 12px; margin-bottom: 4px;">Body</label>
+                  <textarea class="step-body" data-idx="${i}" rows="4" placeholder="Email body (use {{name}}, {{company}}, {{email}} for personalization)" style="width: 100%; padding: 6px; border: 1px solid #dadce0; border-radius: 4px; font-family: monospace;">${step.body}</textarea>
+                </div>
+              </div>
+            `).join('')}
+          </div>
+
+          <button class="btn btn-secondary" id="add-step">+ Add Step</button>
+        </div>
+
+        <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;">
+          <button class="btn btn-secondary" id="cancel-sequence">Cancel</button>
+          <button class="btn btn-primary" id="save-sequence">Save Sequence</button>
+        </div>
+      </div>
+    `;
+
+    // Add step button
+    modal.querySelector('#add-step').addEventListener('click', () => {
+      editSequence.steps.push({
+        id: 'step_' + (editSequence.steps.length + 1),
+        delay: editSequence.steps.length,
+        subject: '',
+        body: ''
+      });
+      renderEditor();
+    });
+
+    // Remove step buttons
+    modal.querySelectorAll('.remove-step').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const idx = parseInt(btn.dataset.idx);
+        editSequence.steps.splice(idx, 1);
+        renderEditor();
+      });
+    });
+
+    // Cancel button
+    modal.querySelector('#cancel-sequence').addEventListener('click', () => modal.remove());
+
+    // Save button
+    modal.querySelector('#save-sequence').addEventListener('click', () => {
+      const name = document.getElementById('sequence-name').value.trim();
+
+      if (!name) {
+        alert('Please enter a sequence name');
+        return;
+      }
+
+      // Collect step data
+      const steps = [];
+      modal.querySelectorAll('.sequence-step').forEach((stepEl, i) => {
+        const delay = parseInt(stepEl.querySelector('.step-delay').value) || 0;
+        const subject = stepEl.querySelector('.step-subject').value.trim();
+        const body = stepEl.querySelector('.step-body').value.trim();
+
+        if (!subject || !body) {
+          alert(`Please fill in subject and body for Step ${i + 1}`);
+          return;
+        }
+
+        steps.push({
+          id: editSequence.steps[i].id,
+          delay,
+          subject,
+          body
+        });
+      });
+
+      if (steps.length !== editSequence.steps.length) {
+        return; // Validation failed
+      }
+
+      const sequenceData = {
+        id: editSequence.id,
+        name,
+        steps,
+        enrollments: editSequence.enrollments || []
+      };
+
+      if (isNew) {
+        sequences.push(sequenceData);
+      } else {
+        sequences[idx] = sequenceData;
+      }
+
+      chrome.storage.local.set({ followUpSequences: sequences }, () => {
+        renderSequences(sequences);
+        modal.remove();
+        showAlert('general', 'success', `Sequence ${isNew ? 'created' : 'updated'}!`);
+      });
+    });
+  };
+
+  renderEditor();
+  document.body.appendChild(modal);
+}
+
+// Add sequence button listener
+document.getElementById('add-sequence-btn')?.addEventListener('click', () => {
+  chrome.storage.local.get(['followUpSequences'], (result) => {
+    const sequences = result.followUpSequences || [];
+    showSequenceEditor(null, -1, sequences);
+  });
+});
+
+// Load sequences when settings page opens
+loadSequences();
+
 // Initialize
 loadSettings();
