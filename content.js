@@ -2102,6 +2102,212 @@ class GmailCRM {
     `;
   }
 
+  renderComments(deal) {
+    const comments = deal.comments || [];
+
+    if (comments.length === 0) {
+      return '<p class="crm-empty-state">No comments yet. Start the conversation!</p>';
+    }
+
+    // Get current user info
+    const getCurrentUser = () => {
+      return new Promise(resolve => {
+        chrome.storage.local.get(['currentUser'], (result) => {
+          resolve(result.currentUser || null);
+        });
+      });
+    };
+
+    // Render a single comment and its replies
+    const renderComment = (comment, depth = 0) => {
+      const replies = comments.filter(c => c.parentId === comment.id);
+      const indent = depth > 0 ? `margin-left: ${depth * 20}px;` : '';
+
+      return `
+        <div class="crm-comment-item" style="${indent}" data-comment-id="${comment.id}">
+          <div class="crm-comment-header">
+            <div class="crm-comment-author">
+              <span class="crm-comment-avatar">${(comment.author || 'User')[0].toUpperCase()}</span>
+              <span class="crm-comment-author-name">${comment.author || 'Unknown User'}</span>
+            </div>
+            <div class="crm-comment-meta">
+              <span class="crm-comment-time">${this.formatCommentTime(comment.createdAt)}</span>
+              <button class="crm-btn-icon-tiny" data-reply-comment-id="${comment.id}" title="Reply">💬</button>
+              <button class="crm-btn-icon-tiny" data-delete-comment-id="${comment.id}" title="Delete">×</button>
+            </div>
+          </div>
+          <div class="crm-comment-text">${comment.text}</div>
+          ${replies.length > 0 ? `
+            <div class="crm-comment-replies">
+              ${replies.map(reply => renderComment(reply, depth + 1)).join('')}
+            </div>
+          ` : ''}
+        </div>
+      `;
+    };
+
+    // Filter top-level comments (no parent)
+    const topLevelComments = comments.filter(c => !c.parentId);
+
+    return `
+      <div class="crm-comments-list">
+        ${topLevelComments.map(comment => renderComment(comment)).join('')}
+      </div>
+    `;
+  }
+
+  formatCommentTime(dateString) {
+    const date = new Date(dateString);
+    const now = new Date();
+    const diffMs = now - date;
+    const diffMins = Math.floor(diffMs / 60000);
+    const diffHours = Math.floor(diffMs / 3600000);
+    const diffDays = Math.floor(diffMs / 86400000);
+
+    if (diffMins < 1) return 'just now';
+    if (diffMins < 60) return `${diffMins}m ago`;
+    if (diffHours < 24) return `${diffHours}h ago`;
+    if (diffDays < 7) return `${diffDays}d ago`;
+    return date.toLocaleDateString();
+  }
+
+  async addComment(dealId, parentId = null) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const commentInput = document.getElementById('crm-comment-input');
+    const commentText = commentInput?.value?.trim();
+
+    if (!commentText) {
+      alert('Please enter a comment');
+      return;
+    }
+
+    // Get current user
+    const result = await new Promise(resolve => {
+      chrome.storage.local.get(['currentUser'], resolve);
+    });
+    const currentUser = result.currentUser;
+
+    if (!deal.comments) deal.comments = [];
+
+    const newComment = {
+      id: 'comment_' + Date.now(),
+      text: commentText,
+      author: currentUser?.email || currentUser?.name || 'Anonymous',
+      createdAt: new Date().toISOString(),
+      parentId: parentId
+    };
+
+    deal.comments.push(newComment);
+    deal.lastUpdated = new Date().toISOString();
+
+    await this.saveDeal(deal);
+    this.showDealSidebar(dealId);
+    this.showNotification('Comment added');
+  }
+
+  showReplyDialog(dealId, parentCommentId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const parentComment = (deal.comments || []).find(c => c.id === parentCommentId);
+    if (!parentComment) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content" style="max-width: 500px;">
+        <h2>Reply to Comment</h2>
+
+        <div style="background: #f8f9fa; padding: 12px; border-radius: 4px; margin-bottom: 16px;">
+          <div style="font-size: 12px; color: #5f6368; margin-bottom: 4px;">
+            <strong>${parentComment.author}</strong> • ${this.formatCommentTime(parentComment.createdAt)}
+          </div>
+          <div style="font-size: 14px;">${parentComment.text}</div>
+        </div>
+
+        <div class="crm-form-group">
+          <label>Your Reply</label>
+          <textarea id="crm-reply-text" class="crm-textarea" rows="4" placeholder="Type your reply..."></textarea>
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-reply">Cancel</button>
+          <button class="crm-btn-primary" id="crm-post-reply">Post Reply</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-reply')?.addEventListener('click', () => modal.remove());
+
+    document.getElementById('crm-post-reply')?.addEventListener('click', async () => {
+      const replyText = document.getElementById('crm-reply-text')?.value?.trim();
+
+      if (!replyText) {
+        alert('Please enter a reply');
+        return;
+      }
+
+      // Get current user
+      const result = await new Promise(resolve => {
+        chrome.storage.local.get(['currentUser'], resolve);
+      });
+      const currentUser = result.currentUser;
+
+      if (!deal.comments) deal.comments = [];
+
+      const newReply = {
+        id: 'comment_' + Date.now(),
+        text: replyText,
+        author: currentUser?.email || currentUser?.name || 'Anonymous',
+        createdAt: new Date().toISOString(),
+        parentId: parentCommentId
+      };
+
+      deal.comments.push(newReply);
+      deal.lastUpdated = new Date().toISOString();
+
+      await this.saveDeal(deal);
+      modal.remove();
+      this.showDealSidebar(dealId);
+      this.showNotification('Reply posted');
+    });
+
+    // Focus on reply textarea
+    setTimeout(() => document.getElementById('crm-reply-text')?.focus(), 100);
+  }
+
+  async deleteComment(dealId, commentId) {
+    const deal = this.deals[dealId];
+    if (!deal || !deal.comments) return;
+
+    // Remove comment and all its replies
+    const removeCommentAndReplies = (id) => {
+      const comment = deal.comments.find(c => c.id === id);
+      if (!comment) return;
+
+      // Find and remove all replies first
+      const replies = deal.comments.filter(c => c.parentId === id);
+      replies.forEach(reply => removeCommentAndReplies(reply.id));
+
+      // Remove the comment itself
+      const idx = deal.comments.findIndex(c => c.id === id);
+      if (idx !== -1) {
+        deal.comments.splice(idx, 1);
+      }
+    };
+
+    removeCommentAndReplies(commentId);
+    deal.lastUpdated = new Date().toISOString();
+
+    await this.saveDeal(deal);
+    this.showDealSidebar(dealId);
+    this.showNotification('Comment deleted');
+  }
+
   renderDealSidebarContent(deal) {
     const sidebar = document.getElementById('crm-deal-sidebar');
     if (!sidebar) return;
@@ -2333,6 +2539,17 @@ class GmailCRM {
             <textarea id="crm-sidebar-notes" class="crm-textarea" placeholder="Add a new note..."></textarea>
             <button class="crm-btn-small" id="crm-save-notes-btn">Add Note</button>
           </div>
+
+          <div class="crm-sidebar-section">
+            <h4>💬 Discussion</h4>
+            <div id="crm-comments-container">
+              ${this.renderComments(deal)}
+            </div>
+            <div class="crm-comment-input-wrapper">
+              <textarea id="crm-comment-input" class="crm-textarea" placeholder="Add a comment..." rows="3"></textarea>
+              <button class="crm-btn-small" id="crm-add-comment-btn">Post Comment</button>
+            </div>
+          </div>
         </div>
       </div>
     `;
@@ -2490,6 +2707,29 @@ class GmailCRM {
           }
         });
       }
+    });
+
+    // Add comment button
+    document.getElementById('crm-add-comment-btn')?.addEventListener('click', async () => {
+      await this.addComment(deal.id);
+    });
+
+    // Reply to comment buttons
+    sidebar.querySelectorAll('[data-reply-comment-id]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const commentId = btn.dataset.replyCommentId;
+        this.showReplyDialog(deal.id, commentId);
+      });
+    });
+
+    // Delete comment buttons
+    sidebar.querySelectorAll('[data-delete-comment-id]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const commentId = btn.dataset.deleteCommentId;
+        if (confirm('Delete this comment?')) {
+          await this.deleteComment(deal.id, commentId);
+        }
+      });
     });
   }
 
