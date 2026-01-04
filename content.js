@@ -8,6 +8,12 @@ class GmailCRM {
     this.pipelineView = null;
     this.deals = {};
     this.pipelines = [];
+    this.filters = {
+      search: '',
+      status: '',
+      priority: '',
+      sortBy: 'date'
+    };
   }
 
   async init() {
@@ -400,6 +406,35 @@ class GmailCRM {
         </div>
       </div>
 
+      <div class="crm-filters-bar">
+        <div class="crm-search-box">
+          <input type="text" id="crm-search-input" class="crm-search-input" placeholder="🔍 Search deals..." />
+        </div>
+        <div class="crm-filter-controls">
+          <select id="crm-filter-status" class="crm-filter-select">
+            <option value="">All Statuses</option>
+            <option value="Active">Active</option>
+            <option value="On Hold">On Hold</option>
+            <option value="Closed Won">Closed Won</option>
+            <option value="Closed Lost">Closed Lost</option>
+          </select>
+          <select id="crm-filter-priority" class="crm-filter-select">
+            <option value="">All Priorities</option>
+            <option value="High">High</option>
+            <option value="Medium">Medium</option>
+            <option value="Low">Low</option>
+          </select>
+          <select id="crm-sort-by" class="crm-filter-select">
+            <option value="date">Sort: Last Updated</option>
+            <option value="value-desc">Sort: Value (High to Low)</option>
+            <option value="value-asc">Sort: Value (Low to High)</option>
+            <option value="age">Sort: Deal Age</option>
+            <option value="name">Sort: Name (A-Z)</option>
+          </select>
+          <button class="crm-btn-small" id="crm-clear-filters">Clear Filters</button>
+        </div>
+      </div>
+
       <div class="crm-stages-bar">
         ${stagesHeader}
       </div>
@@ -479,6 +514,36 @@ class GmailCRM {
 
     document.getElementById('crm-add-deal-btn')?.addEventListener('click', () => {
       this.showAddDealDialog();
+    });
+
+    // Filter event listeners
+    document.getElementById('crm-search-input')?.addEventListener('input', (e) => {
+      this.filters.search = e.target.value.toLowerCase();
+      this.applyFilters();
+    });
+
+    document.getElementById('crm-filter-status')?.addEventListener('change', (e) => {
+      this.filters.status = e.target.value;
+      this.applyFilters();
+    });
+
+    document.getElementById('crm-filter-priority')?.addEventListener('change', (e) => {
+      this.filters.priority = e.target.value;
+      this.applyFilters();
+    });
+
+    document.getElementById('crm-sort-by')?.addEventListener('change', (e) => {
+      this.filters.sortBy = e.target.value;
+      this.applyFilters();
+    });
+
+    document.getElementById('crm-clear-filters')?.addEventListener('click', () => {
+      this.filters = { search: '', status: '', priority: '', sortBy: 'date' };
+      document.getElementById('crm-search-input').value = '';
+      document.getElementById('crm-filter-status').value = '';
+      document.getElementById('crm-filter-priority').value = '';
+      document.getElementById('crm-sort-by').value = 'date';
+      this.applyFilters();
     });
 
     document.getElementById('crm-settings-btn')?.addEventListener('click', () => {
@@ -1566,10 +1631,74 @@ class GmailCRM {
   }
 
   getDealsInStage(pipelineId, stageId) {
-    return Object.entries(this.deals)
+    let deals = Object.entries(this.deals)
       .filter(([_, deal]) => deal.pipelineId === pipelineId && deal.stageId === stageId)
-      .map(([id, deal]) => ({ ...deal, id }))
-      .sort((a, b) => new Date(b.lastUpdated) - new Date(a.lastUpdated));
+      .map(([id, deal]) => ({ ...deal, id }));
+
+    // Apply filters
+    deals = this.filterDeals(deals);
+
+    // Apply sorting
+    deals = this.sortDeals(deals);
+
+    return deals;
+  }
+
+  filterDeals(deals) {
+    return deals.filter(deal => {
+      // Search filter
+      if (this.filters.search) {
+        const searchText = this.filters.search;
+        const matchesSearch =
+          (deal.emailSubject || '').toLowerCase().includes(searchText) ||
+          (deal.contactEmail || '').toLowerCase().includes(searchText) ||
+          (deal.notes || '').toLowerCase().includes(searchText) ||
+          (deal.assignedTo || '').toLowerCase().includes(searchText);
+
+        if (!matchesSearch) return false;
+      }
+
+      // Status filter
+      if (this.filters.status && deal.status !== this.filters.status) {
+        return false;
+      }
+
+      // Priority filter
+      if (this.filters.priority && deal.priority !== this.filters.priority) {
+        return false;
+      }
+
+      return true;
+    });
+  }
+
+  sortDeals(deals) {
+    const sortBy = this.filters.sortBy;
+
+    return [...deals].sort((a, b) => {
+      switch (sortBy) {
+        case 'value-desc':
+          return (parseFloat(b.value) || 0) - (parseFloat(a.value) || 0);
+        case 'value-asc':
+          return (parseFloat(a.value) || 0) - (parseFloat(b.value) || 0);
+        case 'age':
+          return this.calculateDealAge(b) - this.calculateDealAge(a);
+        case 'name':
+          return (a.emailSubject || '').localeCompare(b.emailSubject || '');
+        case 'date':
+        default:
+          return new Date(b.lastUpdated) - new Date(a.lastUpdated);
+      }
+    });
+  }
+
+  applyFilters() {
+    // Re-render the current view with filters applied
+    if (this.pipelineViewMode === 'table') {
+      this.renderDealsTable();
+    } else if (this.pipelineViewMode === 'kanban') {
+      this.renderKanbanView();
+    }
   }
 
   showAddDealDialog() {
