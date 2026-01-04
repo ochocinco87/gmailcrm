@@ -1376,5 +1376,325 @@ document.getElementById('add-sequence-btn')?.addEventListener('click', () => {
 // Load sequences when settings page opens
 loadSequences();
 
+// ========== Scheduled Exports Management ==========
+
+function loadScheduledExports() {
+  chrome.storage.local.get(['scheduledExports', 'exportHistory'], (result) => {
+    const schedules = result.scheduledExports || [];
+    const history = result.exportHistory || [];
+    renderScheduledExports(schedules);
+    renderExportHistory(history);
+  });
+}
+
+function renderScheduledExports(schedules) {
+  const container = document.getElementById('scheduled-exports-list');
+  if (!container) return;
+
+  if (schedules.length === 0) {
+    container.innerHTML = '<p style="color: #5f6368;">No scheduled exports yet. Click "Create Export Schedule" to set one up.</p>';
+    return;
+  }
+
+  container.innerHTML = schedules.map((schedule, idx) => {
+    const nextRun = calculateNextRun(schedule);
+
+    return `
+      <div class="export-schedule-item" style="border: 1px solid #dadce0; border-radius: 4px; padding: 16px; margin-bottom: 12px; background: ${schedule.enabled ? 'white' : '#f8f9fa'};">
+        <div style="display: flex; justify-content: space-between; align-items: start;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 15px; margin-bottom: 8px;">
+              ${schedule.enabled ? '✅' : '⏸️'} ${schedule.name}
+            </div>
+            <div style="font-size: 13px; color: #5f6368; margin-bottom: 4px;">
+              <strong>Frequency:</strong> ${schedule.frequency}
+            </div>
+            <div style="font-size: 13px; color: #5f6368; margin-bottom: 4px;">
+              <strong>Pipeline:</strong> ${schedule.pipelineName || 'All Pipelines'}
+            </div>
+            <div style="font-size: 13px; color: #5f6368;">
+              <strong>Next Run:</strong> ${schedule.enabled ? nextRun : 'Disabled'}
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-left: 12px;">
+            <button class="btn btn-secondary btn-small toggle-export" data-idx="${idx}">
+              ${schedule.enabled ? 'Disable' : 'Enable'}
+            </button>
+            <button class="btn btn-secondary btn-small run-now-export" data-idx="${idx}">Run Now</button>
+            <button class="btn btn-secondary btn-small delete-export" data-idx="${idx}">Delete</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add event listeners
+  container.querySelectorAll('.toggle-export').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      schedules[idx].enabled = !schedules[idx].enabled;
+      chrome.storage.local.set({ scheduledExports: schedules }, () => {
+        renderScheduledExports(schedules);
+        showAlert('general', 'success', `Export ${schedules[idx].enabled ? 'enabled' : 'disabled'}`);
+      });
+    });
+  });
+
+  container.querySelectorAll('.run-now-export').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      runExportNow(schedules[idx]);
+    });
+  });
+
+  container.querySelectorAll('.delete-export').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      if (confirm(`Delete export schedule "${schedules[idx].name}"?`)) {
+        schedules.splice(idx, 1);
+        chrome.storage.local.set({ scheduledExports: schedules }, () => {
+          renderScheduledExports(schedules);
+          showAlert('general', 'success', 'Export schedule deleted');
+        });
+      }
+    });
+  });
+}
+
+function calculateNextRun(schedule) {
+  const now = new Date();
+  const lastRun = schedule.lastRun ? new Date(schedule.lastRun) : new Date(schedule.createdAt);
+
+  let nextRun = new Date(lastRun);
+
+  switch (schedule.frequency) {
+    case 'Daily':
+      nextRun.setDate(nextRun.getDate() + 1);
+      break;
+    case 'Weekly':
+      nextRun.setDate(nextRun.getDate() + 7);
+      break;
+    case 'Monthly':
+      nextRun.setMonth(nextRun.getMonth() + 1);
+      break;
+  }
+
+  if (nextRun < now) {
+    return 'Overdue';
+  }
+
+  const diff = nextRun - now;
+  const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+  const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+
+  if (days > 0) {
+    return `In ${days} day${days > 1 ? 's' : ''}`;
+  } else if (hours > 0) {
+    return `In ${hours} hour${hours > 1 ? 's' : ''}`;
+  } else {
+    return 'Soon';
+  }
+}
+
+async function runExportNow(schedule) {
+  showAlert('general', 'info', '⏳ Exporting data...');
+
+  // Get deals data from background or content script
+  chrome.runtime.sendMessage({ action: 'exportDeals', pipelineId: schedule.pipelineId }, (response) => {
+    if (response && response.success) {
+      // Create export history entry
+      const historyEntry = {
+        id: 'export_' + Date.now(),
+        scheduleName: schedule.name,
+        timestamp: new Date().toISOString(),
+        recordCount: response.recordCount || 0,
+        csvData: response.csvData
+      };
+
+      chrome.storage.local.get(['exportHistory'], (result) => {
+        const history = result.exportHistory || [];
+        history.unshift(historyEntry);
+
+        // Keep only last 20 exports
+        if (history.length > 20) {
+          history.splice(20);
+        }
+
+        chrome.storage.local.set({ exportHistory: history }, () => {
+          renderExportHistory(history);
+          downloadCSV(response.csvData, `crm-export-${schedule.name}-${new Date().toISOString().split('T')[0]}.csv`);
+          showAlert('general', 'success', `✅ Exported ${response.recordCount} records!`);
+
+          // Update last run time
+          chrome.storage.local.get(['scheduledExports'], (result) => {
+            const schedules = result.scheduledExports || [];
+            const idx = schedules.findIndex(s => s.id === schedule.id);
+            if (idx !== -1) {
+              schedules[idx].lastRun = new Date().toISOString();
+              chrome.storage.local.set({ scheduledExports: schedules }, () => {
+                renderScheduledExports(schedules);
+              });
+            }
+          });
+        });
+      });
+    } else {
+      showAlert('general', 'error', '❌ Export failed. Make sure you\'re on Gmail.');
+    }
+  });
+}
+
+function downloadCSV(csvContent, filename) {
+  const blob = new Blob([csvContent], { type: 'text/csv' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function renderExportHistory(history) {
+  const container = document.getElementById('export-history-list');
+  if (!container) return;
+
+  if (history.length === 0) {
+    container.innerHTML = '<p>No exports yet.</p>';
+    return;
+  }
+
+  container.innerHTML = history.slice(0, 10).map(entry => {
+    const date = new Date(entry.timestamp).toLocaleString();
+
+    return `
+      <div style="padding: 12px; border-bottom: 1px solid #e8eaed; display: flex; justify-content: space-between; align-items: center;">
+        <div>
+          <div style="font-weight: 500; margin-bottom: 4px;">${entry.scheduleName}</div>
+          <div style="font-size: 12px; color: #5f6368;">${date} • ${entry.recordCount} records</div>
+        </div>
+        <button class="btn btn-secondary btn-small download-export" data-entry='${JSON.stringify(entry).replace(/'/g, "&apos;")}'>
+          Download
+        </button>
+      </div>
+    `;
+  }).join('');
+
+  // Add download listeners
+  container.querySelectorAll('.download-export').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const entry = JSON.parse(btn.dataset.entry);
+      downloadCSV(entry.csvData, `crm-export-${entry.scheduleName}-${entry.timestamp.split('T')[0]}.csv`);
+    });
+  });
+}
+
+function showExportScheduleEditor(schedule, idx, schedules) {
+  const isNew = idx === -1;
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 500px; width: 90%;">
+      <h3 style="margin: 0 0 20px 0;">${isNew ? 'Create' : 'Edit'} Export Schedule</h3>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Schedule Name</label>
+        <input type="text" id="export-schedule-name" value="${schedule?.name || ''}" placeholder="e.g., Weekly Deals Export" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Frequency</label>
+        <select id="export-frequency" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+          <option value="Daily" ${schedule?.frequency === 'Daily' ? 'selected' : ''}>Daily</option>
+          <option value="Weekly" ${schedule?.frequency === 'Weekly' ? 'selected' : ''}>Weekly</option>
+          <option value="Monthly" ${schedule?.frequency === 'Monthly' ? 'selected' : ''}>Monthly</option>
+        </select>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Pipeline</label>
+        <select id="export-pipeline" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+          <option value="">All Pipelines</option>
+          <!-- Pipelines will be loaded dynamically -->
+        </select>
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button class="btn btn-secondary" id="cancel-export-schedule">Cancel</button>
+        <button class="btn btn-primary" id="save-export-schedule">Save Schedule</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Load pipelines (simplified - in real implementation would fetch from CRM)
+  const pipelineSelect = document.getElementById('export-pipeline');
+  chrome.runtime.sendMessage({ action: 'getPipelines' }, (response) => {
+    if (response && response.pipelines) {
+      response.pipelines.forEach(pipeline => {
+        const option = document.createElement('option');
+        option.value = pipeline.id;
+        option.textContent = pipeline.name;
+        if (schedule?.pipelineId === pipeline.id) {
+          option.selected = true;
+        }
+        pipelineSelect.appendChild(option);
+      });
+    }
+  });
+
+  modal.querySelector('#cancel-export-schedule').addEventListener('click', () => modal.remove());
+
+  modal.querySelector('#save-export-schedule').addEventListener('click', () => {
+    const name = document.getElementById('export-schedule-name').value.trim();
+    const frequency = document.getElementById('export-frequency').value;
+    const pipelineId = document.getElementById('export-pipeline').value;
+    const pipelineName = document.getElementById('export-pipeline').selectedOptions[0].text;
+
+    if (!name) {
+      alert('Please enter a schedule name');
+      return;
+    }
+
+    const scheduleData = {
+      id: schedule?.id || 'schedule_' + Date.now(),
+      name,
+      frequency,
+      pipelineId: pipelineId || null,
+      pipelineName: pipelineId ? pipelineName : 'All Pipelines',
+      enabled: schedule?.enabled !== false,
+      createdAt: schedule?.createdAt || new Date().toISOString(),
+      lastRun: schedule?.lastRun || null
+    };
+
+    if (isNew) {
+      schedules.push(scheduleData);
+    } else {
+      schedules[idx] = scheduleData;
+    }
+
+    chrome.storage.local.set({ scheduledExports: schedules }, () => {
+      renderScheduledExports(schedules);
+      modal.remove();
+      showAlert('general', 'success', `Schedule ${isNew ? 'created' : 'updated'}!`);
+    });
+  });
+}
+
+// Add export schedule button listener
+document.getElementById('add-export-schedule-btn')?.addEventListener('click', () => {
+  chrome.storage.local.get(['scheduledExports'], (result) => {
+    const schedules = result.scheduledExports || [];
+    showExportScheduleEditor(null, -1, schedules);
+  });
+});
+
+// Load scheduled exports when settings page opens
+loadScheduledExports();
+
 // Initialize
 loadSettings();

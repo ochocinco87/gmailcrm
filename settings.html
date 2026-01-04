@@ -335,6 +335,7 @@
       <button class="tab" data-tab="firebase">Firebase</button>
       <button class="tab" data-tab="automation">Automation</button>
       <button class="tab" data-tab="sequences">Sequences</button>
+      <button class="tab" data-tab="exports">Exports</button>
       <button class="tab" data-tab="users" id="users-tab">Users</button>
       <button class="tab" data-tab="organization" id="org-tab">Organization</button>
     </div>
@@ -493,6 +494,42 @@
           <li>Enroll deals manually from the deal view</li>
           <li>Track progress and stop sequences anytime</li>
         </ol>
+      </div>
+    </div>
+
+    <!-- Exports Tab -->
+    <div class="tab-content" data-content="exports">
+      <div class="section">
+        <h2 class="section-title">📤 Scheduled Exports</h2>
+        <p style="color: #5f6368; margin-bottom: 16px;">
+          Automatically export your CRM data to CSV on a recurring schedule
+        </p>
+
+        <div id="scheduled-exports-list" class="exports-container">
+          <!-- Scheduled exports will be rendered here -->
+        </div>
+
+        <button id="add-export-schedule-btn" class="btn btn-primary" style="margin-top: 16px;">
+          + Create Export Schedule
+        </button>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">📊 Export History</h2>
+        <div id="export-history-list" style="font-size: 13px; color: #5f6368;">
+          <!-- Export history will be rendered here -->
+        </div>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">💡 How It Works</h2>
+        <ul style="color: #5f6368; line-height: 1.8;">
+          <li>Create a schedule with your preferred frequency (daily, weekly, monthly)</li>
+          <li>Select which pipeline data to export</li>
+          <li>Exports run automatically in the background</li>
+          <li>Download exported CSV files from the history section</li>
+          <li>Enable/disable schedules anytime without deleting them</li>
+        </ul>
       </div>
     </div>
 
