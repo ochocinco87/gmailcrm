@@ -2191,6 +2191,50 @@ class GmailCRM {
           </div>
 
           <div class="crm-sidebar-section">
+            <div class="crm-ai-header">
+              <h4>🤖 AI Deal Summary</h4>
+              <button class="crm-btn-small" id="crm-generate-summary-btn">
+                ${deal.aiSummary ? '🔄 Refresh' : '✨ Generate'} Summary
+              </button>
+            </div>
+            <div id="crm-ai-summary-content">
+              ${deal.aiSummary ? `
+                <div class="crm-ai-summary">
+                  <div class="crm-ai-summary-text">${deal.aiSummary.summary}</div>
+
+                  ${deal.aiSummary.insights && deal.aiSummary.insights.length > 0 ? `
+                    <div class="crm-ai-insights">
+                      <h5>💡 Key Insights:</h5>
+                      <ul>
+                        ${deal.aiSummary.insights.map(insight => `<li>${insight}</li>`).join('')}
+                      </ul>
+                    </div>
+                  ` : ''}
+
+                  ${deal.aiSummary.risks && deal.aiSummary.risks.length > 0 ? `
+                    <div class="crm-ai-risks">
+                      <h5>⚠️ Risk Factors:</h5>
+                      <ul>
+                        ${deal.aiSummary.risks.map(risk => `<li>${risk}</li>`).join('')}
+                      </ul>
+                    </div>
+                  ` : ''}
+
+                  ${deal.aiSummary.nextSteps && deal.aiSummary.nextSteps.length > 0 ? `
+                    <div class="crm-ai-next-steps">
+                      <h5>🎯 Suggested Next Steps:</h5>
+                      <ul>
+                        ${deal.aiSummary.nextSteps.map(step => `<li>${step}</li>`).join('')}
+                      </ul>
+                    </div>
+                  ` : ''}
+                  <div class="crm-ai-timestamp">Generated ${new Date(deal.aiSummary.generatedAt).toLocaleString()}</div>
+                </div>
+              ` : '<p class="crm-empty-state">Click "Generate Summary" to get AI-powered insights about this deal</p>'}
+            </div>
+          </div>
+
+          <div class="crm-sidebar-section">
             <h4>Deal Information</h4>
             <div class="crm-info-grid">
               <div class="crm-info-item">
@@ -2293,6 +2337,10 @@ class GmailCRM {
 
     document.getElementById('crm-add-task-btn')?.addEventListener('click', () => {
       this.showAddTaskDialog(deal.id);
+    });
+
+    document.getElementById('crm-generate-summary-btn')?.addEventListener('click', async () => {
+      await this.generateAISummary(deal.id);
     });
 
     // Task checkbox listeners (mark complete/incomplete)
@@ -4584,6 +4632,162 @@ Return JSON array: [{"dealTitle":"...","institution":"...","institutionAddress":
     this.deals[dealId] = deal;
     await this.saveDeal(deal);
     console.log('Gmail CRM: Created deal from AI analysis:', dealData.dealTitle, 'with', linkedEmails.length, 'linked emails');
+  }
+
+  async generateAISummary(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    // Get Gemini API key
+    const result = await new Promise(resolve => {
+      chrome.storage.local.get(['geminiApiKey'], resolve);
+    });
+
+    if (!result.geminiApiKey) {
+      this.showNotification('❌ Please set up Gemini API key in Settings first');
+      return;
+    }
+
+    // Show loading state
+    const summaryContent = document.getElementById('crm-ai-summary-content');
+    if (summaryContent) {
+      summaryContent.innerHTML = '<div class="crm-ai-loading">🤖 Analyzing deal... This may take a moment.</div>';
+    }
+
+    try {
+      // Gather all deal context
+      const context = this.buildDealContext(deal);
+
+      // Call Gemini API
+      const prompt = `You are an expert CRM analyst. Analyze this sales deal and provide:
+
+1. A comprehensive summary of the deal status and history (2-3 paragraphs)
+2. Key insights about the deal's progress
+3. Risk factors or concerns
+4. 3-5 specific, actionable next steps to move this deal forward
+
+Deal Context:
+${context}
+
+Respond in JSON format:
+{
+  "summary": "comprehensive summary here",
+  "insights": ["insight 1", "insight 2", ...],
+  "risks": ["risk 1", "risk 2", ...],
+  "nextSteps": ["step 1", "step 2", ...]
+}`;
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-pro:generateContent?key=${result.geminiApiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{
+            parts: [{ text: prompt }]
+          }]
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error('Gemini API request failed');
+      }
+
+      const data = await response.json();
+      const aiText = data.candidates[0].content.parts[0].text;
+
+      // Extract JSON from markdown code blocks if present
+      let aiResponse;
+      try {
+        const jsonMatch = aiText.match(/```json\n([\s\S]*?)\n```/) || aiText.match(/\{[\s\S]*\}/);
+        aiResponse = JSON.parse(jsonMatch ? jsonMatch[1] || jsonMatch[0] : aiText);
+      } catch (e) {
+        // Fallback if JSON parsing fails
+        aiResponse = {
+          summary: aiText,
+          insights: [],
+          risks: [],
+          nextSteps: []
+        };
+      }
+
+      // Save AI summary to deal
+      deal.aiSummary = {
+        summary: aiResponse.summary,
+        insights: aiResponse.insights || [],
+        risks: aiResponse.risks || [],
+        nextSteps: aiResponse.nextSteps || [],
+        generatedAt: new Date().toISOString()
+      };
+
+      await this.saveDeal(deal);
+      this.showDealSidebar(dealId); // Refresh to show summary
+      this.showNotification('✅ AI Summary generated successfully!');
+
+    } catch (error) {
+      console.error('Error generating AI summary:', error);
+      if (summaryContent) {
+        summaryContent.innerHTML = '<p class="crm-error-state">❌ Failed to generate summary. Please check your Gemini API key in Settings.</p>';
+      }
+      this.showNotification('❌ Failed to generate AI summary');
+    }
+  }
+
+  buildDealContext(deal) {
+    const parts = [];
+
+    // Basic info
+    parts.push(`Deal Name: ${deal.emailSubject || 'Untitled'}`);
+    parts.push(`Stage: ${this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.name || 'Unknown'}`);
+    parts.push(`Status: ${deal.status || 'Active'}`);
+    parts.push(`Deal Value: $${deal.value || 0}`);
+    parts.push(`Probability: ${deal.probability || 90}%`);
+    parts.push(`Priority: ${deal.priority || 'High'}`);
+    parts.push(`Contact: ${deal.contactEmail || 'Not set'}`);
+    parts.push(`Assigned To: ${deal.assignedTo || 'Unassigned'}`);
+    parts.push(`Created: ${new Date(deal.createdAt || deal.lastUpdated).toLocaleDateString()}`);
+
+    // Tasks
+    if (deal.tasks && deal.tasks.length > 0) {
+      parts.push(`\nTasks (${deal.tasks.length}):`);
+      deal.tasks.forEach(task => {
+        const status = task.completed ? '✓' : '○';
+        const due = task.dueDate ? ` (due ${new Date(task.dueDate).toLocaleDateString()})` : '';
+        parts.push(`${status} ${task.title}${due} - ${task.priority || 'Medium'} priority`);
+      });
+    }
+
+    // Notes
+    if (deal.notesHistory && deal.notesHistory.length > 0) {
+      parts.push(`\nNotes (${deal.notesHistory.length}):`);
+      deal.notesHistory.slice(-3).forEach(note => {
+        parts.push(`- ${note.text} (${new Date(note.createdAt).toLocaleDateString()})`);
+      });
+    }
+
+    // Linked emails
+    if (deal.linkedEmails && deal.linkedEmails.length > 0) {
+      parts.push(`\nEmail Activity (${deal.linkedEmails.length} emails):`);
+      deal.linkedEmails.slice(-3).forEach(email => {
+        parts.push(`- ${email.subject || 'No subject'} from ${email.from || 'Unknown'} (${new Date(email.date).toLocaleDateString()})`);
+      });
+    }
+
+    // Calls
+    if (deal.calls && deal.calls.length > 0) {
+      parts.push(`\nCalls (${deal.calls.length}):`);
+      deal.calls.forEach(call => {
+        parts.push(`- ${call.title || 'Untitled call'} (${call.date ? new Date(call.date).toLocaleDateString() : 'No date'})`);
+      });
+    }
+
+    // Status history
+    if (deal.statusHistory && deal.statusHistory.length > 0) {
+      parts.push(`\nStatus History:`);
+      deal.statusHistory.slice(-3).forEach(h => {
+        parts.push(`- Changed to "${h.changedTo}" on ${new Date(h.changedAt).toLocaleDateString()}`);
+      });
+    }
+
+    return parts.join('\n');
   }
 }
 

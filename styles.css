@@ -3107,4 +3107,89 @@
     0%, 100% { opacity: 1; }
     50% { opacity: 0.7; }
   }
+
+  /* AI Summary Styles */
+  .crm-ai-header {
+    display: flex !important;
+    justify-content: space-between !important;
+    align-items: center !important;
+    margin-bottom: 12px !important;
+  }
+
+  .crm-ai-header h4 {
+    margin: 0 !important;
+  }
+
+  .crm-ai-summary {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+    padding: 16px !important;
+    border-radius: 8px !important;
+    color: white !important;
+  }
+
+  .crm-ai-summary-text {
+    font-size: 14px !important;
+    line-height: 1.6 !important;
+    margin-bottom: 16px !important;
+    white-space: pre-wrap !important;
+  }
+
+  .crm-ai-insights,
+  .crm-ai-risks,
+  .crm-ai-next-steps {
+    background: rgba(255, 255, 255, 0.15) !important;
+    padding: 12px !important;
+    border-radius: 6px !important;
+    margin-bottom: 12px !important;
+  }
+
+  .crm-ai-insights h5,
+  .crm-ai-risks h5,
+  .crm-ai-next-steps h5 {
+    margin: 0 0 8px 0 !important;
+    font-size: 13px !important;
+    font-weight: 600 !important;
+    opacity: 0.9 !important;
+  }
+
+  .crm-ai-insights ul,
+  .crm-ai-risks ul,
+  .crm-ai-next-steps ul {
+    margin: 0 !important;
+    padding-left: 20px !important;
+    list-style-type: disc !important;
+  }
+
+  .crm-ai-insights li,
+  .crm-ai-risks li,
+  .crm-ai-next-steps li {
+    font-size: 13px !important;
+    line-height: 1.5 !important;
+    margin-bottom: 6px !important;
+  }
+
+  .crm-ai-risks {
+    background: rgba(234, 67, 53, 0.2) !important;
+  }
+
+  .crm-ai-timestamp {
+    font-size: 11px !important;
+    opacity: 0.7 !important;
+    text-align: right !important;
+    margin-top: 12px !important;
+  }
+
+  .crm-ai-loading {
+    padding: 20px !important;
+    text-align: center !important;
+    color: #5f6368 !important;
+    font-style: italic !important;
+    animation: pulse 2s infinite !important;
+  }
+
+  .crm-error-state {
+    color: #d93025 !important;
+    padding: 12px !important;
+    text-align: center !important;
+  }
 }
