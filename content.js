@@ -16,6 +16,7 @@ class GmailCRM {
     };
     this.automationRules = [];
     this.followUpSequences = [];
+    this.contactEnrichmentEnabled = true;
   }
 
   async init() {
@@ -2115,6 +2116,204 @@ class GmailCRM {
       modal.remove();
       this.renderDealDetailView(dealId);
     });
+  }
+
+  // ========== Contact Enrichment ==========
+
+  async enrichContact(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    this.showNotification('🔍 Enriching contact information...');
+
+    const enrichedData = {
+      emailDomain: this.extractEmailDomain(deal.contactEmail),
+      companyGuess: this.guessCompanyFromEmail(deal.contactEmail),
+      linkedInProfile: deal.linkedInProfile || '',
+      phoneNumber: deal.phoneNumber || '',
+      jobTitle: deal.jobTitle || '',
+      companyWebsite: this.guessWebsiteFromEmail(deal.contactEmail),
+      lastEnriched: new Date().toISOString()
+    };
+
+    // Merge enriched data into deal
+    Object.assign(deal, enrichedData);
+
+    await this.saveDeal(deal);
+
+    await this.addAutomationComment(dealId, `🔍 Contact enriched: Added company and domain information`);
+
+    this.showNotification('✅ Contact enriched successfully!');
+  }
+
+  extractEmailDomain(email) {
+    if (!email) return '';
+    const parts = email.split('@');
+    return parts.length === 2 ? parts[1] : '';
+  }
+
+  guessCompanyFromEmail(email) {
+    const domain = this.extractEmailDomain(email);
+    if (!domain) return '';
+
+    // Remove common TLDs and special characters
+    let company = domain.split('.')[0];
+
+    // Capitalize first letter
+    company = company.charAt(0).toUpperCase() + company.slice(1);
+
+    // Skip generic domains
+    const genericDomains = ['gmail', 'yahoo', 'outlook', 'hotmail', 'icloud', 'aol'];
+    if (genericDomains.includes(company.toLowerCase())) {
+      return '';
+    }
+
+    return company;
+  }
+
+  guessWebsiteFromEmail(email) {
+    const domain = this.extractEmailDomain(email);
+    if (!domain) return '';
+
+    const genericDomains = ['gmail.com', 'yahoo.com', 'outlook.com', 'hotmail.com', 'icloud.com', 'aol.com'];
+    if (genericDomains.includes(domain.toLowerCase())) {
+      return '';
+    }
+
+    return `https://${domain}`;
+  }
+
+  parseEmailSignature(emailBody) {
+    // Simple signature parser - looks for common patterns
+    const signatures = {
+      phone: '',
+      title: '',
+      company: ''
+    };
+
+    if (!emailBody) return signatures;
+
+    // Look for phone numbers (US format)
+    const phoneRegex = /(\+?1?[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}/g;
+    const phoneMatch = emailBody.match(phoneRegex);
+    if (phoneMatch) {
+      signatures.phone = phoneMatch[0];
+    }
+
+    // Look for job titles (simple heuristic - capitalized words before @ or company)
+    const titleRegex = /(Chief|Director|Manager|VP|President|CEO|CTO|CFO|Head of|Lead|Senior|Engineer|Developer|Designer|Analyst)/i;
+    const titleMatch = emailBody.match(titleRegex);
+    if (titleMatch) {
+      signatures.title = titleMatch[0];
+    }
+
+    return signatures;
+  }
+
+  showContactEnrichmentDialog(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>🔍 Enrich Contact: ${deal.contactEmail}</h2>
+
+        <div class="crm-form-group">
+          <label>Auto-Detected</label>
+          <div style="padding: 12px; background: #f8f9fa; border-radius: 4px; margin-bottom: 12px;">
+            <div style="margin-bottom: 8px;">
+              <strong>Email Domain:</strong> ${this.extractEmailDomain(deal.contactEmail) || 'N/A'}
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong>Company Guess:</strong> ${this.guessCompanyFromEmail(deal.contactEmail) || 'N/A'}
+            </div>
+            <div>
+              <strong>Website Guess:</strong> ${this.guessWebsiteFromEmail(deal.contactEmail) || 'N/A'}
+            </div>
+          </div>
+        </div>
+
+        <div class="crm-form-group">
+          <label>LinkedIn Profile URL</label>
+          <input type="url" id="crm-linkedin-url" class="crm-input" placeholder="https://linkedin.com/in/..." value="${deal.linkedInProfile || ''}" />
+        </div>
+
+        <div class="crm-form-group">
+          <label>Job Title</label>
+          <input type="text" id="crm-job-title" class="crm-input" placeholder="e.g., VP of Sales" value="${deal.jobTitle || ''}" />
+        </div>
+
+        <div class="crm-form-group">
+          <label>Phone Number</label>
+          <input type="tel" id="crm-phone-number" class="crm-input" placeholder="e.g., (555) 123-4567" value="${deal.phoneNumber || ''}" />
+        </div>
+
+        <div class="crm-form-group">
+          <label>Company Name</label>
+          <input type="text" id="crm-company-name" class="crm-input" placeholder="e.g., Acme Corp" value="${deal.companyGuess || this.guessCompanyFromEmail(deal.contactEmail) || ''}" />
+        </div>
+
+        <div class="crm-form-group">
+          <label>Company Website</label>
+          <input type="url" id="crm-company-website" class="crm-input" placeholder="https://example.com" value="${deal.companyWebsite || this.guessWebsiteFromEmail(deal.contactEmail) || ''}" />
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-enrich">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-enrich">Save Enriched Data</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-cancel-enrich').addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-enrich').addEventListener('click', async () => {
+      deal.linkedInProfile = document.getElementById('crm-linkedin-url').value.trim();
+      deal.jobTitle = document.getElementById('crm-job-title').value.trim();
+      deal.phoneNumber = document.getElementById('crm-phone-number').value.trim();
+      deal.companyGuess = document.getElementById('crm-company-name').value.trim();
+      deal.companyWebsite = document.getElementById('crm-company-website').value.trim();
+      deal.emailDomain = this.extractEmailDomain(deal.contactEmail);
+      deal.lastEnriched = new Date().toISOString();
+
+      await this.saveDeal(deal);
+      await this.addAutomationComment(dealId, `🔍 Contact manually enriched with additional information`);
+
+      modal.remove();
+      this.showNotification('✅ Contact enriched successfully!');
+    });
+  }
+
+  renderContactEnrichmentWidget(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal) return '';
+
+    const hasEnrichedData = deal.linkedInProfile || deal.jobTitle || deal.phoneNumber || deal.companyGuess;
+
+    return `
+      <div class="crm-enrichment-widget">
+        <div class="crm-section-title">🔍 Contact Information</div>
+
+        ${hasEnrichedData ? `
+          <div style="font-size: 13px; margin: 8px 0;">
+            ${deal.jobTitle ? `<div style="margin-bottom: 4px;"><strong>Title:</strong> ${deal.jobTitle}</div>` : ''}
+            ${deal.companyGuess ? `<div style="margin-bottom: 4px;"><strong>Company:</strong> ${deal.companyGuess}</div>` : ''}
+            ${deal.phoneNumber ? `<div style="margin-bottom: 4px;"><strong>Phone:</strong> ${deal.phoneNumber}</div>` : ''}
+            ${deal.linkedInProfile ? `<div style="margin-bottom: 4px;"><strong>LinkedIn:</strong> <a href="${deal.linkedInProfile}" target="_blank" style="color: #1a73e8;">View Profile</a></div>` : ''}
+            ${deal.companyWebsite ? `<div style="margin-bottom: 4px;"><strong>Website:</strong> <a href="${deal.companyWebsite}" target="_blank" style="color: #1a73e8;">${deal.companyWebsite}</a></div>` : ''}
+          </div>
+        ` : `
+          <p style="color: #5f6368; font-size: 13px; margin: 8px 0;">No enriched data yet</p>
+        `}
+
+        <button class="crm-btn-small" onclick="window.gmailCRM.showContactEnrichmentDialog('${dealId}')">
+          ${hasEnrichedData ? 'Update Info' : 'Add Contact Info'}
+        </button>
+      </div>
+    `;
   }
 
   showPipelineEditor(pipeline = null) {
