@@ -699,5 +699,144 @@ function downloadCSV(csv, filename) {
   URL.revokeObjectURL(url);
 }
 
+// ========== Email Snippets Management ==========
+
+function loadSnippets() {
+  chrome.storage.local.get(['emailSnippets'], (result) => {
+    const snippets = result.emailSnippets || getDefaultSnippets();
+    renderSnippets(snippets);
+  });
+}
+
+function renderSnippets(snippets) {
+  const container = document.getElementById('snippets-list');
+  if (!container) return;
+
+  if (snippets.length === 0) {
+    container.innerHTML = '<p style="color: #5f6368;">No snippets yet. Click "Add New Snippet" to create one.</p>';
+    return;
+  }
+
+  container.innerHTML = snippets.map((snippet, idx) => `
+    <div class="snippet-item" style="border: 1px solid #dadce0; border-radius: 4px; padding: 12px; margin-bottom: 8px;">
+      <div style="display: flex; justify-content: space-between; align-items: start;">
+        <div style="flex: 1;">
+          <div style="font-weight: 600; margin-bottom: 4px;">${snippet.name}</div>
+          <div style="font-size: 13px; color: #5f6368; background: #f8f9fa; padding: 8px; border-radius: 4px; font-family: monospace; white-space: pre-wrap;">${snippet.text}</div>
+        </div>
+        <div style="display: flex; gap: 8px; margin-left: 12px;">
+          <button class="btn btn-secondary btn-small edit-snippet" data-idx="${idx}">Edit</button>
+          <button class="btn btn-secondary btn-small delete-snippet" data-idx="${idx}">Delete</button>
+        </div>
+      </div>
+    </div>
+  `).join('');
+
+  // Add event listeners
+  container.querySelectorAll('.edit-snippet').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      showSnippetEditor(snippets[idx], idx, snippets);
+    });
+  });
+
+  container.querySelectorAll('.delete-snippet').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      if (confirm(`Delete snippet "${snippets[idx].name}"?`)) {
+        snippets.splice(idx, 1);
+        chrome.storage.local.set({ emailSnippets: snippets }, () => {
+          renderSnippets(snippets);
+          showAlert('general', 'success', 'Snippet deleted');
+        });
+      }
+    });
+  });
+}
+
+function showSnippetEditor(snippet, idx, snippets) {
+  const isNew = idx === -1;
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000;';
+
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 500px; width: 90%;">
+      <h3 style="margin: 0 0 16px 0;">${isNew ? 'New' : 'Edit'} Email Snippet</h3>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Snippet Name</label>
+        <input type="text" id="snippet-name-input" value="${snippet?.name || ''}" placeholder="e.g., Pricing Info" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Snippet Text</label>
+        <textarea id="snippet-text-input" rows="6" placeholder="Type your reusable text here..." style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px; font-family: monospace;">${snippet?.text || ''}</textarea>
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: flex-end;">
+        <button class="btn btn-secondary" id="cancel-snippet">Cancel</button>
+        <button class="btn btn-primary" id="save-snippet">Save Snippet</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  modal.querySelector('#cancel-snippet').addEventListener('click', () => modal.remove());
+
+  modal.querySelector('#save-snippet').addEventListener('click', () => {
+    const name = document.getElementById('snippet-name-input').value.trim();
+    const text = document.getElementById('snippet-text-input').value.trim();
+
+    if (!name || !text) {
+      alert('Please fill in both name and text');
+      return;
+    }
+
+    const snippetData = { name, text };
+
+    if (isNew) {
+      snippets.push(snippetData);
+    } else {
+      snippets[idx] = snippetData;
+    }
+
+    chrome.storage.local.set({ emailSnippets: snippets }, () => {
+      renderSnippets(snippets);
+      modal.remove();
+      showAlert('general', 'success', `Snippet ${isNew ? 'created' : 'updated'}!`);
+    });
+  });
+}
+
+function getDefaultSnippets() {
+  return [
+    {
+      name: 'Pricing Request Response',
+      text: 'Thank you for your interest! I\'d be happy to provide pricing information. Our standard package starts at $X per month. Would you like to schedule a call to discuss your specific needs?'
+    },
+    {
+      name: 'Follow-up After No Response',
+      text: 'I wanted to follow up on my previous email. I understand you\'re busy, so I\'ll keep this brief. Are you still interested in learning more about our solution?'
+    },
+    {
+      name: 'Meeting Confirmation',
+      text: 'Looking forward to our meeting! I\'ve sent a calendar invite. Please let me know if you need to reschedule.'
+    }
+  ];
+}
+
+// Add snippet button listener
+document.getElementById('add-snippet-btn')?.addEventListener('click', () => {
+  chrome.storage.local.get(['emailSnippets'], (result) => {
+    const snippets = result.emailSnippets || getDefaultSnippets();
+    showSnippetEditor(null, -1, snippets);
+  });
+});
+
+// Load snippets when settings page opens
+loadSnippets();
+
 // Initialize
 loadSettings();
