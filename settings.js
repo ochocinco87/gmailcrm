@@ -838,5 +838,284 @@ document.getElementById('add-snippet-btn')?.addEventListener('click', () => {
 // Load snippets when settings page opens
 loadSnippets();
 
+// ========== Automation Rules Management ==========
+
+function loadAutomationRules() {
+  chrome.storage.local.get(['automationRules'], (result) => {
+    const rules = result.automationRules || getDefaultAutomationRules();
+    renderAutomationRules(rules);
+  });
+}
+
+function getDefaultAutomationRules() {
+  return [
+    {
+      id: 'rule_demo_1',
+      name: 'High-Value Deal Alert',
+      enabled: true,
+      trigger: {
+        type: 'stage_changed',
+        toStageId: 'proposal'
+      },
+      conditions: [
+        {
+          field: 'value',
+          operator: 'greater_than',
+          value: 10000
+        }
+      ],
+      actions: [
+        {
+          type: 'add_comment',
+          text: '🎯 High-value deal! Review proposal carefully.'
+        }
+      ]
+    },
+    {
+      id: 'rule_demo_2',
+      name: 'Welcome New Leads',
+      enabled: true,
+      trigger: {
+        type: 'deal_created'
+      },
+      conditions: [],
+      actions: [
+        {
+          type: 'add_comment',
+          text: '👋 Welcome! Remember to reach out within 24 hours.'
+        }
+      ]
+    }
+  ];
+}
+
+function renderAutomationRules(rules) {
+  const container = document.getElementById('automation-rules-list');
+  if (!container) return;
+
+  if (rules.length === 0) {
+    container.innerHTML = '<p style="color: #5f6368;">No automation rules yet. Click "Add New Rule" to create one.</p>';
+    return;
+  }
+
+  container.innerHTML = rules.map((rule, idx) => {
+    const triggerText = rule.trigger.type === 'deal_created'
+      ? 'When deal is created'
+      : `When deal moves to stage: ${rule.trigger.toStageId || 'any'}`;
+
+    const conditionText = rule.conditions.length > 0
+      ? rule.conditions.map(c => `${c.field} ${c.operator} ${c.value}`).join(', ')
+      : 'No conditions';
+
+    const actionText = rule.actions.map(a => {
+      if (a.type === 'add_comment') return `Add comment: "${a.text}"`;
+      if (a.type === 'send_notification') return `Send notification: "${a.message}"`;
+      if (a.type === 'update_field') return `Update ${a.field} to "${a.value}"`;
+      return a.type;
+    }).join(', ');
+
+    return `
+      <div class="automation-rule-item" style="border: 1px solid #dadce0; border-radius: 4px; padding: 16px; margin-bottom: 12px; background: ${rule.enabled ? 'white' : '#f8f9fa'};">
+        <div style="display: flex; justify-content: space-between; align-items: start; margin-bottom: 12px;">
+          <div style="flex: 1;">
+            <div style="font-weight: 600; font-size: 15px; margin-bottom: 8px;">
+              ${rule.enabled ? '✅' : '⏸️'} ${rule.name}
+            </div>
+            <div style="font-size: 13px; color: #5f6368; line-height: 1.6;">
+              <div><strong>Trigger:</strong> ${triggerText}</div>
+              <div><strong>Conditions:</strong> ${conditionText}</div>
+              <div><strong>Actions:</strong> ${actionText}</div>
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; margin-left: 12px;">
+            <button class="btn btn-secondary btn-small toggle-rule" data-idx="${idx}">
+              ${rule.enabled ? 'Disable' : 'Enable'}
+            </button>
+            <button class="btn btn-secondary btn-small edit-rule" data-idx="${idx}">Edit</button>
+            <button class="btn btn-secondary btn-small delete-rule" data-idx="${idx}">Delete</button>
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+
+  // Add event listeners
+  container.querySelectorAll('.toggle-rule').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      rules[idx].enabled = !rules[idx].enabled;
+      chrome.storage.local.set({ automationRules: rules }, () => {
+        renderAutomationRules(rules);
+        showAlert('general', 'success', `Rule ${rules[idx].enabled ? 'enabled' : 'disabled'}`);
+      });
+    });
+  });
+
+  container.querySelectorAll('.edit-rule').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      showRuleEditor(rules[idx], idx, rules);
+    });
+  });
+
+  container.querySelectorAll('.delete-rule').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const idx = parseInt(btn.dataset.idx);
+      if (confirm(`Delete rule "${rules[idx].name}"?`)) {
+        rules.splice(idx, 1);
+        chrome.storage.local.set({ automationRules: rules }, () => {
+          renderAutomationRules(rules);
+          showAlert('general', 'success', 'Rule deleted');
+        });
+      }
+    });
+  });
+}
+
+function showRuleEditor(rule, idx, rules) {
+  const isNew = idx === -1;
+
+  const modal = document.createElement('div');
+  modal.style.cssText = 'position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 10000; overflow-y: auto; padding: 20px;';
+
+  modal.innerHTML = `
+    <div style="background: white; border-radius: 8px; padding: 24px; max-width: 600px; width: 100%; max-height: 90vh; overflow-y: auto;">
+      <h3 style="margin: 0 0 20px 0;">${isNew ? 'New' : 'Edit'} Automation Rule</h3>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Rule Name</label>
+        <input type="text" id="rule-name-input" value="${rule?.name || ''}" placeholder="e.g., High-Value Deal Alert" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Trigger</label>
+        <select id="rule-trigger-type" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+          <option value="deal_created" ${rule?.trigger?.type === 'deal_created' ? 'selected' : ''}>Deal Created</option>
+          <option value="stage_changed" ${rule?.trigger?.type === 'stage_changed' ? 'selected' : ''}>Stage Changed</option>
+        </select>
+      </div>
+
+      <div id="stage-selector" style="margin-bottom: 16px; ${rule?.trigger?.type === 'stage_changed' ? '' : 'display: none;'}">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">To Stage ID</label>
+        <input type="text" id="rule-to-stage-id" value="${rule?.trigger?.toStageId || ''}" placeholder="e.g., proposal" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+        <small style="color: #5f6368;">Leave empty to trigger on any stage change</small>
+      </div>
+
+      <div style="margin-bottom: 16px;">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Action Type</label>
+        <select id="rule-action-type" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+          <option value="add_comment" ${rule?.actions?.[0]?.type === 'add_comment' ? 'selected' : ''}>Add Comment</option>
+          <option value="send_notification" ${rule?.actions?.[0]?.type === 'send_notification' ? 'selected' : ''}>Send Notification</option>
+        </select>
+      </div>
+
+      <div id="comment-field" style="margin-bottom: 16px; ${rule?.actions?.[0]?.type !== 'send_notification' ? '' : 'display: none;'}">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Comment Text</label>
+        <textarea id="rule-comment-text" rows="3" placeholder="Enter comment text..." style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">${rule?.actions?.[0]?.text || ''}</textarea>
+      </div>
+
+      <div id="notification-field" style="margin-bottom: 16px; ${rule?.actions?.[0]?.type === 'send_notification' ? '' : 'display: none;'}">
+        <label style="display: block; margin-bottom: 4px; font-weight: 500;">Notification Message</label>
+        <input type="text" id="rule-notification-message" value="${rule?.actions?.[0]?.message || ''}" placeholder="Enter notification message" style="width: 100%; padding: 8px; border: 1px solid #dadce0; border-radius: 4px;">
+      </div>
+
+      <div style="display: flex; gap: 8px; justify-content: flex-end; margin-top: 20px;">
+        <button class="btn btn-secondary" id="cancel-rule">Cancel</button>
+        <button class="btn btn-primary" id="save-rule">Save Rule</button>
+      </div>
+    </div>
+  `;
+
+  document.body.appendChild(modal);
+
+  // Toggle stage selector visibility
+  document.getElementById('rule-trigger-type').addEventListener('change', (e) => {
+    document.getElementById('stage-selector').style.display =
+      e.target.value === 'stage_changed' ? 'block' : 'none';
+  });
+
+  // Toggle action fields visibility
+  document.getElementById('rule-action-type').addEventListener('change', (e) => {
+    document.getElementById('comment-field').style.display =
+      e.target.value === 'add_comment' ? 'block' : 'none';
+    document.getElementById('notification-field').style.display =
+      e.target.value === 'send_notification' ? 'block' : 'none';
+  });
+
+  modal.querySelector('#cancel-rule').addEventListener('click', () => modal.remove());
+
+  modal.querySelector('#save-rule').addEventListener('click', () => {
+    const name = document.getElementById('rule-name-input').value.trim();
+    const triggerType = document.getElementById('rule-trigger-type').value;
+    const toStageId = document.getElementById('rule-to-stage-id').value.trim();
+    const actionType = document.getElementById('rule-action-type').value;
+
+    if (!name) {
+      alert('Please enter a rule name');
+      return;
+    }
+
+    const trigger = {
+      type: triggerType
+    };
+
+    if (triggerType === 'stage_changed' && toStageId) {
+      trigger.toStageId = toStageId;
+    }
+
+    const action = {
+      type: actionType
+    };
+
+    if (actionType === 'add_comment') {
+      const commentText = document.getElementById('rule-comment-text').value.trim();
+      if (!commentText) {
+        alert('Please enter comment text');
+        return;
+      }
+      action.text = commentText;
+    } else if (actionType === 'send_notification') {
+      const notificationMessage = document.getElementById('rule-notification-message').value.trim();
+      if (!notificationMessage) {
+        alert('Please enter notification message');
+        return;
+      }
+      action.message = notificationMessage;
+    }
+
+    const ruleData = {
+      id: rule?.id || 'rule_' + Date.now(),
+      name,
+      enabled: rule?.enabled !== false,
+      trigger,
+      conditions: rule?.conditions || [],
+      actions: [action]
+    };
+
+    if (isNew) {
+      rules.push(ruleData);
+    } else {
+      rules[idx] = ruleData;
+    }
+
+    chrome.storage.local.set({ automationRules: rules }, () => {
+      renderAutomationRules(rules);
+      modal.remove();
+      showAlert('general', 'success', `Rule ${isNew ? 'created' : 'updated'}!`);
+    });
+  });
+}
+
+// Add automation rule button listener
+document.getElementById('add-automation-rule-btn')?.addEventListener('click', () => {
+  chrome.storage.local.get(['automationRules'], (result) => {
+    const rules = result.automationRules || getDefaultAutomationRules();
+    showRuleEditor(null, -1, rules);
+  });
+});
+
+// Load automation rules when settings page opens
+loadAutomationRules();
+
 // Initialize
 loadSettings();

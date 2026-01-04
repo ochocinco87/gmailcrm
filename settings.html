@@ -333,6 +333,7 @@
     <div class="tabs">
       <button class="tab active" data-tab="general">General</button>
       <button class="tab" data-tab="firebase">Firebase</button>
+      <button class="tab" data-tab="automation">Automation</button>
       <button class="tab" data-tab="users" id="users-tab">Users</button>
       <button class="tab" data-tab="organization" id="org-tab">Organization</button>
     </div>
@@ -427,6 +428,41 @@
           <strong>CSV Format:</strong> Deal Name, Stage, Contact Email, Deal Value, Priority, Status, Notes<br>
           Export creates a CSV with all your deals. Import expects the same format.
         </div>
+      </div>
+    </div>
+
+    <!-- Automation Tab -->
+    <div class="tab-content" data-content="automation">
+      <div class="section">
+        <h2 class="section-title">⚡ Automation Rules</h2>
+        <p style="color: #5f6368; margin-bottom: 16px;">
+          Create automated workflows that trigger actions when deals meet certain conditions
+        </p>
+
+        <div id="automation-rules-list" class="automation-container">
+          <!-- Rules will be rendered here -->
+        </div>
+
+        <button id="add-automation-rule-btn" class="btn btn-primary" style="margin-top: 16px;">
+          + Add New Rule
+        </button>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">📚 Available Triggers</h2>
+        <ul style="color: #5f6368; line-height: 1.8;">
+          <li><strong>Deal Created:</strong> Triggers when a new deal is added to the CRM</li>
+          <li><strong>Stage Changed:</strong> Triggers when a deal moves to a different stage</li>
+        </ul>
+      </div>
+
+      <div class="section">
+        <h2 class="section-title">🎯 Available Actions</h2>
+        <ul style="color: #5f6368; line-height: 1.8;">
+          <li><strong>Add Comment:</strong> Automatically adds a comment to the deal</li>
+          <li><strong>Send Notification:</strong> Shows a notification message</li>
+          <li><strong>Update Field:</strong> Changes a field value on the deal</li>
+        </ul>
       </div>
     </div>
 

@@ -14,6 +14,7 @@ class GmailCRM {
       priority: '',
       sortBy: 'date'
     };
+    this.automationRules = [];
   }
 
   async init() {
@@ -77,6 +78,12 @@ class GmailCRM {
       chrome.storage.local.get(['pipelineViewMode'], resolve);
     });
     this.pipelineViewMode = viewModeResult.pipelineViewMode || 'table';
+
+    // Load automation rules from local storage
+    const automationResult = await new Promise(resolve => {
+      chrome.storage.local.get(['automationRules'], resolve);
+    });
+    this.automationRules = automationResult.automationRules || this.getDefaultAutomationRules();
 
     // Save default pipelines if none exist
     if (pipelines.length === 0) {
@@ -921,6 +928,12 @@ class GmailCRM {
 
     // Save using Firebase sync
     await this.saveDeal(deal);
+
+    // Trigger automation rules
+    await this.checkAutomationTriggers('stage_changed', deal, {
+      fromStageId: oldStageId,
+      toStageId: newStageId
+    });
 
     console.log(`Gmail CRM: Moved deal ${dealId} from ${oldStageId} to ${newStageId}`);
   }
@@ -1788,6 +1801,10 @@ class GmailCRM {
       };
 
       await this.saveDeal(deal);
+
+      // Trigger automation rules for new deal
+      await this.checkAutomationTriggers('deal_created', deal);
+
       modal.remove();
       this.renderPipelineBoard();
       this.showNotification('✅ Deal added successfully!');
@@ -1805,6 +1822,141 @@ class GmailCRM {
   isValidEmail(email) {
     const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
     return emailRegex.test(email);
+  }
+
+  // ========== CRM Automation Engine ==========
+
+  getDefaultAutomationRules() {
+    return [
+      {
+        id: 'rule_demo_1',
+        name: 'High-Value Deal Alert',
+        enabled: true,
+        trigger: {
+          type: 'stage_changed',
+          toStageId: 'proposal'
+        },
+        conditions: [
+          {
+            field: 'value',
+            operator: 'greater_than',
+            value: 10000
+          }
+        ],
+        actions: [
+          {
+            type: 'add_comment',
+            text: '🎯 High-value deal! Review proposal carefully.'
+          }
+        ]
+      },
+      {
+        id: 'rule_demo_2',
+        name: 'Welcome New Leads',
+        enabled: true,
+        trigger: {
+          type: 'deal_created'
+        },
+        conditions: [],
+        actions: [
+          {
+            type: 'add_comment',
+            text: '👋 Welcome! Remember to reach out within 24 hours.'
+          }
+        ]
+      }
+    ];
+  }
+
+  async checkAutomationTriggers(triggerType, deal, metadata = {}) {
+    if (!this.automationRules || this.automationRules.length === 0) return;
+
+    // Find matching rules
+    const matchingRules = this.automationRules.filter(rule => {
+      if (!rule.enabled) return false;
+      if (rule.trigger.type !== triggerType) return false;
+
+      // Check trigger-specific conditions
+      if (triggerType === 'stage_changed') {
+        const { fromStageId, toStageId } = metadata;
+        if (rule.trigger.fromStageId && rule.trigger.fromStageId !== fromStageId) return false;
+        if (rule.trigger.toStageId && rule.trigger.toStageId !== toStageId) return false;
+      }
+
+      // Check rule conditions
+      return this.evaluateConditions(rule.conditions, deal);
+    });
+
+    // Execute actions for matching rules
+    for (const rule of matchingRules) {
+      console.log(`Gmail CRM: Executing automation rule: ${rule.name}`);
+      for (const action of rule.actions) {
+        await this.executeAutomationAction(action, deal);
+      }
+    }
+  }
+
+  evaluateConditions(conditions, deal) {
+    if (!conditions || conditions.length === 0) return true;
+
+    return conditions.every(condition => {
+      const fieldValue = deal[condition.field];
+
+      switch (condition.operator) {
+        case 'equals':
+          return fieldValue === condition.value;
+        case 'not_equals':
+          return fieldValue !== condition.value;
+        case 'greater_than':
+          return parseFloat(fieldValue) > parseFloat(condition.value);
+        case 'less_than':
+          return parseFloat(fieldValue) < parseFloat(condition.value);
+        case 'contains':
+          return String(fieldValue).toLowerCase().includes(String(condition.value).toLowerCase());
+        default:
+          return true;
+      }
+    });
+  }
+
+  async executeAutomationAction(action, deal) {
+    switch (action.type) {
+      case 'add_comment':
+        await this.addAutomationComment(deal.id, action.text);
+        break;
+
+      case 'update_field':
+        deal[action.field] = action.value;
+        await this.saveDeal(deal);
+        break;
+
+      case 'send_notification':
+        this.showNotification(action.message);
+        break;
+
+      default:
+        console.warn(`Gmail CRM: Unknown automation action type: ${action.type}`);
+    }
+  }
+
+  async addAutomationComment(dealId, text) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    if (!deal.comments) {
+      deal.comments = [];
+    }
+
+    const comment = {
+      id: 'comment_' + Date.now(),
+      text: text,
+      author: 'Automation',
+      timestamp: new Date().toISOString(),
+      isAutomation: true
+    };
+
+    deal.comments.push(comment);
+    await this.saveDeal(deal);
   }
 
   showPipelineEditor(pipeline = null) {
