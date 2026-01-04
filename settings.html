@@ -402,6 +402,32 @@
         </p>
         <button id="migrate-data-btn" class="btn btn-secondary">Migrate Local Data to Firebase</button>
       </div>
+
+      <div class="section">
+        <h2 class="section-title">📊 Import / Export Data</h2>
+        <p style="color: #5f6368; margin-bottom: 16px;">
+          Import deals from CSV or export all your deals to CSV for backup and analysis
+        </p>
+
+        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
+          <button id="import-csv-btn" class="btn btn-secondary">
+            📥 Import Deals from CSV
+          </button>
+          <button id="export-csv-btn" class="btn btn-secondary">
+            📤 Export Deals to CSV
+          </button>
+          <button id="export-pipelines-csv-btn" class="btn btn-secondary">
+            📤 Export Pipelines to CSV
+          </button>
+        </div>
+
+        <input type="file" id="csv-file-input" accept=".csv" style="display: none;">
+
+        <div class="form-hint">
+          <strong>CSV Format:</strong> Deal Name, Stage, Contact Email, Deal Value, Priority, Status, Notes<br>
+          Export creates a CSV with all your deals. Import expects the same format.
+        </div>
+      </div>
     </div>
 
     <!-- Users Tab (Admin Only) -->
