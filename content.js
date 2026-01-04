@@ -2032,6 +2032,54 @@ class GmailCRM {
     }
   }
 
+  renderTasksSection(deal) {
+    const tasks = deal.tasks || [];
+    const now = new Date();
+
+    if (tasks.length === 0) {
+      return '<p class="crm-empty-state">No tasks yet</p>';
+    }
+
+    // Sort tasks: incomplete first, then by due date
+    const sortedTasks = tasks.sort((a, b) => {
+      if (a.completed !== b.completed) return a.completed ? 1 : -1;
+      if (!a.dueDate) return 1;
+      if (!b.dueDate) return -1;
+      return new Date(a.dueDate) - new Date(b.dueDate);
+    });
+
+    return `
+      <div class="crm-tasks-list">
+        ${sortedTasks.map((task, idx) => {
+          const dueDate = task.dueDate ? new Date(task.dueDate) : null;
+          const isOverdue = dueDate && dueDate < now && !task.completed;
+          const isDueToday = dueDate && dueDate.toDateString() === now.toDateString();
+
+          return `
+            <div class="crm-task-item ${task.completed ? 'completed' : ''} ${isOverdue ? 'overdue' : ''}" data-task-idx="${idx}">
+              <input type="checkbox" class="crm-task-checkbox" ${task.completed ? 'checked' : ''} data-task-idx="${idx}">
+              <div class="crm-task-content">
+                <div class="crm-task-title">${task.title}</div>
+                ${task.description ? `<div class="crm-task-description">${task.description}</div>` : ''}
+                <div class="crm-task-meta">
+                  ${dueDate ? `
+                    <span class="crm-task-due ${isOverdue ? 'overdue-text' : ''} ${isDueToday ? 'due-today' : ''}">
+                      ${isOverdue ? '⚠️ ' : isDueToday ? '📅 ' : ''}
+                      ${dueDate.toLocaleDateString()}
+                    </span>
+                  ` : ''}
+                  ${task.assignedTo ? `<span class="crm-task-assigned">👤 ${task.assignedTo}</span>` : ''}
+                  ${task.priority ? `<span class="crm-task-priority priority-${task.priority.toLowerCase()}">${task.priority}</span>` : ''}
+                </div>
+              </div>
+              <button class="crm-btn-icon-tiny" data-delete-task-idx="${idx}" title="Delete task">×</button>
+            </div>
+          `;
+        }).join('')}
+      </div>
+    `;
+  }
+
   renderNotesHistory(deal) {
     const notes = deal.notesHistory || [];
 
@@ -2215,6 +2263,12 @@ class GmailCRM {
           ${this.currentPipeline?.type === 'customer-tracking' ? this.renderCasesSection(deal) : ''}
 
           <div class="crm-sidebar-section">
+            <h4>Tasks & Follow-ups</h4>
+            ${this.renderTasksSection(deal)}
+            <button class="crm-btn-small" id="crm-add-task-btn">+ Add Task</button>
+          </div>
+
+          <div class="crm-sidebar-section">
             <h4>Notes</h4>
             ${this.renderNotesHistory(deal)}
             <textarea id="crm-sidebar-notes" class="crm-textarea" placeholder="Add a new note..."></textarea>
@@ -2235,6 +2289,36 @@ class GmailCRM {
 
     document.getElementById('crm-lookup-address-btn')?.addEventListener('click', () => {
       this.lookupInstitutionAddress(deal.id);
+    });
+
+    document.getElementById('crm-add-task-btn')?.addEventListener('click', () => {
+      this.showAddTaskDialog(deal.id);
+    });
+
+    // Task checkbox listeners (mark complete/incomplete)
+    sidebar.querySelectorAll('.crm-task-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', async (e) => {
+        const idx = parseInt(e.target.dataset.taskIdx);
+        if (!deal.tasks) deal.tasks = [];
+        deal.tasks[idx].completed = e.target.checked;
+        deal.tasks[idx].completedAt = e.target.checked ? new Date().toISOString() : null;
+        await this.saveDeal(deal);
+        this.showDealSidebar(deal.id);
+      });
+    });
+
+    // Delete task listeners
+    sidebar.querySelectorAll('[data-delete-task-idx]').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const idx = parseInt(e.target.dataset.deleteTaskIdx);
+        if (idx !== undefined && confirm('Delete this task?')) {
+          if (!deal.tasks) deal.tasks = [];
+          deal.tasks.splice(idx, 1);
+          await this.saveDeal(deal);
+          this.showDealSidebar(deal.id);
+          this.showNotification('Task deleted');
+        }
+      });
     });
 
     document.getElementById('crm-save-notes-btn')?.addEventListener('click', async () => {
@@ -2578,6 +2662,86 @@ class GmailCRM {
       });
     }
     return weeks;
+  }
+
+  showAddTaskDialog(dealId) {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content">
+        <h2>Add Task</h2>
+        <div class="crm-form-group">
+          <label>Task Title *</label>
+          <input type="text" id="crm-task-title" class="crm-input" placeholder="e.g., Follow up with client" required />
+        </div>
+        <div class="crm-form-group">
+          <label>Description</label>
+          <textarea id="crm-task-description" class="crm-textarea" placeholder="Task details..." rows="3"></textarea>
+        </div>
+        <div class="crm-form-group">
+          <label>Due Date</label>
+          <input type="datetime-local" id="crm-task-due-date" class="crm-input" />
+        </div>
+        <div class="crm-form-group">
+          <label>Priority</label>
+          <select id="crm-task-priority" class="crm-input">
+            <option value="Low">Low</option>
+            <option value="Medium" selected>Medium</option>
+            <option value="High">High</option>
+            <option value="Urgent">Urgent</option>
+          </select>
+        </div>
+        <div class="crm-form-group">
+          <label>Assign To (optional)</label>
+          <input type="text" id="crm-task-assigned-to" class="crm-input" placeholder="Team member name" />
+        </div>
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="crm-cancel-task">Cancel</button>
+          <button class="crm-btn-primary" id="crm-save-task">Add Task</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Set default due date to tomorrow
+    const tomorrow = new Date();
+    tomorrow.setDate(tomorrow.getDate() + 1);
+    document.getElementById('crm-task-due-date').value = tomorrow.toISOString().slice(0, 16);
+
+    document.getElementById('crm-cancel-task')?.addEventListener('click', () => modal.remove());
+    document.getElementById('crm-save-task')?.addEventListener('click', async () => {
+      const title = document.getElementById('crm-task-title').value;
+      if (!title || !title.trim()) {
+        alert('Please enter a task title');
+        return;
+      }
+
+      const deal = this.deals[dealId];
+      if (!deal) return;
+
+      if (!deal.tasks) deal.tasks = [];
+
+      deal.tasks.push({
+        id: 'task_' + Date.now(),
+        title: title.trim(),
+        description: document.getElementById('crm-task-description').value.trim(),
+        dueDate: document.getElementById('crm-task-due-date').value,
+        priority: document.getElementById('crm-task-priority').value,
+        assignedTo: document.getElementById('crm-task-assigned-to').value.trim(),
+        completed: false,
+        createdAt: new Date().toISOString(),
+        completedAt: null
+      });
+
+      await this.saveDeal(deal);
+      modal.remove();
+      this.showDealSidebar(dealId);
+      this.showNotification('Task added successfully!');
+    });
+
+    // Focus on title input
+    setTimeout(() => document.getElementById('crm-task-title')?.focus(), 100);
   }
 
   showAddCallDialog(dealId) {

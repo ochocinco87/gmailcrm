@@ -2980,4 +2980,131 @@
   .crm-address-display.unconfirmed {
     border-left-color: #fbbc04 !important;
   }
+
+  /* Task Management Styles */
+  .crm-tasks-list {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 10px !important;
+  }
+
+  .crm-task-item {
+    display: flex !important;
+    align-items: flex-start !important;
+    gap: 10px !important;
+    padding: 12px !important;
+    background: white !important;
+    border: 1px solid #e0e0e0 !important;
+    border-radius: 6px !important;
+    transition: all 0.2s ease !important;
+  }
+
+  .crm-task-item:hover {
+    border-color: #1a73e8 !important;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1) !important;
+  }
+
+  .crm-task-item.completed {
+    opacity: 0.6 !important;
+    background: #f8f9fa !important;
+  }
+
+  .crm-task-item.completed .crm-task-title {
+    text-decoration: line-through !important;
+  }
+
+  .crm-task-item.overdue {
+    border-left: 3px solid #ea4335 !important;
+  }
+
+  .crm-task-checkbox {
+    width: 18px !important;
+    height: 18px !important;
+    margin-top: 2px !important;
+    cursor: pointer !important;
+    flex-shrink: 0 !important;
+  }
+
+  .crm-task-content {
+    flex: 1 !important;
+    min-width: 0 !important;
+  }
+
+  .crm-task-title {
+    font-weight: 500 !important;
+    color: #202124 !important;
+    font-size: 14px !important;
+    margin-bottom: 4px !important;
+  }
+
+  .crm-task-description {
+    color: #5f6368 !important;
+    font-size: 13px !important;
+    margin-bottom: 6px !important;
+    white-space: pre-wrap !important;
+  }
+
+  .crm-task-meta {
+    display: flex !important;
+    flex-wrap: wrap !important;
+    gap: 8px !important;
+    font-size: 12px !important;
+    color: #5f6368 !important;
+  }
+
+  .crm-task-due {
+    display: inline-flex !important;
+    align-items: center !important;
+    gap: 4px !important;
+  }
+
+  .crm-task-due.overdue-text {
+    color: #ea4335 !important;
+    font-weight: 500 !important;
+  }
+
+  .crm-task-due.due-today {
+    color: #fbbc04 !important;
+    font-weight: 500 !important;
+  }
+
+  .crm-task-assigned {
+    background: #e8f0fe !important;
+    padding: 2px 8px !important;
+    border-radius: 12px !important;
+    color: #1a73e8 !important;
+  }
+
+  .crm-task-priority {
+    padding: 2px 8px !important;
+    border-radius: 12px !important;
+    font-weight: 500 !important;
+    font-size: 11px !important;
+  }
+
+  .crm-task-priority.priority-low {
+    background: #e8f5e9 !important;
+    color: #1e8e3e !important;
+  }
+
+  .crm-task-priority.priority-medium {
+    background: #fff3e0 !important;
+    color: #f57c00 !important;
+  }
+
+  .crm-task-priority.priority-high {
+    background: #fce8e6 !important;
+    color: #d93025 !important;
+  }
+
+  .crm-task-priority.priority-urgent {
+    background: #d93025 !important;
+    color: white !important;
+    animation: pulse 2s infinite !important;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
 }
