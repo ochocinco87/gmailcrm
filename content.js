@@ -412,10 +412,12 @@ class GmailCRM {
                 <th class="crm-th-priority">Priority</th>
                 <th class="crm-th-value">Deal Size</th>
                 <th class="crm-th-prob">Prob</th>
+                <th class="crm-th-weighted">Weighted $</th>
                 <th class="crm-th-contact">Contact</th>
+                <th class="crm-th-company">Company</th>
+                <th class="crm-th-age">Age</th>
+                <th class="crm-th-last-activity">Last Activity</th>
                 <th class="crm-th-assigned">Assigned To</th>
-                <th class="crm-th-date">Date Last Updated</th>
-                <th class="crm-th-notes">Notes</th>
               </tr>
             </thead>
             <tbody id="crm-deals-tbody"></tbody>
@@ -600,7 +602,11 @@ class GmailCRM {
   }
 
   createKanbanCard(deal, stage) {
+    // Calculate magic columns
+    const magic = this.getMagicColumns(deal);
+
     const value = deal.value ? `$${deal.value.toLocaleString()}` : '-';
+    const weightedValue = magic.weightedValue ? `$${magic.weightedValue.toLocaleString()}` : '-';
     const priority = deal.priority || 'Medium';
     const priorityColor = {
       'High': '#ea4335',
@@ -612,7 +618,7 @@ class GmailCRM {
       ? deal.contacts.join(', ')
       : (deal.contactEmail || '-');
 
-    const company = deal.company || deal.institution || '-';
+    const company = magic.companyName || deal.company || deal.institution || '-';
 
     // Get last note if exists
     const lastNote = deal.notesHistory && deal.notesHistory.length > 0
@@ -620,6 +626,12 @@ class GmailCRM {
       : '';
 
     const linkedEmailsCount = deal.linkedEmails?.length || 0;
+
+    // Format last activity with color
+    const daysAgo = magic.daysSinceLastActivity;
+    let activityColor = '#34a853';
+    if (daysAgo > 14) activityColor = '#ea4335';
+    else if (daysAgo > 7) activityColor = '#fbbc04';
 
     return `
       <div class="crm-kanban-card"
@@ -643,9 +655,13 @@ class GmailCRM {
           </div>
           ${value !== '-' ? `
           <div class="crm-kanban-card-value">
-            💰 ${value}
+            💰 ${value} <span style="color: #1a73e8; font-weight: 600;">(${weightedValue})</span>
           </div>
           ` : ''}
+          <div class="crm-kanban-card-meta">
+            <span title="Deal age">📅 ${magic.dealAge}d old</span>
+            <span title="Days since last activity" style="color: ${activityColor};">⏱ ${daysAgo}d ago</span>
+          </div>
           ${lastNote ? `
           <div class="crm-kanban-card-note">
             📝 ${lastNote}
@@ -1239,8 +1255,11 @@ class GmailCRM {
     row.dataset.dealId = deal.id;
     row.dataset.stageId = stage.id;
 
+    // Calculate magic columns
+    const magic = this.getMagicColumns(deal);
+
     const formattedValue = deal.value ? `$${Number(deal.value).toLocaleString()}` : '';
-    const formattedDate = deal.lastUpdated ? new Date(deal.lastUpdated).toLocaleDateString() : '';
+    const formattedWeightedValue = magic.weightedValue ? `$${magic.weightedValue.toLocaleString()}` : '';
 
     // Status options
     const statusOptions = [
@@ -1257,6 +1276,13 @@ class GmailCRM {
       </select>
     `;
 
+    // Format last activity with color coding
+    const daysAgo = magic.daysSinceLastActivity;
+    let activityClass = '';
+    if (daysAgo > 14) activityClass = 'crm-activity-cold';
+    else if (daysAgo > 7) activityClass = 'crm-activity-warm';
+    else activityClass = 'crm-activity-hot';
+
     row.innerHTML = `
       <td class="crm-td-checkbox"><input type="checkbox" /></td>
       <td class="crm-td-name">
@@ -1266,10 +1292,12 @@ class GmailCRM {
       <td class="crm-td-priority">${deal.priority || 'High'}</td>
       <td class="crm-td-value">${formattedValue}</td>
       <td class="crm-td-prob">${deal.probability || '90'}%</td>
+      <td class="crm-td-weighted"><strong>${formattedWeightedValue}</strong></td>
       <td class="crm-td-contact">${deal.contactEmail || ''}</td>
+      <td class="crm-td-company">${magic.companyName || '-'}</td>
+      <td class="crm-td-age">${magic.dealAge}d</td>
+      <td class="crm-td-last-activity ${activityClass}">${daysAgo}d ago</td>
       <td class="crm-td-assigned">${deal.assignedTo || ''}</td>
-      <td class="crm-td-date">${formattedDate}</td>
-      <td class="crm-td-notes">${deal.notes || ''}</td>
     `;
 
     // Add click handler for deal name
@@ -5051,6 +5079,113 @@ Respond in JSON format:
     }
 
     return parts.join('\n');
+  }
+
+  // Magic Columns - Auto-calculated fields
+
+  getMagicColumns(deal) {
+    return {
+      dealAge: this.calculateDealAge(deal),
+      daysSinceLastActivity: this.calculateDaysSinceLastActivity(deal),
+      emailDomain: this.extractEmailDomain(deal.contactEmail),
+      companyName: this.extractCompanyFromEmail(deal.contactEmail),
+      weightedValue: this.calculateWeightedValue(deal),
+      expectedCloseDate: this.estimateCloseDate(deal),
+      stageVelocity: this.calculateStageVelocity(deal)
+    };
+  }
+
+  calculateDealAge(deal) {
+    const createdDate = new Date(deal.createdAt || deal.lastUpdated);
+    const now = new Date();
+    const diffDays = Math.floor((now - createdDate) / (1000 * 60 * 60 * 24));
+    return diffDays;
+  }
+
+  calculateDaysSinceLastActivity(deal) {
+    const activities = [];
+
+    // Check last email
+    if (deal.linkedEmails && deal.linkedEmails.length > 0) {
+      const lastEmail = deal.linkedEmails[deal.linkedEmails.length - 1];
+      if (lastEmail.date) activities.push(new Date(lastEmail.date));
+    }
+
+    // Check last note
+    if (deal.notesHistory && deal.notesHistory.length > 0) {
+      const lastNote = deal.notesHistory[deal.notesHistory.length - 1];
+      if (lastNote.createdAt) activities.push(new Date(lastNote.createdAt));
+    }
+
+    // Check last comment
+    if (deal.comments && deal.comments.length > 0) {
+      const lastComment = deal.comments[deal.comments.length - 1];
+      if (lastComment.createdAt) activities.push(new Date(lastComment.createdAt));
+    }
+
+    // Check last task completion
+    if (deal.tasks && deal.tasks.length > 0) {
+      deal.tasks.forEach(task => {
+        if (task.completedAt) activities.push(new Date(task.completedAt));
+      });
+    }
+
+    // Check last status change
+    if (deal.statusHistory && deal.statusHistory.length > 0) {
+      const lastStatusChange = deal.statusHistory[deal.statusHistory.length - 1];
+      if (lastStatusChange.changedAt) activities.push(new Date(lastStatusChange.changedAt));
+    }
+
+    if (activities.length === 0) {
+      return this.calculateDealAge(deal); // Fall back to deal age
+    }
+
+    // Get most recent activity
+    const lastActivity = new Date(Math.max(...activities));
+    const now = new Date();
+    const diffDays = Math.floor((now - lastActivity) / (1000 * 60 * 60 * 24));
+    return diffDays;
+  }
+
+  extractEmailDomain(email) {
+    if (!email || !email.includes('@')) return '';
+    return email.split('@')[1].toLowerCase();
+  }
+
+  calculateWeightedValue(deal) {
+    const value = parseFloat(deal.value) || 0;
+    const probability = parseFloat(deal.probability) || 90;
+    return Math.round(value * (probability / 100));
+  }
+
+  estimateCloseDate(deal) {
+    // Estimate based on average deal cycle for stage
+    const stageIndex = this.currentPipeline?.stages.findIndex(s => s.id === deal.stageId) || 0;
+    const totalStages = this.currentPipeline?.stages.length || 4;
+    const remainingStages = totalStages - stageIndex;
+
+    // Assume 7 days per stage on average
+    const daysToClose = remainingStages * 7;
+
+    const closeDate = new Date();
+    closeDate.setDate(closeDate.getDate() + daysToClose);
+
+    return closeDate.toLocaleDateString();
+  }
+
+  calculateStageVelocity(deal) {
+    // Calculate how many days deal has been in current stage
+    const stageHistory = deal.stageHistory || [];
+    if (stageHistory.length === 0) {
+      return this.calculateDealAge(deal);
+    }
+
+    const lastStageChange = stageHistory[stageHistory.length - 1];
+    const stageEntryDate = new Date(lastStageChange.changedAt || deal.lastUpdated);
+    const now = new Date();
+    const daysInStage = Math.floor((now - stageEntryDate) / (1000 * 60 * 60 * 24));
+
+    return daysInStage;
   }
 
   // Mail Merge Methods

@@ -3310,3 +3310,35 @@
 .crm-comment-input-wrapper {
   margin-top: 12px;
 }
+
+/* ========== Magic Columns Styles ========== */
+.crm-activity-hot {
+  color: #34a853;
+  font-weight: 600;
+}
+
+.crm-activity-warm {
+  color: #fbbc04;
+  font-weight: 500;
+}
+
+.crm-activity-cold {
+  color: #ea4335;
+  font-weight: 500;
+}
+
+.crm-td-weighted {
+  color: #1a73e8;
+  font-weight: 600;
+}
+
+.crm-td-company {
+  font-size: 13px;
+  color: #5f6368;
+}
+
+.crm-td-age,
+.crm-td-last-activity {
+  font-size: 13px;
+  white-space: nowrap;
+}
