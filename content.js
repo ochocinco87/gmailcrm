@@ -1708,22 +1708,25 @@ class GmailCRM {
       <div class="crm-modal-content">
         <h2>Add Deal</h2>
         <div class="crm-form-group">
-          <label>Deal Name</label>
-          <input type="text" id="crm-deal-name" class="crm-input" placeholder="Enter deal name" />
+          <label>Deal Name <span style="color: #ea4335;">*</span></label>
+          <input type="text" id="crm-deal-name" class="crm-input" placeholder="Enter deal name" required />
+          <div class="crm-validation-error" id="crm-deal-name-error" style="display: none;"></div>
         </div>
         <div class="crm-form-group">
-          <label>Stage</label>
-          <select id="crm-deal-stage" class="crm-input">
+          <label>Stage <span style="color: #ea4335;">*</span></label>
+          <select id="crm-deal-stage" class="crm-input" required>
             ${this.currentPipeline.stages.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
           </select>
         </div>
         <div class="crm-form-group">
           <label>Deal Value</label>
-          <input type="number" id="crm-deal-value-input" class="crm-input" placeholder="$0" />
+          <input type="number" id="crm-deal-value-input" class="crm-input" placeholder="$0" min="0" />
+          <div class="crm-validation-error" id="crm-deal-value-error" style="display: none;"></div>
         </div>
         <div class="crm-form-group">
-          <label>Contact Email</label>
-          <input type="email" id="crm-deal-email" class="crm-input" placeholder="contact@example.com" />
+          <label>Contact Email <span style="color: #ea4335;">*</span></label>
+          <input type="email" id="crm-deal-email" class="crm-input" placeholder="contact@example.com" required />
+          <div class="crm-validation-error" id="crm-deal-email-error" style="display: none;"></div>
         </div>
         <div class="crm-modal-actions">
           <button class="crm-btn" id="crm-cancel-deal">Cancel</button>
@@ -1736,25 +1739,72 @@ class GmailCRM {
 
     document.getElementById('crm-cancel-deal')?.addEventListener('click', () => modal.remove());
     document.getElementById('crm-save-deal')?.addEventListener('click', async () => {
+      // Clear previous errors
+      modal.querySelectorAll('.crm-validation-error').forEach(el => el.style.display = 'none');
+
+      const dealName = document.getElementById('crm-deal-name').value.trim();
+      const contactEmail = document.getElementById('crm-deal-email').value.trim();
+      const dealValue = document.getElementById('crm-deal-value-input').value;
+
+      // Validate required fields
+      let hasError = false;
+
+      if (!dealName) {
+        this.showValidationError('crm-deal-name-error', 'Deal name is required');
+        hasError = true;
+      }
+
+      if (!contactEmail) {
+        this.showValidationError('crm-deal-email-error', 'Contact email is required');
+        hasError = true;
+      } else if (!this.isValidEmail(contactEmail)) {
+        this.showValidationError('crm-deal-email-error', 'Please enter a valid email address');
+        hasError = true;
+      }
+
+      if (dealValue && parseFloat(dealValue) < 0) {
+        this.showValidationError('crm-deal-value-error', 'Deal value cannot be negative');
+        hasError = true;
+      }
+
+      if (hasError) {
+        return;
+      }
+
       const dealId = 'deal_' + Date.now();
       const deal = {
         id: dealId,
         threadId: dealId,
         pipelineId: this.currentPipeline.id,
         stageId: document.getElementById('crm-deal-stage').value,
-        emailSubject: document.getElementById('crm-deal-name').value,
-        value: document.getElementById('crm-deal-value-input').value,
-        contactEmail: document.getElementById('crm-deal-email').value,
+        emailSubject: dealName,
+        value: dealValue,
+        contactEmail: contactEmail,
         priority: 'High',
         probability: 90,
-        lastUpdated: new Date().toISOString()
+        lastUpdated: new Date().toISOString(),
+        createdAt: new Date().toISOString(),
+        status: 'Active'
       };
 
       await this.saveDeal(deal);
       modal.remove();
       this.renderPipelineBoard();
-      this.showNotification('Deal added successfully!');
+      this.showNotification('✅ Deal added successfully!');
     });
+  }
+
+  showValidationError(elementId, message) {
+    const errorEl = document.getElementById(elementId);
+    if (errorEl) {
+      errorEl.textContent = message;
+      errorEl.style.display = 'block';
+    }
+  }
+
+  isValidEmail(email) {
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return emailRegex.test(email);
   }
 
   showPipelineEditor(pipeline = null) {
