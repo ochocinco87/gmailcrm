@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "Gmail CRM",
+  "name": "Effortless - Gmail CRM",
   "version": "2.0.0",
-  "description": "A powerful CRM that lives within Gmail, helping you manage deals, contacts, and pipelines directly from your inbox.",
+  "description": "Effortless CRM with powerful voice control. Manage deals, contacts, and pipelines directly from your Gmail inbox using natural voice commands.",
   "permissions": [
     "storage",
     "activeTab",
@@ -25,7 +25,7 @@
   "content_scripts": [
     {
       "matches": ["https://mail.google.com/*"],
-      "js": ["leaflet/leaflet.js", "firebase-integration.js", "content.js"],
+      "js": ["leaflet/leaflet.js", "firebase-integration.js", "voice-control.js", "content.js"],
       "css": ["leaflet/leaflet.css", "styles.css"],
       "run_at": "document_idle"
     }

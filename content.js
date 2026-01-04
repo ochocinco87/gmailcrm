@@ -35,6 +35,9 @@ class GmailCRM {
     // Monitor for email views to inject link UI
     this.observeEmailView();
 
+    // Inject floating voice assistant
+    this.injectVoiceAssistant();
+
     this.initialized = true;
     console.log('Gmail CRM: Initialized successfully');
   }
@@ -1722,31 +1725,43 @@ class GmailCRM {
     }
   }
 
-  showAddDealDialog() {
+  showAddDealDialog(stageId = null, voiceData = {}) {
     const modal = document.createElement('div');
     modal.className = 'crm-modal';
     modal.innerHTML = `
       <div class="crm-modal-content">
-        <h2>Add Deal</h2>
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+          <h2>Add Deal</h2>
+          <button class="voice-button" id="voice-dictate-btn" title="Use voice to fill form">🎤</button>
+        </div>
         <div class="crm-form-group">
           <label>Deal Name <span style="color: #ea4335;">*</span></label>
-          <input type="text" id="crm-deal-name" class="crm-input" placeholder="Enter deal name" required />
+          <div style="display: flex; gap: 8px;">
+            <input type="text" id="crm-deal-name" class="crm-input" placeholder="Enter deal name" required value="${voiceData.dealName || ''}" style="flex: 1;" />
+            <button class="voice-field-btn" data-field="crm-deal-name" title="Voice input">🎤</button>
+          </div>
           <div class="crm-validation-error" id="crm-deal-name-error" style="display: none;"></div>
         </div>
         <div class="crm-form-group">
           <label>Stage <span style="color: #ea4335;">*</span></label>
           <select id="crm-deal-stage" class="crm-input" required>
-            ${this.currentPipeline.stages.map(s => `<option value="${s.id}">${s.name}</option>`).join('')}
+            ${this.currentPipeline.stages.map(s => `<option value="${s.id}"${s.id === stageId ? ' selected' : ''}>${s.name}</option>`).join('')}
           </select>
         </div>
         <div class="crm-form-group">
           <label>Deal Value</label>
-          <input type="number" id="crm-deal-value-input" class="crm-input" placeholder="$0" min="0" />
+          <div style="display: flex; gap: 8px;">
+            <input type="number" id="crm-deal-value-input" class="crm-input" placeholder="$0" min="0" style="flex: 1;" />
+            <button class="voice-field-btn" data-field="crm-deal-value-input" title="Voice input">🎤</button>
+          </div>
           <div class="crm-validation-error" id="crm-deal-value-error" style="display: none;"></div>
         </div>
         <div class="crm-form-group">
           <label>Contact Email <span style="color: #ea4335;">*</span></label>
-          <input type="email" id="crm-deal-email" class="crm-input" placeholder="contact@example.com" required />
+          <div style="display: flex; gap: 8px;">
+            <input type="email" id="crm-deal-email" class="crm-input" placeholder="contact@example.com" required style="flex: 1;" />
+            <button class="voice-field-btn" data-field="crm-deal-email" title="Voice input">🎤</button>
+          </div>
           <div class="crm-validation-error" id="crm-deal-email-error" style="display: none;"></div>
         </div>
         <div class="crm-modal-actions">
@@ -1816,6 +1831,26 @@ class GmailCRM {
       modal.remove();
       this.renderPipelineBoard();
       this.showNotification('✅ Deal added successfully!');
+    });
+
+    // Voice button event listeners
+    document.getElementById('voice-dictate-btn')?.addEventListener('click', () => {
+      if (window.voiceControl) {
+        window.voiceControl.startListening({ type: 'form', formId: 'deal-form' });
+      }
+    });
+
+    // Individual field voice buttons
+    modal.querySelectorAll('.voice-field-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const fieldId = btn.dataset.field;
+        const field = document.getElementById(fieldId);
+
+        if (field && window.voiceControl) {
+          field.focus();
+          window.voiceControl.startListening({ type: 'form', fieldId: fieldId });
+        }
+      });
     });
   }
 
@@ -2607,6 +2642,113 @@ class GmailCRM {
         this.unlinkEmailFromDeal(dealId, emailMetadata);
       });
     });
+  }
+
+  injectVoiceAssistant() {
+    // Check if already injected
+    if (document.getElementById('floating-voice-assistant')) {
+      return;
+    }
+
+    // Wait for voice control to be ready
+    if (!window.voiceControl) {
+      console.warn('Voice control not initialized yet, retrying...');
+      setTimeout(() => this.injectVoiceAssistant(), 1000);
+      return;
+    }
+
+    // Create floating voice assistant container
+    const assistant = document.createElement('div');
+    assistant.id = 'floating-voice-assistant';
+
+    assistant.innerHTML = `
+      <div id="voice-commands-hint" style="display: none;">
+        <div style="font-weight: 600; margin-bottom: 8px; color: #667eea;">Voice Commands:</div>
+        <div style="font-size: 11px; line-height: 1.6; color: #5f6368;">
+          • "Create new deal for [name]"<br>
+          • "Add this to [deal name] deal"<br>
+          • "Make [person] the champion"<br>
+          • "Set value to $[amount]"<br>
+          • "Move to [stage]"<br>
+          • "Add note [text]"<br>
+          • "Search for [query]"<br>
+          • "Show all deals"
+        </div>
+      </div>
+      <button id="voice-assistant-button" title="Voice Assistant (Effortless)">
+        🎤
+      </button>
+    `;
+
+    document.body.appendChild(assistant);
+
+    const button = document.getElementById('voice-assistant-button');
+    const hint = document.getElementById('voice-commands-hint');
+
+    // Show/hide hints on hover
+    let hintTimeout;
+    button.addEventListener('mouseenter', () => {
+      clearTimeout(hintTimeout);
+      hint.style.display = 'block';
+    });
+
+    button.addEventListener('mouseleave', () => {
+      hintTimeout = setTimeout(() => {
+        hint.style.display = 'none';
+      }, 300);
+    });
+
+    hint.addEventListener('mouseenter', () => {
+      clearTimeout(hintTimeout);
+    });
+
+    hint.addEventListener('mouseleave', () => {
+      hintTimeout = setTimeout(() => {
+        hint.style.display = 'none';
+      }, 300);
+    });
+
+    // Main voice button click handler
+    button.addEventListener('click', () => {
+      if (window.voiceControl.isListening) {
+        window.voiceControl.stopListening();
+        button.classList.remove('listening');
+        button.textContent = '🎤';
+      } else {
+        // Determine context based on current view
+        let context = { type: 'general' };
+
+        // Check if we're viewing an email
+        const emailView = document.querySelector('div[role="main"][aria-label*="Message"]');
+        if (emailView) {
+          const emailMetadata = this.extractEmailMetadata(emailView);
+          if (emailMetadata) {
+            context = {
+              type: 'email',
+              emailMetadata: emailMetadata
+            };
+          }
+        }
+
+        // Start listening with context
+        window.voiceControl.startListening(context);
+        button.classList.add('listening');
+        button.textContent = '🔴';
+      }
+    });
+
+    // Listen for voice control state changes
+    window.voiceControl.onStateChange = (isListening) => {
+      if (isListening) {
+        button.classList.add('listening');
+        button.textContent = '🔴';
+      } else {
+        button.classList.remove('listening');
+        button.textContent = '🎤';
+      }
+    };
+
+    console.log('Voice assistant injected successfully');
   }
 
   getDealsLinkedToEmail(threadId) {
