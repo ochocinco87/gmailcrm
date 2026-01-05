@@ -217,6 +217,8 @@ Common CRM actions:
 - Move deal to stage
 - Add note/task
 - Search/find deals
+- Switch/open pipeline
+- Log/record new deal
 
 Be concise and clear.`
             }]
@@ -291,6 +293,13 @@ Be concise and clear.`
   async processCommand(transcript) {
     const command = transcript.toLowerCase().trim();
     console.log('Processing command:', command);
+
+    // Check if CRM is initialized
+    if (!window.gmailCRM) {
+      console.error('❌ window.gmailCRM not found - CRM not initialized');
+      this.showNotification('❌ CRM not initialized. Please refresh the page.');
+      return;
+    }
 
     // Check for compound commands (connected with "and", "then", etc.)
     const compoundSeparators = /\s+and\s+|\s+then\s+|\s*,\s*(?=make|set|add|create|move)/i;
@@ -452,6 +461,30 @@ Be concise and clear.`
         pattern: /find (.+)/i,
         action: 'search',
         extract: (match) => ({ query: match[1] })
+      },
+
+      // Pipeline switching
+      {
+        pattern: /(?:switch to|open|show|go to) (?:the )?(.+?) pipeline/i,
+        action: 'switch_pipeline',
+        extract: (match) => ({ pipelineName: match[1] })
+      },
+      {
+        pattern: /pipeline (.+)/i,
+        action: 'switch_pipeline',
+        extract: (match) => ({ pipelineName: match[1] })
+      },
+
+      // Log/Record deal
+      {
+        pattern: /(?:log|record|save) (?:a |this |the )?deal/i,
+        action: 'log_deal',
+        extract: (match) => ({ })
+      },
+      {
+        pattern: /(?:log|record) (.+?) as (?:a )?deal/i,
+        action: 'log_deal',
+        extract: (match) => ({ dealName: match[1] })
       }
     ];
 
@@ -459,19 +492,22 @@ Be concise and clear.`
     for (const { pattern, action, extract } of patterns) {
       const match = command.match(pattern);
       if (match) {
-        return {
+        const result = {
           action,
           params: extract(match),
           originalCommand: command
         };
+        console.log('✓ Matched pattern:', action, result.params);
+        return result;
       }
     }
 
+    console.log('❌ No pattern matched for command:', command);
     return null;
   }
 
   async executeCommand(parsed) {
-    console.log('Executing command:', parsed);
+    console.log('✅ Executing command:', parsed.action, parsed.params);
 
     try {
       switch (parsed.action) {
@@ -520,8 +556,17 @@ Be concise and clear.`
           await this.searchVoice(parsed.params);
           break;
 
+        case 'switch_pipeline':
+          await this.switchPipelineVoice(parsed.params);
+          break;
+
+        case 'log_deal':
+          await this.logDealVoice(parsed.params);
+          break;
+
         default:
           this.showNotification('❓ Unknown command action');
+          console.log('Unknown action:', parsed.action, parsed.params);
       }
     } catch (error) {
       console.error('Error executing command:', error);
@@ -862,6 +907,110 @@ Be concise and clear.`
     }
   }
 
+  async switchPipelineVoice(params) {
+    if (!window.gmailCRM || !window.gmailCRM.pipelines) {
+      this.showNotification('❌ CRM not initialized');
+      return;
+    }
+
+    // Show execution overlay
+    this.showVoiceOverlay('Switching pipeline...');
+
+    let stepEl = this.showExecutionStep(`Searching for "${params.pipelineName}" pipeline...`, 'progress');
+    await this.delay(300);
+
+    // Find pipeline by name
+    const pipeline = this.findPipelineByName(params.pipelineName);
+
+    if (!pipeline) {
+      stepEl.innerHTML = `<span>❌</span><span>Pipeline not found: ${params.pipelineName}</span>`;
+      await this.delay(2000);
+      this.hideVoiceOverlay();
+      return;
+    }
+
+    stepEl.innerHTML = `<span>✅</span><span>Found pipeline: ${pipeline.name}</span>`;
+    await this.delay(300);
+
+    stepEl = this.showExecutionStep(`Opening ${pipeline.name}...`, 'progress');
+    await this.delay(300);
+
+    // Click the pipeline in the navigation
+    const pipelineLinks = document.querySelectorAll('.crm-nav-link[data-pipeline-id]');
+    for (const link of pipelineLinks) {
+      if (link.dataset.pipelineId === pipeline.id) {
+        link.click();
+        stepEl.innerHTML = `<span>✅</span><span>${pipeline.name} opened</span>`;
+        await this.delay(500);
+
+        setTimeout(() => {
+          if (!this.isListening) {
+            this.hideVoiceOverlay();
+          }
+        }, 2000);
+        return;
+      }
+    }
+
+    // Fallback: use gmailCRM method
+    window.gmailCRM.currentPipeline = pipeline;
+    window.gmailCRM.showPipelineView();
+    stepEl.innerHTML = `<span>✅</span><span>${pipeline.name} opened</span>`;
+
+    await this.delay(500);
+    setTimeout(() => {
+      if (!this.isListening) {
+        this.hideVoiceOverlay();
+      }
+    }, 2000);
+  }
+
+  async logDealVoice(params) {
+    if (!window.gmailCRM) {
+      this.showNotification('❌ CRM not initialized');
+      return;
+    }
+
+    this.showVoiceOverlay('Logging deal...');
+
+    let stepEl = this.showExecutionStep('Creating new deal...', 'progress');
+    await this.delay(300);
+
+    // Get deal name from params or extract from current context
+    let dealName = params.dealName;
+
+    if (!dealName) {
+      // Try to extract from current email
+      const emailSubject = document.querySelector('[data-legacy-message-id] h2')?.textContent;
+      if (emailSubject) {
+        dealName = emailSubject;
+      } else {
+        dealName = 'New Deal ' + new Date().toLocaleDateString();
+      }
+    }
+
+    stepEl.innerHTML = `<span>✅</span><span>Deal name: ${dealName}</span>`;
+    await this.delay(300);
+
+    // Open the add deal dialog
+    stepEl = this.showExecutionStep('Opening deal form...', 'progress');
+    await this.delay(300);
+
+    if (window.gmailCRM.showAddDealDialog) {
+      window.gmailCRM.showAddDealDialog(null, { dealName: dealName });
+      stepEl.innerHTML = `<span>✅</span><span>Deal form opened</span>`;
+    } else {
+      stepEl.innerHTML = `<span>❌</span><span>Could not open deal form</span>`;
+    }
+
+    await this.delay(500);
+    setTimeout(() => {
+      if (!this.isListening) {
+        this.hideVoiceOverlay();
+      }
+    }, 2000);
+  }
+
   // Helper methods
   findDealByName(name) {
     if (!window.gmailCRM || !window.gmailCRM.deals) return null;
@@ -890,6 +1039,20 @@ Be concise and clear.`
     for (const stage of window.gmailCRM.currentPipeline.stages) {
       if (stage.name.toLowerCase().includes(nameLower)) {
         return stage;
+      }
+    }
+
+    return null;
+  }
+
+  findPipelineByName(name) {
+    if (!window.gmailCRM || !window.gmailCRM.pipelines) return null;
+
+    const nameLower = name.toLowerCase();
+
+    for (const pipeline of window.gmailCRM.pipelines) {
+      if (pipeline.name.toLowerCase().includes(nameLower)) {
+        return pipeline;
       }
     }
 
