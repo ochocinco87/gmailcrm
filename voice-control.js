@@ -190,10 +190,18 @@ class VoiceControlService {
       if (!this.geminiApiKey) {
         console.log('⚠️ No Gemini API key, falling back to local processing');
         // Fallback to local processing
+        if (window.visualExecutionSidebar) {
+          window.visualExecutionSidebar.setProcessingMode('pattern');
+        }
         await this.processCommand(transcript);
         // Auto-stop after command
         this.stopListening();
         return;
+      }
+
+      // Indicate we're using Gemini AI
+      if (window.visualExecutionSidebar) {
+        window.visualExecutionSidebar.setProcessingMode('gemini');
       }
 
       // Show that we're analyzing with AI
@@ -265,6 +273,9 @@ Be concise and clear.`
       } else {
         console.log('⚠️ No valid Gemini response, falling back');
         // Fallback to direct processing
+        if (window.visualExecutionSidebar) {
+          window.visualExecutionSidebar.setProcessingMode('pattern');
+        }
         await this.processCommand(transcript);
         setTimeout(() => this.stopListening(), 1000);
       }
@@ -272,6 +283,9 @@ Be concise and clear.`
     } catch (error) {
       console.error('❌ Gemini processing error:', error);
       // Fallback to direct processing
+      if (window.visualExecutionSidebar) {
+        window.visualExecutionSidebar.setProcessingMode('pattern');
+      }
       await this.processCommand(transcript);
       setTimeout(() => this.stopListening(), 1000);
     }

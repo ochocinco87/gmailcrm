@@ -2777,7 +2777,10 @@ class GmailCRM {
       </div>
       <div class="voice-sidebar-content">
         <div class="voice-transcript-area">
-          <div class="voice-transcript-label">Listening...</div>
+          <div class="voice-transcript-header">
+            <div class="voice-transcript-label">Listening...</div>
+            <div class="voice-processing-mode"></div>
+          </div>
           <div class="voice-transcript-text"></div>
           <div class="voice-parsed-command"></div>
         </div>
@@ -2900,6 +2903,16 @@ class GmailCRM {
       },
       updateParsedCommand: (commandInfo) => {
         parsedCommand.innerHTML = `<strong>Parsed:</strong> ${commandInfo}`;
+      },
+      setProcessingMode: (mode) => {
+        const modeIndicator = sidebar.querySelector('.voice-processing-mode');
+        if (mode === 'gemini') {
+          modeIndicator.innerHTML = '<span class="mode-badge mode-gemini">🤖 Gemini AI</span>';
+        } else if (mode === 'pattern') {
+          modeIndicator.innerHTML = '<span class="mode-badge mode-pattern">🔧 Pattern Match</span>';
+        } else {
+          modeIndicator.innerHTML = '';
+        }
       },
       showTranscriptArea: () => {
         transcriptArea.style.display = 'block';
