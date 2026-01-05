@@ -2899,7 +2899,7 @@ class GmailCRM {
   }
 
   reloadExtension() {
-    console.log('🔄 Reloading extension...');
+    console.log('🔄 Reloading page to test changes...');
 
     // Show reload notification
     const notification = document.createElement('div');
@@ -2917,12 +2917,12 @@ class GmailCRM {
       font-weight: 600;
       animation: slideInRight 0.3s ease;
     `;
-    notification.textContent = '🔄 Reloading Extension...';
+    notification.textContent = '🔄 Reloading Page...';
     document.body.appendChild(notification);
 
-    // Reload the extension
+    // Reload the page - extension will reinitialize
     setTimeout(() => {
-      chrome.runtime.reload();
+      window.location.reload();
     }, 500);
   }
 
