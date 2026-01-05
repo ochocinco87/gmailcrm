@@ -2769,10 +2769,18 @@ class GmailCRM {
 
     sidebar.innerHTML = `
       <div class="voice-sidebar-header">
-        <h3>Voice Command Execution</h3>
-        <button class="voice-sidebar-collapse" title="Collapse">◀</button>
+        <h3>Voice Assistant</h3>
+        <div class="voice-sidebar-controls">
+          <button class="voice-mic-button" title="Click to start/stop listening">🎤</button>
+          <button class="voice-sidebar-collapse" title="Collapse">◀</button>
+        </div>
       </div>
       <div class="voice-sidebar-content">
+        <div class="voice-transcript-area">
+          <div class="voice-transcript-label">Listening...</div>
+          <div class="voice-transcript-text"></div>
+          <div class="voice-parsed-command"></div>
+        </div>
         <div class="voice-execution-steps"></div>
         <div class="voice-pipeline-visualization"></div>
       </div>
@@ -2786,6 +2794,57 @@ class GmailCRM {
       sidebar.classList.toggle('collapsed');
       collapseBtn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
     });
+
+    // Setup mic button
+    const micBtn = sidebar.querySelector('.voice-mic-button');
+    const transcriptArea = sidebar.querySelector('.voice-transcript-area');
+    const transcriptLabel = sidebar.querySelector('.voice-transcript-label');
+    const transcriptText = sidebar.querySelector('.voice-transcript-text');
+    const parsedCommand = sidebar.querySelector('.voice-parsed-command');
+
+    // Wait for voice control to be ready
+    const setupMicButton = () => {
+      if (!window.voiceControl) {
+        setTimeout(setupMicButton, 500);
+        return;
+      }
+
+      micBtn.addEventListener('click', () => {
+        if (window.voiceControl.isListening) {
+          // Stop listening
+          window.voiceControl.stopListening();
+          micBtn.textContent = '🎤';
+          micBtn.classList.remove('listening');
+          transcriptArea.style.display = 'none';
+        } else {
+          // Start listening
+          window.voiceControl.startListening();
+          micBtn.textContent = '🔴';
+          micBtn.classList.add('listening');
+          transcriptArea.style.display = 'block';
+          transcriptText.textContent = '';
+          parsedCommand.textContent = '';
+          transcriptLabel.textContent = 'Listening...';
+
+          // Expand sidebar when starting to listen
+          sidebar.classList.remove('collapsed');
+          collapseBtn.textContent = '◀';
+        }
+      });
+
+      // Update mic button when voice control state changes
+      setInterval(() => {
+        if (window.voiceControl.isListening) {
+          micBtn.textContent = '🔴';
+          micBtn.classList.add('listening');
+        } else {
+          micBtn.textContent = '🎤';
+          micBtn.classList.remove('listening');
+        }
+      }, 500);
+    };
+
+    setupMicButton();
 
     // Add floating toggle button
     const floatingToggle = document.createElement('div');
@@ -2834,6 +2893,19 @@ class GmailCRM {
       clearSteps: () => {
         const stepsContainer = sidebar.querySelector('.voice-execution-steps');
         stepsContainer.innerHTML = '';
+      },
+      updateTranscript: (text) => {
+        transcriptText.textContent = text;
+        transcriptLabel.textContent = 'You said:';
+      },
+      updateParsedCommand: (commandInfo) => {
+        parsedCommand.innerHTML = `<strong>Parsed:</strong> ${commandInfo}`;
+      },
+      showTranscriptArea: () => {
+        transcriptArea.style.display = 'block';
+      },
+      hideTranscriptArea: () => {
+        transcriptArea.style.display = 'none';
       },
       showPipelineView: (pipeline, highlightStageId = null) => {
         const vizContainer = sidebar.querySelector('.voice-pipeline-visualization');

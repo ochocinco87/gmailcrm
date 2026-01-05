@@ -140,6 +140,11 @@ class VoiceControlService {
         // Update speech bubble with real-time transcription
         this.updateSpeechBubble(interimTranscript || finalTranscript);
 
+        // Update sidebar transcript in real-time
+        if (window.visualExecutionSidebar) {
+          window.visualExecutionSidebar.updateTranscript(interimTranscript || finalTranscript);
+        }
+
         // If we have a final transcript, process it with Gemini
         if (finalTranscript) {
           this.processWithGemini(finalTranscript.trim());
@@ -357,6 +362,26 @@ Be concise and clear.`
       console.log('✅ Successfully parsed:', parsed);
       console.log('   Action:', parsed.action);
       console.log('   Params:', parsed.params);
+
+      // Show parsed command in sidebar
+      if (window.visualExecutionSidebar) {
+        const actionLabels = {
+          'create_deal': 'Create Deal',
+          'add_to_deal': 'Add to Deal',
+          'set_champion': 'Set Champion',
+          'set_value': 'Set Deal Value',
+          'move_deal': 'Move Deal',
+          'add_note': 'Add Note',
+          'search': 'Search',
+          'switch_pipeline': 'Switch Pipeline',
+          'open_deal': 'Open Deal',
+          'log_deal': 'Log Deal'
+        };
+        const actionLabel = actionLabels[parsed.action] || parsed.action;
+        const paramsStr = JSON.stringify(parsed.params);
+        window.visualExecutionSidebar.updateParsedCommand(`${actionLabel} - ${paramsStr}`);
+      }
+
       console.log('🚀 Now executing...');
       await this.executeCommand(parsed);
       console.log('✅ Execution complete!');
