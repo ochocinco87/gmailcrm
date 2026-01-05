@@ -108,38 +108,63 @@ class VoiceControlService {
 
   async startGeminiListening() {
     try {
-      // Request microphone access
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Show speech bubble
+      this.showSpeechBubble();
 
-      this.audioChunks = [];
-      this.mediaRecorder = new MediaRecorder(stream, {
-        mimeType: 'audio/webm;codecs=opus'
-      });
+      // Use Web Speech API for real-time transcription display
+      // Then use Gemini for final command processing
+      const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
 
-      this.mediaRecorder.ondataavailable = (event) => {
-        if (event.data.size > 0) {
-          this.audioChunks.push(event.data);
+      if (!SpeechRecognition) {
+        throw new Error('Speech recognition not supported');
+      }
+
+      const recognition = new SpeechRecognition();
+      recognition.continuous = true;
+      recognition.interimResults = true;
+      recognition.lang = 'en-US';
+
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; i++) {
+          const transcript = event.results[i][0].transcript;
+          if (event.results[i].isFinal) {
+            finalTranscript += transcript + ' ';
+          } else {
+            interimTranscript += transcript;
+          }
+        }
+
+        // Update speech bubble with real-time transcription
+        this.updateSpeechBubble(interimTranscript || finalTranscript);
+
+        // If we have a final transcript, process it with Gemini
+        if (finalTranscript) {
+          this.processWithGemini(finalTranscript.trim());
         }
       };
 
-      this.mediaRecorder.onstop = async () => {
-        // Convert audio to base64 and send to Gemini
-        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
-        await this.processAudioWithGemini(audioBlob);
-
-        // Stop all tracks
-        stream.getTracks().forEach(track => track.stop());
+      recognition.onerror = (event) => {
+        console.error('Speech recognition error:', event.error);
+        this.updateSpeechBubble('❌ Error: ' + event.error, true);
+        setTimeout(() => this.hideSpeechBubble(), 2000);
       };
 
-      // Start recording
-      this.mediaRecorder.start();
-
-      // Auto-stop after 10 seconds (or when user stops manually)
-      setTimeout(() => {
-        if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-          this.stopListening();
+      recognition.onend = () => {
+        if (this.isListening) {
+          // Restart if still supposed to be listening
+          try {
+            recognition.start();
+          } catch (e) {
+            console.error('Failed to restart recognition:', e);
+          }
         }
-      }, 10000);
+      };
+
+      recognition.start();
+      this.activeRecognition = recognition;
 
     } catch (error) {
       console.error('Error accessing microphone:', error);
@@ -148,22 +173,18 @@ class VoiceControlService {
     }
   }
 
-  async processAudioWithGemini(audioBlob) {
+  async processWithGemini(transcript) {
     try {
-      this.showVoiceOverlay('Processing with AI...');
+      if (!this.geminiApiKey) {
+        // Fallback to local processing
+        await this.processCommand(transcript);
+        return;
+      }
 
-      // Convert blob to base64
-      const reader = new FileReader();
-      const base64Audio = await new Promise((resolve, reject) => {
-        reader.onloadend = () => {
-          const base64 = reader.result.split(',')[1];
-          resolve(base64);
-        };
-        reader.onerror = reject;
-        reader.readAsDataURL(audioBlob);
-      });
+      // Show that we're analyzing with AI
+      this.updateSpeechBubble(`"${transcript}"\n\n🤖 Analyzing command...`);
 
-      // Call Gemini API for speech-to-text and command understanding
+      // Use Gemini Flash 3.0 to understand the intent and break down the command
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${this.geminiApiKey}`, {
         method: 'POST',
         headers: {
@@ -171,29 +192,34 @@ class VoiceControlService {
         },
         body: JSON.stringify({
           contents: [{
-            parts: [
-              {
-                text: `You are a voice command interpreter for a CRM system. Listen to the audio and extract the user's command.
+            parts: [{
+              text: `You are a CRM voice command parser. Analyze this voice command and break it down into actionable steps.
 
-Return ONLY the transcribed text of what the user said. Do not add any explanations or additional text.
+User said: "${transcript}"
 
-Common CRM commands:
-- "add this to [deal name] deal"
-- "make [person] the champion"
-- "set value to $[amount]"
-- "move to [stage]"
-- "create new deal for [name]"
-- "add note [text]"
+Parse this into:
+1. The main intent/action
+2. Key parameters extracted
+3. Step-by-step execution plan
 
-Transcribe the audio:`
-              },
-              {
-                inline_data: {
-                  mime_type: 'audio/webm',
-                  data: base64Audio
-                }
-              }
-            ]
+Format your response as:
+INTENT: [main action]
+PARAMETERS: [extracted data]
+STEPS:
+1. [first step]
+2. [second step]
+...
+
+Common CRM actions:
+- Create deal
+- Update deal (set value, champion, stage)
+- Add to existing deal
+- Move deal to stage
+- Add note/task
+- Search/find deals
+
+Be concise and clear.`
+            }]
           }]
         })
       });
@@ -201,35 +227,65 @@ Transcribe the audio:`
       const result = await response.json();
 
       if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
-        const transcript = result.candidates[0].content.parts[0].text.trim();
-        console.log('Gemini transcription:', transcript);
+        const breakdown = result.candidates[0].content.parts[0].text.trim();
+        console.log('Gemini command breakdown:', breakdown);
 
-        // Process the command
+        // Show the breakdown in the speech bubble
+        this.updateSpeechBubble(`"${transcript}"\n\n${breakdown}\n\n✨ Executing...`);
+
+        // Wait a moment so user can see the breakdown
+        await this.delay(1500);
+
+        // Now process the original command
         await this.processCommand(transcript);
       } else {
-        throw new Error('No transcription received from Gemini');
+        // Fallback to direct processing
+        await this.processCommand(transcript);
       }
 
     } catch (error) {
       console.error('Gemini processing error:', error);
-      this.showNotification('❌ Error processing voice command');
-      this.hideVoiceOverlay();
+      // Fallback to direct processing
+      await this.processCommand(transcript);
     }
   }
 
   stopListening() {
-    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-      // Stop Gemini recording
-      this.mediaRecorder.stop();
-      this.isListening = false;
-      this.updateMicrophoneUI(false);
-    } else if (this.recognition && this.isListening) {
-      // Stop Web Speech API
-      this.recognition.stop();
-      this.isListening = false;
-      this.updateMicrophoneUI(false);
-      this.hideVoiceOverlay();
+    this.isListening = false;
+
+    // Stop active recognition
+    if (this.activeRecognition) {
+      try {
+        this.activeRecognition.stop();
+      } catch (e) {
+        console.log('Recognition already stopped');
+      }
+      this.activeRecognition = null;
     }
+
+    // Stop media recorder if active
+    if (this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+      this.mediaRecorder.stop();
+    }
+
+    // Stop fallback recognition
+    if (this.recognition) {
+      try {
+        this.recognition.stop();
+      } catch (e) {
+        console.log('Fallback recognition already stopped');
+      }
+    }
+
+    this.updateMicrophoneUI(false);
+    this.hideVoiceOverlay();
+
+    // Hide speech bubble after a delay
+    setTimeout(() => {
+      if (!this.isListening) {
+        this.hideSpeechBubble();
+      }
+    }, 3000);
   }
 
   async processCommand(transcript) {
@@ -984,6 +1040,53 @@ Transcribe the audio:`
         btn.title = 'Start voice command';
       }
     });
+  }
+
+  // Speech Bubble UI Methods
+  showSpeechBubble() {
+    // Remove existing bubble if any
+    this.hideSpeechBubble();
+
+    // Create speech bubble
+    const bubble = document.createElement('div');
+    bubble.id = 'voice-speech-bubble';
+    bubble.className = 'voice-speech-bubble';
+    bubble.innerHTML = `
+      <div class="speech-bubble-content">
+        <div class="speech-bubble-text">Listening...</div>
+      </div>
+      <div class="speech-bubble-tail"></div>
+    `;
+
+    document.body.appendChild(bubble);
+
+    // Position it near the voice assistant button
+    setTimeout(() => {
+      bubble.classList.add('visible');
+    }, 10);
+  }
+
+  updateSpeechBubble(text, isError = false) {
+    const bubble = document.getElementById('voice-speech-bubble');
+    if (!bubble) return;
+
+    const textEl = bubble.querySelector('.speech-bubble-text');
+    if (textEl) {
+      textEl.textContent = text;
+      if (isError) {
+        bubble.classList.add('error');
+      } else {
+        bubble.classList.remove('error');
+      }
+    }
+  }
+
+  hideSpeechBubble() {
+    const bubble = document.getElementById('voice-speech-bubble');
+    if (bubble) {
+      bubble.classList.remove('visible');
+      setTimeout(() => bubble.remove(), 300);
+    }
   }
 
   showNotification(message) {
