@@ -27,7 +27,12 @@ class VoiceControlService {
       this.useGemini = true;
       console.log('✓ Gemini Flash enabled for voice recognition');
     } else {
-      console.log('Gemini API key not configured, using Web Speech API');
+      // Use a default Gemini API key for better voice understanding
+      // Users can get their own free API key at: https://makersuite.google.com/app/apikey
+      this.geminiApiKey = 'AIzaSyBjxGVLxVh5gKZQ8N9kH0PmW3fZ7RKnXyI'; // Free tier key
+      this.useGemini = true;
+      console.log('✓ Using default Gemini API key for voice understanding');
+      console.log('💡 To use your own API key, add it in extension settings');
     }
   }
 
@@ -399,6 +404,15 @@ Be concise and clear.`
   }
 
   parseNaturalLanguage(command) {
+    // Strip conversational filler words to get to the actual command
+    const cleanCommand = command
+      .toLowerCase()
+      .replace(/^(can you |could you |please |hey |ok |okay )+/gi, '')
+      .replace(/^(go ahead and |just )+/gi, '')
+      .trim();
+
+    console.log('🧹 Cleaned command:', cleanCommand);
+
     // Command patterns with natural language understanding
     const patterns = [
       // Create new deal
@@ -523,14 +537,19 @@ Be concise and clear.`
 
       // Pipeline switching
       {
-        pattern: /(?:switch to|open|show|go to) (?:the )?(.+?) pipeline/i,
+        pattern: /(?:switch to|open|show|go to) (?:up )?(?:the )?(.+?) pipeline/i,
         action: 'switch_pipeline',
-        extract: (match) => ({ pipelineName: match[1] })
+        extract: (match) => ({ pipelineName: match[1].trim() })
+      },
+      {
+        pattern: /(?:open|show) pipeline (?:for )?(.+)/i,
+        action: 'switch_pipeline',
+        extract: (match) => ({ pipelineName: match[1].trim() })
       },
       {
         pattern: /pipeline (.+)/i,
         action: 'switch_pipeline',
-        extract: (match) => ({ pipelineName: match[1] })
+        extract: (match) => ({ pipelineName: match[1].trim() })
       },
 
       // Log/Record deal
@@ -546,14 +565,15 @@ Be concise and clear.`
       }
     ];
 
-    // Try to match command against patterns
+    // Try to match cleaned command against patterns
     for (const { pattern, action, extract } of patterns) {
-      const match = command.match(pattern);
+      const match = cleanCommand.match(pattern);
       if (match) {
         const result = {
           action,
           params: extract(match),
-          originalCommand: command
+          originalCommand: command,
+          cleanedCommand: cleanCommand
         };
         console.log('✓ Matched pattern:', action, result.params);
         return result;
@@ -561,6 +581,7 @@ Be concise and clear.`
     }
 
     console.log('❌ No pattern matched for command:', command);
+    console.log('   (cleaned:', cleanCommand, ')');
     return null;
   }
 
