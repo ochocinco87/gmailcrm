@@ -3116,6 +3116,69 @@ class GmailCRM {
     });
   }
 
+  async createDealFromEmail(pipelineId, emailMetadata) {
+    const pipeline = this.pipelines.find(p => p.id === pipelineId);
+    if (!pipeline) {
+      this.showNotification('❌ Pipeline not found');
+      return;
+    }
+
+    const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    const firstStage = pipeline.stages[0];
+
+    // Create deal from email
+    const deal = {
+      id: dealId,
+      pipelineId: pipeline.id,
+      stageId: firstStage.id,
+      emailSubject: emailMetadata.subject,
+      company: this.extractCompanyFromEmail(emailMetadata),
+      institution: this.extractCompanyFromEmail(emailMetadata),
+      contactName: emailMetadata.from.split('<')[0].trim(),
+      contactEmail: emailMetadata.from.match(/<(.+)>/)?.[1] || emailMetadata.from,
+      linkedEmails: [{
+        subject: emailMetadata.subject,
+        from: emailMetadata.from,
+        date: emailMetadata.date,
+        threadId: emailMetadata.threadId,
+        url: emailMetadata.url,
+        linkedAt: new Date().toISOString()
+      }],
+      createdAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+      status: 'Active'
+    };
+
+    await this.saveDeal(deal);
+    this.showNotification(`✅ Deal created in ${pipeline.name}`);
+
+    // Refresh view if we're looking at this pipeline
+    if (this.currentPipeline && this.currentPipeline.id === pipelineId) {
+      this.renderPipelineBoard();
+    }
+  }
+
+  extractCompanyFromEmail(emailMetadata) {
+    // Try to extract company from email domain
+    const email = emailMetadata.from.match(/<(.+)>/)?.[1] || emailMetadata.from;
+    const domain = email.split('@')[1];
+
+    if (!domain) return emailMetadata.from.split('<')[0].trim();
+
+    // Remove common email providers
+    const commonProviders = ['gmail', 'yahoo', 'outlook', 'hotmail', 'icloud', 'aol'];
+    const domainParts = domain.split('.');
+    const mainDomain = domainParts[0];
+
+    if (commonProviders.includes(mainDomain.toLowerCase())) {
+      // Use sender name instead
+      return emailMetadata.from.split('<')[0].trim();
+    }
+
+    // Capitalize first letter of domain
+    return mainDomain.charAt(0).toUpperCase() + mainDomain.slice(1);
+  }
+
   async linkEmailToDeal(dealId, emailMetadata) {
     const deal = this.deals[dealId];
     if (!deal) return;
@@ -3172,7 +3235,7 @@ class GmailCRM {
       // Create sidebar
       sidebar = document.createElement('div');
       sidebar.id = 'crm-email-deals-sidebar';
-      sidebar.className = 'crm-email-deals-sidebar';
+      sidebar.className = 'crm-email-deals-sidebar streak-style';
       document.body.appendChild(sidebar);
     }
 
@@ -3186,62 +3249,112 @@ class GmailCRM {
     // Group deals by pipeline
     const dealsByPipeline = {};
     this.pipelines.forEach(pipeline => {
-      dealsByPipeline[pipeline.id] = {
-        pipeline,
-        deals: Object.values(this.deals).filter(d => d.pipelineId === pipeline.id)
-      };
+      const pipelineDeals = Object.values(this.deals).filter(d => d.pipelineId === pipeline.id);
+      if (pipelineDeals.length > 0) {
+        dealsByPipeline[pipeline.id] = {
+          pipeline,
+          deals: pipelineDeals
+        };
+      }
     });
 
+    // Pipeline icons mapping
+    const pipelineIcons = {
+      'sales': '💰',
+      'fundraising': '💵',
+      'series': '💵',
+      'investor': '💵',
+      'partnerships': '🤝',
+      'hiring': '👥',
+      'research': '🔬',
+      'surgical': '⚕️',
+      'spine': '🦴',
+      'cranial': '🧠',
+      'leads': '📧',
+      'website': '🌐',
+      'renewals': '🔄',
+      'manufacturer': '🏭',
+      'reseller': '🏪',
+      'body': '👤',
+      'default': '📊'
+    };
+
+    const getPipelineIcon = (name) => {
+      const lowerName = name.toLowerCase();
+      for (const [key, icon] of Object.entries(pipelineIcons)) {
+        if (lowerName.includes(key)) return icon;
+      }
+      return pipelineIcons.default;
+    };
+
+    const getStageColor = (stageName) => {
+      const lower = stageName.toLowerCase();
+      if (lower.includes('won') || lower.includes('closed')) return '#34a853';
+      if (lower.includes('lost')) return '#ea4335';
+      if (lower.includes('proposal') || lower.includes('contract')) return '#4285f4';
+      if (lower.includes('qualified')) return '#fbbc04';
+      return '#5f6368';
+    };
+
     sidebar.innerHTML = `
-      <div class="crm-email-sidebar-header">
-        <div class="crm-email-sidebar-title">
-          <span class="crm-sidebar-icon">🔗</span>
-          <span>Link to Deals</span>
+      <div class="streak-sidebar-header">
+        <div class="streak-header-title">
+          <button class="streak-back-btn" id="crm-close-email-sidebar">
+            <svg width="20" height="20" viewBox="0 0 20 20"><path d="M13 14l-4-4 4-4" stroke="currentColor" fill="none" stroke-width="2"/></svg>
+          </button>
+          <span>Add ${emailMetadata.subject.substring(0, 30)}${emailMetadata.subject.length > 30 ? '...' : ''}</span>
         </div>
-        <button class="crm-sidebar-close-btn" id="crm-close-email-sidebar">×</button>
       </div>
 
-      <div class="crm-email-sidebar-content">
-        <div class="crm-email-sidebar-info">
-          <div class="crm-email-info-subject">${emailMetadata.subject}</div>
-          <div class="crm-email-info-from">From: ${emailMetadata.from}</div>
-        </div>
-
-        <div class="crm-linked-count">
-          ${linkedDealIds.size} ${linkedDealIds.size === 1 ? 'deal' : 'deals'} linked
-        </div>
-
-        <div class="crm-email-sidebar-search">
+      <div class="streak-sidebar-content">
+        <div class="streak-search-container">
+          <svg class="streak-search-icon" width="16" height="16" viewBox="0 0 16 16">
+            <path d="M11.5 7a4.5 4.5 0 11-9 0 4.5 4.5 0 019 0zM15 15l-4-4" stroke="currentColor" fill="none" stroke-width="1.5"/>
+          </svg>
           <input type="text"
                  id="crm-email-sidebar-search"
-                 class="crm-sidebar-search-input"
-                 placeholder="Search deals..." />
+                 class="streak-search-input"
+                 placeholder="Search for an existing box" />
         </div>
 
-        <div class="crm-email-sidebar-deals">
-          ${Object.values(dealsByPipeline).map(({ pipeline, deals }) => {
-            if (deals.length === 0) return '';
-            return `
-              <div class="crm-pipeline-group">
-                <div class="crm-pipeline-group-header">${pipeline.name} (${deals.length})</div>
-                ${deals.map(deal => {
+        ${Object.keys(dealsByPipeline).length > 0 ? `
+          <div class="streak-section">
+            <div class="streak-section-title">Select existing</div>
+            ${Object.values(dealsByPipeline).map(({ pipeline, deals }) => `
+              <div class="streak-pipeline-group">
+                <div class="streak-pipeline-name">${pipeline.name.toUpperCase()}</div>
+                ${deals.slice(0, 5).map(deal => {
                   const isLinked = linkedDealIds.has(deal.id);
+                  const stage = pipeline.stages.find(s => s.id === deal.stageId);
                   return `
-                    <label class="crm-deal-checkbox-item ${isLinked ? 'linked' : ''}">
-                      <input type="checkbox"
-                             class="crm-deal-checkbox"
-                             data-deal-id="${deal.id}"
-                             ${isLinked ? 'checked' : ''} />
-                      <span class="crm-deal-checkbox-label">
-                        <span class="crm-deal-checkbox-name">${deal.emailSubject || 'Unnamed Deal'}</span>
-                        <span class="crm-deal-checkbox-stage">${pipeline.stages.find(s => s.id === deal.stageId)?.name || ''}</span>
-                      </span>
-                    </label>
+                    <div class="streak-deal-item ${isLinked ? 'linked' : ''}" data-deal-id="${deal.id}">
+                      <div class="streak-deal-checkbox">
+                        <input type="checkbox"
+                               class="crm-deal-checkbox"
+                               ${isLinked ? 'checked' : ''} />
+                      </div>
+                      <div class="streak-deal-info">
+                        <div class="streak-deal-name">${deal.company || deal.institution || deal.emailSubject || 'Unnamed'}</div>
+                        ${stage ? `<span class="streak-stage-badge" style="background-color: ${getStageColor(stage.name)}">${stage.name}</span>` : ''}
+                      </div>
+                    </div>
                   `;
                 }).join('')}
               </div>
-            `;
-          }).join('')}
+            `).join('')}
+          </div>
+        ` : ''}
+
+        <div class="streak-section">
+          <div class="streak-section-title">Create new box in</div>
+          <div class="streak-pipeline-grid">
+            ${this.pipelines.map(pipeline => `
+              <button class="streak-pipeline-card" data-pipeline-id="${pipeline.id}">
+                <div class="streak-pipeline-icon">${getPipelineIcon(pipeline.name)}</div>
+                <div class="streak-pipeline-label">${pipeline.name}</div>
+              </button>
+            `).join('')}
+          </div>
         </div>
       </div>
     `;
@@ -3249,16 +3362,18 @@ class GmailCRM {
     // Close button
     document.getElementById('crm-close-email-sidebar')?.addEventListener('click', () => {
       sidebar.style.display = 'none';
+      const toggleBtn = document.getElementById('crm-sidebar-toggle-btn');
+      if (toggleBtn) toggleBtn.classList.remove('active');
     });
 
     // Search functionality
     const searchInput = document.getElementById('crm-email-sidebar-search');
     searchInput?.addEventListener('input', (e) => {
       const query = e.target.value.toLowerCase();
-      const dealItems = sidebar.querySelectorAll('.crm-deal-checkbox-item');
+      const dealItems = sidebar.querySelectorAll('.streak-deal-item');
 
       dealItems.forEach(item => {
-        const dealName = item.querySelector('.crm-deal-checkbox-name').textContent.toLowerCase();
+        const dealName = item.querySelector('.streak-deal-name').textContent.toLowerCase();
         if (dealName.includes(query) || query === '') {
           item.style.display = '';
         } else {
@@ -3267,9 +3382,9 @@ class GmailCRM {
       });
 
       // Hide empty pipeline groups
-      const pipelineGroups = sidebar.querySelectorAll('.crm-pipeline-group');
+      const pipelineGroups = sidebar.querySelectorAll('.streak-pipeline-group');
       pipelineGroups.forEach(group => {
-        const visibleDeals = group.querySelectorAll('.crm-deal-checkbox-item:not([style*="display: none"])');
+        const visibleDeals = group.querySelectorAll('.streak-deal-item:not([style*="display: none"])');
         group.style.display = visibleDeals.length > 0 ? '' : 'none';
       });
     });
@@ -3277,13 +3392,29 @@ class GmailCRM {
     // Checkbox change listeners
     const checkboxes = sidebar.querySelectorAll('.crm-deal-checkbox');
     checkboxes.forEach(checkbox => {
+      const dealItem = checkbox.closest('.streak-deal-item');
+      const dealId = dealItem.dataset.dealId;
+
       checkbox.addEventListener('change', (e) => {
-        const dealId = checkbox.dataset.dealId;
         if (checkbox.checked) {
           this.linkEmailToDeal(dealId, emailMetadata);
+          dealItem.classList.add('linked');
         } else {
           this.unlinkEmailFromDeal(dealId, emailMetadata);
+          dealItem.classList.remove('linked');
         }
+      });
+    });
+
+    // Pipeline card clicks - create new deal
+    const pipelineCards = sidebar.querySelectorAll('.streak-pipeline-card');
+    pipelineCards.forEach(card => {
+      card.addEventListener('click', () => {
+        const pipelineId = card.dataset.pipelineId;
+        this.createDealFromEmail(pipelineId, emailMetadata);
+        sidebar.style.display = 'none';
+        const toggleBtn = document.getElementById('crm-sidebar-toggle-btn');
+        if (toggleBtn) toggleBtn.classList.remove('active');
       });
     });
   }
