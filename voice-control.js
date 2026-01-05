@@ -175,14 +175,20 @@ class VoiceControlService {
 
   async processWithGemini(transcript) {
     try {
+      console.log('🎤 processWithGemini called with:', transcript);
+
       if (!this.geminiApiKey) {
+        console.log('⚠️ No Gemini API key, falling back to local processing');
         // Fallback to local processing
         await this.processCommand(transcript);
+        // Auto-stop after command
+        this.stopListening();
         return;
       }
 
       // Show that we're analyzing with AI
       this.updateSpeechBubble(`"${transcript}"\n\n🤖 Analyzing command...`);
+      console.log('📡 Sending to Gemini Flash 3.0...');
 
       // Use Gemini Flash 3.0 to understand the intent and break down the command
       const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${this.geminiApiKey}`, {
@@ -227,10 +233,11 @@ Be concise and clear.`
       });
 
       const result = await response.json();
+      console.log('✅ Gemini response received:', result);
 
       if (result.candidates && result.candidates[0]?.content?.parts?.[0]?.text) {
         const breakdown = result.candidates[0].content.parts[0].text.trim();
-        console.log('Gemini command breakdown:', breakdown);
+        console.log('📋 Gemini command breakdown:', breakdown);
 
         // Show the breakdown in the speech bubble
         this.updateSpeechBubble(`"${transcript}"\n\n${breakdown}\n\n✨ Executing...`);
@@ -239,16 +246,24 @@ Be concise and clear.`
         await this.delay(1500);
 
         // Now process the original command
+        console.log('🚀 About to process command...');
         await this.processCommand(transcript);
+        console.log('✅ Command processing complete');
+
+        // Auto-stop listening after command completes
+        setTimeout(() => this.stopListening(), 1000);
       } else {
+        console.log('⚠️ No valid Gemini response, falling back');
         // Fallback to direct processing
         await this.processCommand(transcript);
+        setTimeout(() => this.stopListening(), 1000);
       }
 
     } catch (error) {
-      console.error('Gemini processing error:', error);
+      console.error('❌ Gemini processing error:', error);
       // Fallback to direct processing
       await this.processCommand(transcript);
+      setTimeout(() => this.stopListening(), 1000);
     }
   }
 
@@ -292,7 +307,10 @@ Be concise and clear.`
 
   async processCommand(transcript) {
     const command = transcript.toLowerCase().trim();
-    console.log('Processing command:', command);
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
+    console.log('🎯 PROCESS COMMAND CALLED');
+    console.log('📝 Original transcript:', transcript);
+    console.log('📝 Processed command:', command);
 
     // Check if CRM is initialized
     if (!window.gmailCRM) {
@@ -300,6 +318,9 @@ Be concise and clear.`
       this.showNotification('❌ CRM not initialized. Please refresh the page.');
       return;
     }
+    console.log('✅ window.gmailCRM is available');
+    console.log('📊 Pipelines:', window.gmailCRM.pipelines?.length || 0);
+    console.log('📊 Deals:', Object.keys(window.gmailCRM.deals || {}).length);
 
     // Check for compound commands (connected with "and", "then", etc.)
     const compoundSeparators = /\s+and\s+|\s+then\s+|\s*,\s*(?=make|set|add|create|move)/i;
@@ -307,16 +328,20 @@ Be concise and clear.`
 
     if (parts.length > 1) {
       // Handle compound command
-      console.log('Compound command detected:', parts);
+      console.log('🔗 Compound command detected:', parts);
       this.showVoiceOverlay('Processing multi-step command...');
 
       for (let i = 0; i < parts.length; i++) {
         const partCommand = parts[i].trim();
+        console.log(`  Part ${i+1}/${parts.length}:`, partCommand);
         const parsed = this.parseNaturalLanguage(partCommand);
 
         if (parsed) {
+          console.log(`  ✅ Parsed part ${i+1}:`, parsed);
           await this.executeCommand(parsed);
           await this.delay(500); // Brief pause between commands
+        } else {
+          console.log(`  ❌ Could not parse part ${i+1}`);
         }
       }
 
@@ -325,11 +350,18 @@ Be concise and clear.`
     }
 
     // Parse single command
+    console.log('🔍 Parsing single command...');
     const parsed = this.parseNaturalLanguage(command);
 
     if (parsed) {
+      console.log('✅ Successfully parsed:', parsed);
+      console.log('   Action:', parsed.action);
+      console.log('   Params:', parsed.params);
+      console.log('🚀 Now executing...');
       await this.executeCommand(parsed);
+      console.log('✅ Execution complete!');
     } else {
+      console.log('❌ No pattern matched - command not recognized');
       // If no pattern match, treat as dictation for active field
       if (this.currentContext?.type === 'form') {
         this.fillActiveField(transcript);
@@ -338,6 +370,7 @@ Be concise and clear.`
       }
       this.hideVoiceOverlay();
     }
+    console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   }
 
   parseNaturalLanguage(command) {

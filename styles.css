@@ -3753,14 +3753,14 @@
 /* ========== Speech Bubble for Voice Transcription ========== */
 .voice-speech-bubble {
   position: fixed;
-  bottom: 120px;
-  right: 110px;
-  max-width: 400px;
-  min-width: 250px;
+  bottom: 80px; /* Align with voice button */
+  right: 110px; /* Position left of the voice button (30px button + 10px gap + 70px button width) */
+  max-width: 350px;
+  min-width: 200px;
   background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
   color: white;
-  padding: 20px 24px;
-  border-radius: 20px 20px 4px 20px;
+  padding: 16px 20px;
+  border-radius: 16px 16px 2px 16px;
   box-shadow: 0 8px 32px rgba(102, 126, 234, 0.4);
   z-index: 100001;
   opacity: 0;
@@ -3784,8 +3784,8 @@
 }
 
 .speech-bubble-text {
-  font-size: 15px;
-  line-height: 1.6;
+  font-size: 14px;
+  line-height: 1.5;
   font-weight: 500;
   white-space: pre-wrap;
   word-wrap: break-word;
@@ -3793,12 +3793,12 @@
 
 .speech-bubble-tail {
   position: absolute;
-  bottom: 24px;
+  bottom: 20px;
   right: -8px;
   width: 0;
   height: 0;
   border-style: solid;
-  border-width: 12px 0 12px 12px;
+  border-width: 10px 0 10px 10px;
   border-color: transparent transparent transparent #764ba2;
 }
 
