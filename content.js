@@ -17,6 +17,9 @@ class GmailCRM {
     this.automationRules = [];
     this.followUpSequences = [];
     this.contactEnrichmentEnabled = true;
+
+    // Make gmailCRM globally accessible immediately
+    window.gmailCRM = this;
   }
 
   async init() {
@@ -1094,9 +1097,6 @@ class GmailCRM {
 
     // Store map instance for later use
     this.map = map;
-
-    // Make gmailCRM globally accessible for onclick handlers
-    window.gmailCRM = this;
   }
 
   renderDashboard() {
