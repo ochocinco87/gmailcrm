@@ -614,15 +614,27 @@ Be concise and clear.`
       return;
     }
 
+    console.log('✨ createDealVoice called for:', params.dealName);
+
+    // Expand visual execution sidebar
+    if (window.visualExecutionSidebar) {
+      window.visualExecutionSidebar.expand();
+      window.visualExecutionSidebar.clearSteps();
+    }
+
     this.showVoiceOverlay('Creating deal...');
 
-    let stepEl = this.showExecutionStep('Preparing deal data...', 'progress');
+    let stepEl = window.visualExecutionSidebar?.showStep('Preparing deal data...', 'progress');
     await this.delay(300);
 
     const dealName = params.dealName;
     const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
 
-    stepEl.innerHTML = `<span>✅</span><span>Deal name: ${dealName}</span>`;
+    if (stepEl) {
+      stepEl.className = 'voice-exec-step success';
+      stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+      stepEl.querySelector('.voice-exec-text').textContent = `Deal name: ${dealName}`;
+    }
     await this.delay(300);
 
     // Get current pipeline or use default
@@ -630,13 +642,13 @@ Be concise and clear.`
     const firstStage = currentPipeline?.stages?.[0];
 
     if (!currentPipeline || !firstStage) {
-      stepEl = this.showExecutionStep('No pipeline available', 'error');
+      window.visualExecutionSidebar?.showStep('No pipeline available', 'error');
       await this.delay(2000);
       this.hideVoiceOverlay();
       return;
     }
 
-    stepEl = this.showExecutionStep(`Adding to ${currentPipeline.name} pipeline...`, 'progress');
+    stepEl = window.visualExecutionSidebar?.showStep(`Adding to ${currentPipeline.name} pipeline...`, 'progress');
     await this.delay(300);
 
     // Extract email context if available
@@ -692,27 +704,45 @@ Be concise and clear.`
       voiceCreated: true
     };
 
-    stepEl.innerHTML = `<span>✅</span><span>Deal created in ${firstStage.name}</span>`;
+    if (stepEl) {
+      stepEl.className = 'voice-exec-step success';
+      stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+      stepEl.querySelector('.voice-exec-text').textContent = `Deal created in ${firstStage.name}`;
+    }
     await this.delay(300);
 
-    stepEl = this.showExecutionStep('Saving to database...', 'progress');
+    stepEl = window.visualExecutionSidebar?.showStep('Saving to database...', 'progress');
     await this.delay(300);
 
     // Save the deal
     window.gmailCRM.deals[dealId] = deal;
     await window.gmailCRM.saveDeal(deal);
 
-    stepEl.innerHTML = `<span>✅</span><span>Deal saved successfully</span>`;
+    if (stepEl) {
+      stepEl.className = 'voice-exec-step success';
+      stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+      stepEl.querySelector('.voice-exec-text').textContent = 'Deal saved successfully';
+    }
     await this.delay(500);
+
+    // Show pipeline in sidebar
+    if (window.visualExecutionSidebar) {
+      window.visualExecutionSidebar.showPipelineView(currentPipeline, firstStage.id);
+      window.visualExecutionSidebar.addDealToStage(deal, firstStage.id, true);
+    }
 
     // Update the UI to show the new deal
     if (window.gmailCRM.currentPipeline?.id === currentPipeline.id) {
-      stepEl = this.showExecutionStep('Refreshing view...', 'progress');
+      stepEl = window.visualExecutionSidebar?.showStep('Refreshing view...', 'progress');
       await this.delay(300);
 
       window.gmailCRM.showPipelineView();
 
-      stepEl.innerHTML = `<span>✅</span><span>View updated</span>`;
+      if (stepEl) {
+        stepEl.className = 'voice-exec-step success';
+        stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+        stepEl.querySelector('.voice-exec-text').textContent = 'View updated';
+      }
       await this.delay(500);
 
       // Scroll to and highlight the new deal
@@ -728,6 +758,9 @@ Be concise and clear.`
     // Store deal in context for follow-up commands
     this.currentContext = { dealId: dealId, type: 'deal' };
 
+    // Show completion message
+    window.visualExecutionSidebar?.showStep('Deal created successfully!', 'success');
+
     this.showNotification(`✅ Created deal: ${dealName}`);
 
     setTimeout(() => {
@@ -739,54 +772,89 @@ Be concise and clear.`
 
   async addToDealVoice(params) {
     const dealName = params.dealName;
+    console.log('📧 addToDealVoice called for:', dealName);
+
+    // Expand visual execution sidebar
+    if (window.visualExecutionSidebar) {
+      window.visualExecutionSidebar.expand();
+      window.visualExecutionSidebar.clearSteps();
+    }
 
     // Show execution overlay
     this.showVoiceOverlay('Executing command...');
 
     // Step 1: Find the deal
-    let stepEl = this.showExecutionStep(`Searching for "${dealName}" deal...`, 'progress');
+    let stepEl = window.visualExecutionSidebar?.showStep(`Searching for "${dealName}" deal...`, 'progress');
     await this.delay(300);
 
     const deal = this.findDealByName(dealName);
 
     if (!deal) {
-      stepEl.innerHTML = `<span>❌</span><span>Deal not found: ${dealName}</span>`;
+      if (stepEl) {
+        stepEl.className = 'voice-exec-step error';
+        stepEl.querySelector('.voice-exec-icon').textContent = '❌';
+        stepEl.querySelector('.voice-exec-text').textContent = `Deal not found: ${dealName}`;
+      }
       await this.delay(2000);
       this.hideVoiceOverlay();
       return;
     }
 
-    stepEl.innerHTML = `<span>✅</span><span>Found "${deal.emailSubject || dealName}"</span>`;
+    if (stepEl) {
+      stepEl.className = 'voice-exec-step success';
+      stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+      stepEl.querySelector('.voice-exec-text').textContent = `Found "${deal.emailSubject || dealName}"`;
+    }
     await this.delay(300);
 
-    // Step 2: Navigate to the deal's pipeline
-    stepEl = this.showExecutionStep('Opening pipeline...', 'progress');
+    // Step 2: Open pipeline view in sidebar
+    stepEl = window.visualExecutionSidebar?.showStep('Opening pipeline...', 'progress');
     await this.delay(300);
 
-    // Open the pipeline view
     const pipeline = window.gmailCRM.pipelines.find(p => p.id === deal.pipelineId);
     if (pipeline) {
+      // Show pipeline in sidebar
+      if (window.visualExecutionSidebar) {
+        window.visualExecutionSidebar.showPipelineView(pipeline, deal.stageId);
+      }
+
+      // Open pipeline in main view
       window.gmailCRM.currentPipeline = pipeline;
       window.gmailCRM.showPipelineView();
-      stepEl.innerHTML = `<span>✅</span><span>Opened ${pipeline.name}</span>`;
+
+      if (stepEl) {
+        stepEl.className = 'voice-exec-step success';
+        stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+        stepEl.querySelector('.voice-exec-text').textContent = `Opened ${pipeline.name}`;
+      }
       await this.delay(500);
 
-      // Step 3: Scroll to and highlight the deal
-      stepEl = this.showExecutionStep('Locating deal...', 'progress');
+      // Step 3: Show deal in sidebar
+      stepEl = window.visualExecutionSidebar?.showStep('Opening deal...', 'progress');
       await this.delay(300);
 
+      if (window.visualExecutionSidebar) {
+        window.visualExecutionSidebar.addDealToStage(deal, deal.stageId, true);
+      }
+
+      // Scroll to deal in main view
       const dealCard = document.querySelector(`[data-deal-id="${deal.id}"]`);
       if (dealCard) {
         dealCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
         dealCard.style.animation = 'highlightField 2s ease';
-        stepEl.innerHTML = `<span>✅</span><span>Deal located</span>`;
-        await this.delay(800);
       }
+
+      if (stepEl) {
+        stepEl.className = 'voice-exec-step success';
+        stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+        stepEl.querySelector('.voice-exec-text').textContent = 'Deal opened';
+      }
+      await this.delay(500);
     }
 
-    // Step 4: Add content to deal
+    // Step 4: Add email to deal
     if (this.currentContext?.type === 'email') {
-      stepEl = this.showExecutionStep('Adding email to deal...', 'progress');
+      stepEl = window.visualExecutionSidebar?.showStep('Adding email to deal...', 'progress');
       await this.delay(300);
 
       const emailContent = this.extractEmailContent();
@@ -794,14 +862,22 @@ Be concise and clear.`
       deal.notes += `\n\n[Added via voice ${new Date().toLocaleString()}]\n${emailContent}`;
 
       await window.gmailCRM.saveDeal(deal);
-      stepEl.innerHTML = `<span>✅</span><span>Email added to deal</span>`;
+
+      if (stepEl) {
+        stepEl.className = 'voice-exec-step success';
+        stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+        stepEl.querySelector('.voice-exec-text').textContent = 'Email added to deal';
+      }
       await this.delay(500);
     }
 
     // Store deal in context for follow-up commands
     this.currentContext = { ...this.currentContext, dealId: deal.id };
 
-    // Keep overlay open for follow-up commands
+    // Show completion message
+    window.visualExecutionSidebar?.showStep('Command completed successfully!', 'success');
+
+    // Keep overlay and sidebar open for follow-up commands
     setTimeout(() => {
       if (!this.isListening) {
         this.hideVoiceOverlay();

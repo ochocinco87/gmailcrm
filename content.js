@@ -38,6 +38,9 @@ class GmailCRM {
     // Inject floating voice assistant
     this.injectVoiceAssistant();
 
+    // Inject visual execution sidebar
+    this.injectVisualExecutionSidebar();
+
     this.initialized = true;
     console.log('Gmail CRM: Initialized successfully');
   }
@@ -2749,6 +2752,110 @@ class GmailCRM {
     };
 
     console.log('Voice assistant injected successfully');
+  }
+
+  injectVisualExecutionSidebar() {
+    // Check if already injected
+    if (document.getElementById('voice-execution-sidebar')) {
+      return;
+    }
+
+    const sidebar = document.createElement('div');
+    sidebar.id = 'voice-execution-sidebar';
+    sidebar.className = 'voice-execution-sidebar collapsed';
+
+    sidebar.innerHTML = `
+      <div class="voice-sidebar-header">
+        <h3>Voice Command Execution</h3>
+        <button class="voice-sidebar-collapse" title="Collapse">◀</button>
+      </div>
+      <div class="voice-sidebar-content">
+        <div class="voice-execution-steps"></div>
+        <div class="voice-pipeline-visualization"></div>
+      </div>
+    `;
+
+    document.body.appendChild(sidebar);
+
+    // Setup toggle button
+    const collapseBtn = sidebar.querySelector('.voice-sidebar-collapse');
+    collapseBtn.addEventListener('click', () => {
+      sidebar.classList.toggle('collapsed');
+      collapseBtn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+    });
+
+    console.log('Visual execution sidebar injected');
+
+    // Make it globally accessible for voice commands
+    window.visualExecutionSidebar = {
+      expand: () => {
+        sidebar.classList.remove('collapsed');
+        collapseBtn.textContent = '◀';
+      },
+      collapse: () => {
+        sidebar.classList.add('collapsed');
+        collapseBtn.textContent = '▶';
+      },
+      showStep: (stepText, status = 'progress') => {
+        const stepsContainer = sidebar.querySelector('.voice-execution-steps');
+        const statusIcons = {
+          progress: '⏳',
+          success: '✅',
+          error: '❌'
+        };
+
+        const stepEl = document.createElement('div');
+        stepEl.className = `voice-exec-step ${status}`;
+        stepEl.innerHTML = `
+          <span class="voice-exec-icon">${statusIcons[status]}</span>
+          <span class="voice-exec-text">${stepText}</span>
+        `;
+
+        stepsContainer.appendChild(stepEl);
+        stepsContainer.scrollTop = stepsContainer.scrollHeight;
+
+        return stepEl;
+      },
+      clearSteps: () => {
+        const stepsContainer = sidebar.querySelector('.voice-execution-steps');
+        stepsContainer.innerHTML = '';
+      },
+      showPipelineView: (pipeline, highlightStageId = null) => {
+        const vizContainer = sidebar.querySelector('.voice-pipeline-visualization');
+
+        vizContainer.innerHTML = `
+          <div class="voice-pipeline-header">
+            <h4>${pipeline.name}</h4>
+          </div>
+          <div class="voice-pipeline-stages">
+            ${pipeline.stages.map(stage => `
+              <div class="voice-stage ${highlightStageId === stage.id ? 'highlighted' : ''}"
+                   data-stage-id="${stage.id}">
+                <div class="voice-stage-name">${stage.name}</div>
+                <div class="voice-stage-deals" id="voice-stage-${stage.id}"></div>
+              </div>
+            `).join('')}
+          </div>
+        `;
+      },
+      addDealToStage: (deal, stageId, highlight = false) => {
+        const stageContainer = sidebar.querySelector(`#voice-stage-${stageId}`);
+        if (!stageContainer) return;
+
+        const dealCard = document.createElement('div');
+        dealCard.className = `voice-deal-card ${highlight ? 'highlight-pulse' : ''}`;
+        dealCard.innerHTML = `
+          <div class="voice-deal-title">${deal.emailSubject || deal.company}</div>
+          <div class="voice-deal-value">$${deal.value || 0}</div>
+        `;
+
+        stageContainer.appendChild(dealCard);
+
+        if (highlight) {
+          setTimeout(() => dealCard.classList.remove('highlight-pulse'), 2000);
+        }
+      }
+    };
   }
 
   getDealsLinkedToEmail(threadId) {
