@@ -2765,7 +2765,7 @@ class GmailCRM {
 
     const sidebar = document.createElement('div');
     sidebar.id = 'voice-execution-sidebar';
-    sidebar.className = 'voice-execution-sidebar collapsed';
+    sidebar.className = 'voice-execution-sidebar'; // Start expanded so user can see it
 
     sidebar.innerHTML = `
       <div class="voice-sidebar-header">
@@ -2786,6 +2786,18 @@ class GmailCRM {
       sidebar.classList.toggle('collapsed');
       collapseBtn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
     });
+
+    // Add floating toggle button
+    const floatingToggle = document.createElement('div');
+    floatingToggle.id = 'sidebar-toggle-bubble';
+    floatingToggle.className = 'sidebar-toggle-bubble';
+    floatingToggle.innerHTML = '📊';
+    floatingToggle.title = 'Toggle Execution Sidebar';
+    floatingToggle.addEventListener('click', () => {
+      sidebar.classList.toggle('collapsed');
+      collapseBtn.textContent = sidebar.classList.contains('collapsed') ? '▶' : '◀';
+    });
+    document.body.appendChild(floatingToggle);
 
     console.log('Visual execution sidebar injected');
 
