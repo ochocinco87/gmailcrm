@@ -415,16 +415,33 @@ Be concise and clear.`
 
     // Command patterns with natural language understanding
     const patterns = [
-      // Create new deal
+      // Create new deal with pipeline specified
+      {
+        pattern: /(?:add|create) (.+?) as (?:a )?new deal in (?:the )?(.+?) pipeline/i,
+        action: 'create_deal',
+        extract: (match) => ({
+          dealName: match[1].trim(),
+          pipelineName: match[2].trim()
+        })
+      },
+      {
+        pattern: /(?:add|create) (?:a )?new deal (?:for |named )?(.+?) in (?:the )?(.+?) pipeline/i,
+        action: 'create_deal',
+        extract: (match) => ({
+          dealName: match[1].trim(),
+          pipelineName: match[2].trim()
+        })
+      },
+      // Create new deal (no pipeline specified)
       {
         pattern: /create (?:a )?new deal (?:for |with )?(.+)/i,
         action: 'create_deal',
-        extract: (match) => ({ dealName: match[1] })
+        extract: (match) => ({ dealName: match[1].trim() })
       },
       {
         pattern: /new deal (?:for |with )?(.+)/i,
         action: 'create_deal',
-        extract: (match) => ({ dealName: match[1] })
+        extract: (match) => ({ dealName: match[1].trim() })
       },
 
       // Add to existing deal
@@ -468,16 +485,33 @@ Be concise and clear.`
         extract: (match) => ({ value: match[1].replace(/,/g, '') })
       },
 
-      // Move deal to stage
+      // Move specific deal to stage
+      {
+        pattern: /move (?:the )?(?:stage of )?(.+?) (?:deal )?to (?:stage )?(.+)/i,
+        action: 'move_deal_to_stage',
+        extract: (match) => ({
+          dealName: match[1].trim(),
+          stageName: match[2].trim()
+        })
+      },
+      {
+        pattern: /change (?:the )?(?:stage of )?(.+?) to (.+)/i,
+        action: 'move_deal_to_stage',
+        extract: (match) => ({
+          dealName: match[1].trim(),
+          stageName: match[2].trim()
+        })
+      },
+      // Move current deal to stage
       {
         pattern: /move (?:to |to stage )?(.+)/i,
         action: 'move_stage',
-        extract: (match) => ({ stageName: match[1] })
+        extract: (match) => ({ stageName: match[1].trim() })
       },
       {
         pattern: /(?:set stage|change stage) (?:to )?(.+)/i,
         action: 'move_stage',
-        extract: (match) => ({ stageName: match[1] })
+        extract: (match) => ({ stageName: match[1].trim() })
       },
 
       // Add notes
@@ -615,6 +649,10 @@ Be concise and clear.`
           await this.moveStageVoice(parsed.params);
           break;
 
+        case 'move_deal_to_stage':
+          await this.moveDealToStageVoice(parsed.params);
+          break;
+
         case 'add_note':
           await this.addNoteVoice(parsed.params);
           break;
@@ -683,8 +721,24 @@ Be concise and clear.`
     }
     await this.delay(300);
 
-    // Get current pipeline or use default
-    const currentPipeline = window.gmailCRM.currentPipeline || window.gmailCRM.pipelines[0];
+    // Find pipeline by name if specified, otherwise use current or default
+    let currentPipeline;
+    if (params.pipelineName) {
+      currentPipeline = window.gmailCRM.pipelines.find(p =>
+        p.name.toLowerCase().includes(params.pipelineName.toLowerCase())
+      );
+      if (!currentPipeline) {
+        window.visualExecutionSidebar?.showStep(`❌ Pipeline "${params.pipelineName}" not found`, 'error');
+        await this.delay(2000);
+        this.hideVoiceOverlay();
+        return;
+      }
+      stepEl = window.visualExecutionSidebar?.showStep(`Using ${currentPipeline.name} pipeline`, 'success');
+      await this.delay(300);
+    } else {
+      currentPipeline = window.gmailCRM.currentPipeline || window.gmailCRM.pipelines[0];
+    }
+
     const firstStage = currentPipeline?.stages?.[0];
 
     if (!currentPipeline || !firstStage) {
@@ -1107,6 +1161,98 @@ Be concise and clear.`
     }
 
     stepEl.innerHTML = `<span>✅</span><span>Deal moved to ${stage.name}</span>`;
+    await this.delay(500);
+  }
+
+  async moveDealToStageVoice(params) {
+    if (!window.gmailCRM) {
+      this.showNotification('❌ CRM not initialized');
+      return;
+    }
+
+    console.log('✨ moveDealToStageVoice called for:', params);
+
+    // Expand visual execution sidebar
+    if (window.visualExecutionSidebar) {
+      window.visualExecutionSidebar.expand();
+      window.visualExecutionSidebar.clearSteps();
+    }
+
+    // Find the deal by name
+    let stepEl = window.visualExecutionSidebar?.showStep(`Finding deal "${params.dealName}"...`, 'progress');
+    await this.delay(300);
+
+    const deal = this.findDealByName(params.dealName);
+
+    if (!deal) {
+      window.visualExecutionSidebar?.showStep(`❌ Deal "${params.dealName}" not found`, 'error');
+      this.showNotification(`❌ Deal "${params.dealName}" not found`);
+      await this.delay(2000);
+      return;
+    }
+
+    if (stepEl) {
+      stepEl.className = 'voice-exec-step success';
+      stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+      stepEl.querySelector('.voice-exec-text').textContent = `Found deal: ${deal.company || deal.institution}`;
+    }
+    await this.delay(300);
+
+    // Find the stage by name
+    stepEl = window.visualExecutionSidebar?.showStep(`Finding stage "${params.stageName}"...`, 'progress');
+    await this.delay(300);
+
+    const stage = this.findStageByName(params.stageName, deal.pipelineId);
+
+    if (!stage) {
+      window.visualExecutionSidebar?.showStep(`❌ Stage "${params.stageName}" not found`, 'error');
+      this.showNotification(`❌ Stage "${params.stageName}" not found`);
+      await this.delay(2000);
+      return;
+    }
+
+    if (stepEl) {
+      stepEl.className = 'voice-exec-step success';
+      stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+      stepEl.querySelector('.voice-exec-text').textContent = `Found stage: ${stage.name}`;
+    }
+    await this.delay(300);
+
+    // Move the deal
+    stepEl = window.visualExecutionSidebar?.showStep(`Moving deal to ${stage.name}...`, 'progress');
+    await this.delay(300);
+
+    // Visually move the deal card if visible
+    const dealCard = document.querySelector(`[data-deal-id="${deal.id}"]`);
+    if (dealCard) {
+      dealCard.style.transition = 'all 0.5s ease';
+      dealCard.style.transform = 'scale(0.95)';
+      dealCard.style.opacity = '0.5';
+      await this.delay(500);
+    }
+
+    await window.gmailCRM.moveDealToStage(deal.id, stage.id);
+
+    // Refresh the pipeline view if it's currently shown
+    if (window.gmailCRM.currentPipeline && window.gmailCRM.currentPipeline.id === deal.pipelineId) {
+      window.gmailCRM.showPipelineView();
+      await this.delay(500);
+
+      // Highlight the moved card in new location
+      const newDealCard = document.querySelector(`[data-deal-id="${deal.id}"]`);
+      if (newDealCard) {
+        newDealCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        newDealCard.style.animation = 'highlightField 2s ease';
+      }
+    }
+
+    if (stepEl) {
+      stepEl.className = 'voice-exec-step success';
+      stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+      stepEl.querySelector('.voice-exec-text').textContent = `Deal moved to ${stage.name}`;
+    }
+
+    this.showNotification(`✅ Moved ${deal.company || deal.institution} to ${stage.name}`);
     await this.delay(500);
   }
 
