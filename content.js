@@ -41,6 +41,9 @@ class GmailCRM {
     // Inject visual execution sidebar
     this.injectVisualExecutionSidebar();
 
+    // Inject development helper
+    this.injectDevHelper();
+
     this.initialized = true;
     console.log('Gmail CRM: Initialized successfully');
   }
@@ -2856,6 +2859,71 @@ class GmailCRM {
         }
       }
     };
+  }
+
+  injectDevHelper() {
+    // Get manifest version
+    const manifest = chrome.runtime.getManifest();
+    const version = manifest.version;
+
+    // Create dev badge
+    const devBadge = document.createElement('div');
+    devBadge.id = 'crm-dev-badge';
+    devBadge.className = 'crm-dev-badge';
+    devBadge.innerHTML = `
+      <div class="dev-badge-content">
+        <div class="dev-badge-title">DEV MODE</div>
+        <div class="dev-badge-version">v${version}</div>
+        <div class="dev-badge-hint">Ctrl+Shift+R to reload</div>
+      </div>
+    `;
+
+    document.body.appendChild(devBadge);
+
+    // Add keyboard shortcut listener
+    document.addEventListener('keydown', (e) => {
+      // Ctrl+Shift+R (or Cmd+Shift+R on Mac)
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'R') {
+        e.preventDefault();
+        this.reloadExtension();
+      }
+    });
+
+    // Add global console command
+    window.reloadExtension = () => this.reloadExtension();
+
+    console.log('🔧 Development Helper Loaded');
+    console.log('📋 Current Version:', version);
+    console.log('⌨️  Keyboard Shortcut: Ctrl+Shift+R (Cmd+Shift+R on Mac)');
+    console.log('💻 Console Command: reloadExtension()');
+  }
+
+  reloadExtension() {
+    console.log('🔄 Reloading extension...');
+
+    // Show reload notification
+    const notification = document.createElement('div');
+    notification.style.cssText = `
+      position: fixed;
+      top: 20px;
+      right: 20px;
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 16px 24px;
+      border-radius: 8px;
+      box-shadow: 0 4px 16px rgba(0,0,0,0.3);
+      z-index: 999999;
+      font-size: 14px;
+      font-weight: 600;
+      animation: slideInRight 0.3s ease;
+    `;
+    notification.textContent = '🔄 Reloading Extension...';
+    document.body.appendChild(notification);
+
+    // Reload the extension
+    setTimeout(() => {
+      chrome.runtime.reload();
+    }, 500);
   }
 
   getDealsLinkedToEmail(threadId) {
