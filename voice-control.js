@@ -576,12 +576,132 @@ Be concise and clear.`
 
   // Command implementations
   async createDealVoice(params) {
-    this.showNotification(`✓ Creating deal: ${params.dealName}`);
-
-    // Trigger deal creation with voice-provided name
-    if (window.gmailCRM) {
-      window.gmailCRM.showAddDealDialog(null, { dealName: params.dealName });
+    if (!window.gmailCRM) {
+      this.showNotification('❌ CRM not initialized');
+      return;
     }
+
+    this.showVoiceOverlay('Creating deal...');
+
+    let stepEl = this.showExecutionStep('Preparing deal data...', 'progress');
+    await this.delay(300);
+
+    const dealName = params.dealName;
+    const dealId = 'deal_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+
+    stepEl.innerHTML = `<span>✅</span><span>Deal name: ${dealName}</span>`;
+    await this.delay(300);
+
+    // Get current pipeline or use default
+    const currentPipeline = window.gmailCRM.currentPipeline || window.gmailCRM.pipelines[0];
+    const firstStage = currentPipeline?.stages?.[0];
+
+    if (!currentPipeline || !firstStage) {
+      stepEl = this.showExecutionStep('No pipeline available', 'error');
+      await this.delay(2000);
+      this.hideVoiceOverlay();
+      return;
+    }
+
+    stepEl = this.showExecutionStep(`Adding to ${currentPipeline.name} pipeline...`, 'progress');
+    await this.delay(300);
+
+    // Extract email context if available
+    let contactEmail = null;
+    let emailSubject = null;
+    let linkedEmails = [];
+
+    try {
+      // Try to get email context from current Gmail view
+      const emailElement = document.querySelector('[data-legacy-message-id]');
+      if (emailElement) {
+        emailSubject = emailElement.querySelector('h2')?.textContent || dealName;
+        const fromElement = emailElement.querySelector('[email]');
+        contactEmail = fromElement?.getAttribute('email');
+
+        // Get thread ID for linking
+        const threadId = new URLSearchParams(window.location.search).get('th');
+        if (threadId) {
+          linkedEmails.push({
+            threadId: threadId,
+            subject: emailSubject,
+            from: contactEmail,
+            date: new Date().toISOString(),
+            url: window.location.href
+          });
+        }
+      }
+    } catch (e) {
+      console.log('Could not extract email context:', e);
+    }
+
+    // Create the deal object
+    const deal = {
+      id: dealId,
+      pipelineId: currentPipeline.id,
+      stageId: firstStage.id,
+      emailSubject: emailSubject || dealName,
+      company: dealName,
+      institution: dealName,
+      contactEmail: contactEmail,
+      status: 'Active',
+      priority: 'Medium',
+      value: 0,
+      createdAt: new Date().toISOString(),
+      lastUpdated: new Date().toISOString(),
+      linkedEmails: linkedEmails,
+      notesHistory: [{
+        text: `Created via voice command: "${params.dealName}"`,
+        createdAt: new Date().toISOString()
+      }],
+      calls: [],
+      contacts: [],
+      voiceCreated: true
+    };
+
+    stepEl.innerHTML = `<span>✅</span><span>Deal created in ${firstStage.name}</span>`;
+    await this.delay(300);
+
+    stepEl = this.showExecutionStep('Saving to database...', 'progress');
+    await this.delay(300);
+
+    // Save the deal
+    window.gmailCRM.deals[dealId] = deal;
+    await window.gmailCRM.saveDeal(deal);
+
+    stepEl.innerHTML = `<span>✅</span><span>Deal saved successfully</span>`;
+    await this.delay(500);
+
+    // Update the UI to show the new deal
+    if (window.gmailCRM.currentPipeline?.id === currentPipeline.id) {
+      stepEl = this.showExecutionStep('Refreshing view...', 'progress');
+      await this.delay(300);
+
+      window.gmailCRM.showPipelineView();
+
+      stepEl.innerHTML = `<span>✅</span><span>View updated</span>`;
+      await this.delay(500);
+
+      // Scroll to and highlight the new deal
+      setTimeout(() => {
+        const newDealCard = document.querySelector(`[data-deal-id="${dealId}"]`);
+        if (newDealCard) {
+          newDealCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          newDealCard.style.animation = 'highlightField 2s ease';
+        }
+      }, 500);
+    }
+
+    // Store deal in context for follow-up commands
+    this.currentContext = { dealId: dealId, type: 'deal' };
+
+    this.showNotification(`✅ Created deal: ${dealName}`);
+
+    setTimeout(() => {
+      if (!this.isListening) {
+        this.hideVoiceOverlay();
+      }
+    }, 2000);
   }
 
   async addToDealVoice(params) {
@@ -966,17 +1086,7 @@ Be concise and clear.`
   }
 
   async logDealVoice(params) {
-    if (!window.gmailCRM) {
-      this.showNotification('❌ CRM not initialized');
-      return;
-    }
-
-    this.showVoiceOverlay('Logging deal...');
-
-    let stepEl = this.showExecutionStep('Creating new deal...', 'progress');
-    await this.delay(300);
-
-    // Get deal name from params or extract from current context
+    // "Log deal" is the same as "create deal" - just use that method
     let dealName = params.dealName;
 
     if (!dealName) {
@@ -989,26 +1099,8 @@ Be concise and clear.`
       }
     }
 
-    stepEl.innerHTML = `<span>✅</span><span>Deal name: ${dealName}</span>`;
-    await this.delay(300);
-
-    // Open the add deal dialog
-    stepEl = this.showExecutionStep('Opening deal form...', 'progress');
-    await this.delay(300);
-
-    if (window.gmailCRM.showAddDealDialog) {
-      window.gmailCRM.showAddDealDialog(null, { dealName: dealName });
-      stepEl.innerHTML = `<span>✅</span><span>Deal form opened</span>`;
-    } else {
-      stepEl.innerHTML = `<span>❌</span><span>Could not open deal form</span>`;
-    }
-
-    await this.delay(500);
-    setTimeout(() => {
-      if (!this.isListening) {
-        this.hideVoiceOverlay();
-      }
-    }, 2000);
+    // Call createDealVoice with the extracted name
+    await this.createDealVoice({ dealName: dealName });
   }
 
   // Helper methods
