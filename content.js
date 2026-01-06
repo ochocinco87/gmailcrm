@@ -2771,21 +2771,25 @@ class GmailCRM {
       <div class="voice-sidebar-header">
         <h3>Voice Assistant</h3>
         <div class="voice-sidebar-controls">
-          <button class="voice-mic-button" title="Click to start/stop listening">🎤</button>
           <button class="voice-sidebar-collapse" title="Collapse">◀</button>
         </div>
       </div>
       <div class="voice-sidebar-content">
-        <div class="voice-transcript-area">
-          <div class="voice-transcript-header">
-            <div class="voice-transcript-label">Listening...</div>
-            <div class="voice-processing-mode"></div>
-          </div>
-          <div class="voice-transcript-text"></div>
-          <div class="voice-parsed-command"></div>
+        <div class="voice-content-main">
+          <div class="voice-execution-steps"></div>
+          <div class="voice-pipeline-visualization"></div>
         </div>
-        <div class="voice-execution-steps"></div>
-        <div class="voice-pipeline-visualization"></div>
+        <div class="voice-mic-container">
+          <div class="voice-transcript-area">
+            <div class="voice-transcript-header">
+              <div class="voice-transcript-label">Listening...</div>
+              <div class="voice-processing-mode"></div>
+            </div>
+            <div class="voice-transcript-text"></div>
+            <div class="voice-parsed-command"></div>
+          </div>
+          <button class="voice-mic-button" title="Click to start/stop listening">🎤</button>
+        </div>
       </div>
     `;
 
@@ -3461,8 +3465,8 @@ class GmailCRM {
     sidebar.classList.add('active');
     sidebar.dataset.dealId = dealId;
 
-    // Render sidebar content
-    this.renderDealSidebarContent(deal);
+    // Render sidebar content with Kanban view
+    this.renderDealSidebarKanban(deal);
   }
 
   closeDealSidebar() {
@@ -3470,6 +3474,52 @@ class GmailCRM {
     if (sidebar) {
       sidebar.classList.remove('active');
       sidebar.dataset.dealId = '';
+    }
+    // Also close email preview if open
+    this.closeEmailPreview();
+  }
+
+  showEmailPreview(email) {
+    // Remove existing preview if any
+    this.closeEmailPreview();
+
+    // Create email preview panel
+    const panel = document.createElement('div');
+    panel.id = 'email-preview-panel';
+    panel.className = 'email-preview-panel';
+
+    panel.innerHTML = `
+      <div class="email-preview-header">
+        <div class="email-preview-title">${email.subject || 'No Subject'}</div>
+        <button class="email-preview-close" id="email-preview-close-btn">×</button>
+      </div>
+      <div class="email-preview-content">
+        <div class="email-preview-from"><strong>From:</strong> ${email.from || 'Unknown'}</div>
+        <div class="email-preview-date"><strong>Date:</strong> ${new Date(email.date).toLocaleString()}</div>
+        <div class="email-preview-body">
+          ${email.body ? email.body.replace(/\n/g, '<br>') : 'Email body not available. <a href="' + (email.url || '#') + '" target="_blank">Open in Gmail</a>'}
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(panel);
+
+    // Show panel with animation
+    setTimeout(() => {
+      panel.classList.add('visible');
+    }, 10);
+
+    // Close button handler
+    document.getElementById('email-preview-close-btn')?.addEventListener('click', () => {
+      this.closeEmailPreview();
+    });
+  }
+
+  closeEmailPreview() {
+    const panel = document.getElementById('email-preview-panel');
+    if (panel) {
+      panel.classList.remove('visible');
+      setTimeout(() => panel.remove(), 300);
     }
   }
 
@@ -3747,6 +3797,155 @@ class GmailCRM {
     await this.saveDeal(deal);
     this.showDealSidebar(dealId);
     this.showNotification('Comment deleted');
+  }
+
+  renderDealSidebarKanban(deal) {
+    const sidebar = document.getElementById('crm-deal-sidebar');
+    if (!sidebar) return;
+
+    const stageName = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.name || 'Unknown';
+    const stageColor = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.color || '#4285f4';
+
+    const linkedEmails = deal.linkedEmails || [];
+    const tasks = deal.tasks || [];
+    const calls = deal.calls || [];
+    const files = deal.files || []; // Note: files support may need to be added
+
+    sidebar.innerHTML = `
+      <div class="deal-detail-kanban">
+        <div class="deal-detail-header">
+          <div>
+            <div class="deal-detail-title">${deal.emailSubject || 'Untitled Deal'}</div>
+            <div class="deal-detail-meta">
+              <span style="background-color: ${stageColor}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px;">${stageName}</span>
+              <span>💰 ${deal.value ? `$${Number(deal.value).toLocaleString()}` : 'No value'}</span>
+              <span>👤 ${deal.contactEmail || 'No contact'}</span>
+            </div>
+          </div>
+          <button class="crm-close-sidebar" id="crm-close-sidebar-btn" style="font-size: 24px; background: none; border: none; cursor: pointer;">×</button>
+        </div>
+
+        <div class="deal-detail-kanban-grid">
+          <!-- Emails Column -->
+          <div class="deal-detail-column">
+            <div class="deal-detail-column-header">
+              <span class="deal-detail-column-icon">📧</span>
+              <span class="deal-detail-column-title">Emails</span>
+              <span class="deal-detail-column-count">${linkedEmails.length}</span>
+            </div>
+            <div class="deal-detail-items" id="kanban-emails">
+              ${linkedEmails.slice().reverse().map((email, idx) => `
+                <div class="deal-detail-item" data-email-idx="${idx}" data-email-url="${email.url || '#'}">
+                  <div class="deal-detail-item-title">${email.subject || 'No Subject'}</div>
+                  <div class="deal-detail-item-meta">${email.from || 'Unknown'} • ${new Date(email.date).toLocaleDateString()}</div>
+                </div>
+              `).join('')}
+              ${linkedEmails.length === 0 ? '<p style="text-align: center; color: #9aa0a6; font-size: 12px; padding: 20px;">No emails</p>' : ''}
+            </div>
+          </div>
+
+          <!-- Tasks Column -->
+          <div class="deal-detail-column">
+            <div class="deal-detail-column-header">
+              <span class="deal-detail-column-icon">✓</span>
+              <span class="deal-detail-column-title">Tasks</span>
+              <span class="deal-detail-column-count">${tasks.length}</span>
+            </div>
+            <div class="deal-detail-items">
+              ${tasks.map((task, idx) => `
+                <div class="deal-detail-item ${task.completed ? 'completed' : ''}">
+                  <div class="deal-detail-item-title">
+                    <input type="checkbox" class="crm-task-checkbox" data-task-idx="${idx}" ${task.completed ? 'checked' : ''} style="margin-right: 8px;">
+                    ${task.title || 'Untitled Task'}
+                  </div>
+                  <div class="deal-detail-item-meta">
+                    ${task.dueDate ? `Due: ${new Date(task.dueDate).toLocaleDateString()}` : 'No due date'}
+                    ${task.priority ? ` • ${task.priority}` : ''}
+                  </div>
+                </div>
+              `).join('')}
+              ${tasks.length === 0 ? '<p style="text-align: center; color: #9aa0a6; font-size: 12px; padding: 20px;">No tasks</p>' : ''}
+            </div>
+            <button class="crm-btn-small" id="crm-add-task-btn" style="margin-top: auto;">+ Add Task</button>
+          </div>
+
+          <!-- Files Column -->
+          <div class="deal-detail-column">
+            <div class="deal-detail-column-header">
+              <span class="deal-detail-column-icon">📎</span>
+              <span class="deal-detail-column-title">Files</span>
+              <span class="deal-detail-column-count">${files.length}</span>
+            </div>
+            <div class="deal-detail-items">
+              ${files.map((file, idx) => `
+                <div class="deal-detail-item">
+                  <div class="deal-detail-item-title">${file.name || 'Untitled File'}</div>
+                  <div class="deal-detail-item-meta">${file.size || ''} • ${file.date ? new Date(file.date).toLocaleDateString() : ''}</div>
+                </div>
+              `).join('')}
+              ${files.length === 0 ? '<p style="text-align: center; color: #9aa0a6; font-size: 12px; padding: 20px;">No files</p>' : ''}
+            </div>
+          </div>
+
+          <!-- Calls Column -->
+          <div class="deal-detail-column">
+            <div class="deal-detail-column-header">
+              <span class="deal-detail-column-icon">📹</span>
+              <span class="deal-detail-column-title">Calls</span>
+              <span class="deal-detail-column-count">${calls.length}</span>
+            </div>
+            <div class="deal-detail-items">
+              ${calls.map((call, idx) => `
+                <div class="deal-detail-item">
+                  <div class="deal-detail-item-title">
+                    <a href="${call.url}" target="_blank" style="color: inherit; text-decoration: none;">${call.title || `Call ${idx + 1}`}</a>
+                  </div>
+                  <div class="deal-detail-item-meta">${call.date ? new Date(call.date).toLocaleDateString() : 'No date'}</div>
+                </div>
+              `).join('')}
+              ${calls.length === 0 ? '<p style="text-align: center; color: #9aa0a6; font-size: 12px; padding: 20px;">No calls</p>' : ''}
+            </div>
+            <button class="crm-btn-small" id="crm-add-call-btn" style="margin-top: auto;">+ Add Call</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add event listeners
+    document.getElementById('crm-close-sidebar-btn')?.addEventListener('click', () => {
+      this.closeDealSidebar();
+    });
+
+    document.getElementById('crm-add-task-btn')?.addEventListener('click', () => {
+      this.showAddTaskDialog(deal.id);
+    });
+
+    document.getElementById('crm-add-call-btn')?.addEventListener('click', () => {
+      this.showAddCallDialog(deal.id);
+    });
+
+    // Email click handlers - show preview
+    sidebar.querySelectorAll('#kanban-emails .deal-detail-item').forEach(emailItem => {
+      emailItem.addEventListener('click', () => {
+        const idx = parseInt(emailItem.dataset.emailIdx);
+        const email = linkedEmails.slice().reverse()[idx];
+        if (email) {
+          this.showEmailPreview(email);
+        }
+      });
+    });
+
+    // Task checkbox listeners
+    sidebar.querySelectorAll('.crm-task-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', async (e) => {
+        const idx = parseInt(e.target.dataset.taskIdx);
+        if (!deal.tasks) deal.tasks = [];
+        deal.tasks[idx].completed = e.target.checked;
+        deal.tasks[idx].completedAt = e.target.checked ? new Date().toISOString() : null;
+        await this.saveDeal(deal);
+        this.showDealSidebar(deal.id);
+      });
+    });
   }
 
   renderDealSidebarContent(deal) {

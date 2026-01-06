@@ -610,6 +610,35 @@ Be concise and clear.`
         pattern: /(?:log|record) (.+?) as (?:a )?deal/i,
         action: 'log_deal',
         extract: (match) => ({ dealName: match[1] })
+      },
+
+      // Log email to deal
+      {
+        pattern: /(?:log|add|save) (?:this |the )?email (?:to |to the )?(?:deal )?(.+)/i,
+        action: 'log_email_to_deal',
+        extract: (match) => ({ dealName: match[1].trim() })
+      },
+      {
+        pattern: /(?:add|log) (?:this |the )?(?:to |to the )?(.+?) deal/i,
+        action: 'log_email_to_deal',
+        extract: (match) => ({ dealName: match[1].trim() })
+      },
+
+      // Effortless mode - voice pipeline review
+      {
+        pattern: /(?:start |enter |activate )?effortless mode/i,
+        action: 'effortless_mode',
+        extract: (match) => ({})
+      },
+      {
+        pattern: /(?:review|read|go through) (?:the )?pipeline/i,
+        action: 'effortless_mode',
+        extract: (match) => ({})
+      },
+      {
+        pattern: /voice (?:review|walkthrough)/i,
+        action: 'effortless_mode',
+        extract: (match) => ({})
       }
     ];
 
@@ -693,6 +722,14 @@ Be concise and clear.`
 
         case 'log_deal':
           await this.logDealVoice(parsed.params);
+          break;
+
+        case 'log_email_to_deal':
+          await this.logEmailToDealVoice(parsed.params);
+          break;
+
+        case 'effortless_mode':
+          await this.effortlessModeVoice(parsed.params);
           break;
 
         default:
@@ -1416,6 +1453,260 @@ Be concise and clear.`
 
     // Call createDealVoice with the extracted name
     await this.createDealVoice({ dealName: dealName });
+  }
+
+  async logEmailToDealVoice(params) {
+    if (!window.gmailCRM) {
+      this.showNotification('❌ CRM not initialized');
+      return;
+    }
+
+    console.log('📧 logEmailToDealVoice called for deal:', params.dealName);
+
+    // Expand visual execution sidebar
+    if (window.visualExecutionSidebar) {
+      window.visualExecutionSidebar.expand();
+      window.visualExecutionSidebar.clearSteps();
+    }
+
+    this.showVoiceOverlay('Finding deal...');
+
+    let stepEl = window.visualExecutionSidebar?.showStep('Searching for deal...', 'progress');
+    await this.delay(300);
+
+    // Find the deal
+    const deal = this.findDealByName(params.dealName);
+
+    if (!deal) {
+      stepEl.innerHTML = `<span>❌</span><span>Deal "${params.dealName}" not found</span>`;
+      this.showNotification(`❌ Deal "${params.dealName}" not found`);
+      setTimeout(() => {
+        if (!this.isListening) {
+          this.hideVoiceOverlay();
+        }
+      }, 2000);
+      return;
+    }
+
+    stepEl.innerHTML = `<span>✅</span><span>Found deal: ${deal.emailSubject || deal.company}</span>`;
+
+    // Get current email metadata
+    const emailMetadata = this.getCurrentEmailMetadata();
+    if (!emailMetadata) {
+      this.showNotification('❌ No email open');
+      return;
+    }
+
+    // Show deal preview with timer
+    const confirmed = await this.showDealPreviewWithTimer(deal, emailMetadata);
+
+    if (confirmed) {
+      stepEl = window.visualExecutionSidebar?.showStep('Logging email to deal...', 'progress');
+      await this.delay(300);
+
+      // Link email to deal
+      if (window.gmailCRM.linkEmailToDeal) {
+        await window.gmailCRM.linkEmailToDeal(deal.id, emailMetadata);
+      } else {
+        // Fallback: add to deal's emails array
+        if (!deal.emails) {
+          deal.emails = [];
+        }
+        deal.emails.push({
+          threadId: emailMetadata.threadId,
+          subject: emailMetadata.subject,
+          from: emailMetadata.from,
+          date: emailMetadata.date,
+          url: emailMetadata.url
+        });
+        window.gmailCRM.saveDeal(deal);
+      }
+
+      stepEl.innerHTML = `<span>✅</span><span>Email logged to ${deal.emailSubject || deal.company}</span>`;
+      this.showNotification(`✅ Email logged to ${deal.emailSubject || deal.company}`);
+    } else {
+      stepEl = window.visualExecutionSidebar?.showStep('Cancelled by user', 'error');
+      this.showNotification('❌ Cancelled');
+    }
+
+    setTimeout(() => {
+      if (!this.isListening) {
+        this.hideVoiceOverlay();
+      }
+    }, 2000);
+  }
+
+  getCurrentEmailMetadata() {
+    // Extract metadata from current Gmail email view
+    const subject = document.querySelector('[data-legacy-message-id] h2')?.textContent || 'Untitled';
+    const from = document.querySelector('[email]')?.getAttribute('email') || 'Unknown';
+    const threadId = window.location.hash.match(/#inbox\/([^/]+)/)?.[1] || Date.now().toString();
+    const url = window.location.href;
+
+    return {
+      threadId,
+      subject,
+      from,
+      date: Date.now(),
+      url
+    };
+  }
+
+  async showDealPreviewWithTimer(deal, emailMetadata) {
+    return new Promise((resolve) => {
+      // Create preview overlay
+      const overlay = document.createElement('div');
+      overlay.id = 'deal-preview-overlay';
+      overlay.className = 'deal-preview-overlay';
+
+      // Get pipeline info
+      const pipeline = window.gmailCRM.pipelines.find(p =>
+        p.stages.some(s => s.id === deal.stageId)
+      );
+      const stage = pipeline?.stages.find(s => s.id === deal.stageId);
+
+      overlay.innerHTML = `
+        <div class="deal-preview-header">
+          <div class="deal-preview-title">Log email to:</div>
+          <div class="deal-preview-timer">3</div>
+        </div>
+        <div class="deal-preview-content">
+          <div class="deal-preview-deal-name">${deal.emailSubject || deal.company}</div>
+          <div class="deal-preview-pipeline">Pipeline: ${pipeline?.name || 'Unknown'}</div>
+          <div class="deal-preview-stage">${stage?.name || 'Unknown'}</div>
+        </div>
+        <button class="deal-preview-cancel">✕ Cancel</button>
+      `;
+
+      document.body.appendChild(overlay);
+
+      let timeLeft = 3;
+      const timerEl = overlay.querySelector('.deal-preview-timer');
+      const cancelBtn = overlay.querySelector('.deal-preview-cancel');
+
+      // Countdown timer
+      const interval = setInterval(() => {
+        timeLeft--;
+        if (timerEl) {
+          timerEl.textContent = timeLeft;
+        }
+
+        if (timeLeft <= 0) {
+          clearInterval(interval);
+          overlay.remove();
+          resolve(true); // Confirmed
+        }
+      }, 1000);
+
+      // Cancel button
+      cancelBtn.addEventListener('click', () => {
+        clearInterval(interval);
+        overlay.remove();
+        resolve(false); // Cancelled
+      });
+    });
+  }
+
+  async effortlessModeVoice(params) {
+    if (!window.gmailCRM || !window.gmailCRM.currentPipeline) {
+      this.showNotification('❌ No pipeline selected');
+      return;
+    }
+
+    console.log('🎯 Starting effortless mode - voice pipeline review');
+
+    // Expand visual execution sidebar
+    if (window.visualExecutionSidebar) {
+      window.visualExecutionSidebar.expand();
+      window.visualExecutionSidebar.clearSteps();
+    }
+
+    const pipeline = window.gmailCRM.currentPipeline;
+    const allDeals = Object.values(window.gmailCRM.deals || {}).filter(
+      deal => pipeline.stages.some(s => s.id === deal.stageId)
+    );
+
+    if (allDeals.length === 0) {
+      this.showNotification('❌ No deals in this pipeline');
+      return;
+    }
+
+    this.showNotification(`🎯 Effortless Mode: Reviewing ${allDeals.length} deals`);
+
+    let stepEl = window.visualExecutionSidebar?.showStep(
+      `Starting review of ${allDeals.length} deals...`,
+      'progress'
+    );
+
+    // Initialize text-to-speech
+    const speech = window.speechSynthesis;
+
+    // Review each deal
+    for (let i = 0; i < allDeals.length; i++) {
+      const deal = allDeals[i];
+      const stage = pipeline.stages.find(s => s.id === deal.stageId);
+
+      // Prepare narration text
+      const dealName = deal.emailSubject || deal.company || 'Unknown deal';
+      const stageName = stage?.name || 'Unknown stage';
+      const value = deal.value ? `worth $${deal.value}` : 'no value set';
+      const contact = deal.contactEmail || deal.champion || 'no contact';
+
+      const narration = `Deal ${i + 1} of ${allDeals.length}. ${dealName}. Currently in ${stageName}. ${value}. Contact: ${contact}.`;
+
+      // Show current deal in sidebar
+      stepEl = window.visualExecutionSidebar?.showStep(
+        `${i + 1}/${allDeals.length}: ${dealName}`,
+        'progress'
+      );
+
+      // Speak narration
+      await this.speak(narration);
+
+      // Wait 5 seconds total (includes speech time)
+      const remainingTime = Math.max(0, 5000 - (narration.length * 50)); // Estimate speech duration
+      if (remainingTime > 0) {
+        await this.delay(remainingTime);
+      }
+
+      // Mark as reviewed
+      if (stepEl) {
+        stepEl.innerHTML = `<span>✅</span><span>${i + 1}/${allDeals.length}: ${dealName}</span>`;
+      }
+    }
+
+    // Completion
+    this.showNotification(`✅ Review complete: ${allDeals.length} deals`);
+    window.visualExecutionSidebar?.showStep('Pipeline review complete!', 'success');
+
+    setTimeout(() => {
+      if (!this.isListening) {
+        this.hideVoiceOverlay();
+      }
+    }, 2000);
+  }
+
+  async speak(text) {
+    return new Promise((resolve) => {
+      if (!window.speechSynthesis) {
+        console.log('Text-to-speech:', text);
+        resolve();
+        return;
+      }
+
+      const utterance = new SpeechSynthesisUtterance(text);
+      utterance.rate = 1.1; // Slightly faster for efficiency
+      utterance.pitch = 1.0;
+      utterance.volume = 0.8;
+
+      utterance.onend = () => resolve();
+      utterance.onerror = () => resolve();
+
+      window.speechSynthesis.speak(utterance);
+
+      // Timeout fallback
+      setTimeout(() => resolve(), text.length * 100);
+    });
   }
 
   // Helper methods
