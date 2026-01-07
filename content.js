@@ -1815,7 +1815,9 @@ class GmailCRM {
         </div>
         <div class="crm-form-group">
           <label>Institution <span style="color: #ea4335;">*</span></label>
-          <input type="text" id="crm-deal-institution-search" class="crm-input" placeholder="Search for hospital, clinic, or medical facility..." required autocomplete="off" />
+          <iframe id="crm-institution-autocomplete-iframe"
+                  style="width: 100%; height: 50px; border: none; display: block; margin-bottom: 8px;">
+          </iframe>
           <div class="crm-validation-error" id="crm-institution-error" style="display: none;"></div>
           <div id="crm-institution-selected" style="display: none; margin-top: 8px; padding: 12px; background: #e8f0fe; border-radius: 6px; font-size: 13px;">
             <div style="font-weight: 600; margin-bottom: 4px;" id="crm-selected-institution-name"></div>
@@ -1860,37 +1862,81 @@ class GmailCRM {
 
     loadOrganizationsDropdown();
 
-    // Initialize Google Maps Autocomplete for institution search
+    // Initialize iframe-based institution autocomplete
     let selectedInstitution = null;
+    const iframe = document.getElementById('crm-institution-autocomplete-iframe');
+    iframe.src = chrome.runtime.getURL('institution-autocomplete.html');
 
-    this.initializeInstitutionSearch(document.getElementById('crm-deal-institution-search'), (place) => {
-      selectedInstitution = {
-        placeId: place.place_id,
-        name: place.name,
-        address: place.formatted_address,
-        location: place.geometry?.location,
-        website: place.website || null,
-        phone: place.formatted_phone_number || null,
-        types: place.types || []
-      };
+    // Message handler for iframe communication
+    const messageHandler = async (event) => {
+      // Verify message is from our iframe
+      if (event.source !== iframe.contentWindow) return;
 
-      // Extract domain from website
-      if (selectedInstitution.website) {
-        try {
-          const url = new URL(selectedInstitution.website);
-          selectedInstitution.domain = url.hostname.replace('www.', '');
-        } catch (e) {
-          selectedInstitution.domain = null;
-        }
+      console.log('Received message from iframe:', event.data);
+
+      switch (event.data.type) {
+        case 'institution-iframe-ready':
+          // Get API key and initialize autocomplete
+          const result = await new Promise(resolve => {
+            chrome.storage.local.get(['googleMapsApiKey'], resolve);
+          });
+          const apiKey = result.googleMapsApiKey || 'AIzaSyBjxGVLxVh5gKZQ8N9kH0PmW3fZ7RKnXyI';
+          iframe.contentWindow.postMessage({
+            type: 'init-institution-autocomplete',
+            apiKey: apiKey
+          }, '*');
+          console.log('Sent init message to iframe');
+          break;
+
+        case 'institution-autocomplete-ready':
+          console.log('Institution autocomplete ready');
+          break;
+
+        case 'institution-selected':
+          const place = event.data.place;
+          selectedInstitution = {
+            placeId: place.place_id,
+            name: place.name,
+            address: place.formatted_address,
+            location: place.geometry?.location,
+            website: place.website || null,
+            phone: place.formatted_phone_number || null,
+            types: place.types || []
+          };
+
+          // Extract domain from website
+          if (selectedInstitution.website) {
+            try {
+              const url = new URL(selectedInstitution.website);
+              selectedInstitution.domain = url.hostname.replace('www.', '');
+            } catch (e) {
+              selectedInstitution.domain = null;
+            }
+          }
+
+          // Show selected institution details
+          document.getElementById('crm-selected-institution-name').textContent = selectedInstitution.name;
+          document.getElementById('crm-selected-institution-address').textContent = selectedInstitution.address;
+          document.getElementById('crm-institution-selected').style.display = 'block';
+          console.log('Institution selected:', selectedInstitution);
+          break;
+
+        case 'institution-error':
+          this.showNotification('⚠️ ' + event.data.message);
+          break;
+
+        case 'institution-input':
+          // Input is being typed - can use for validation
+          break;
       }
+    };
 
-      // Show selected institution details
-      document.getElementById('crm-selected-institution-name').textContent = selectedInstitution.name;
-      document.getElementById('crm-selected-institution-address').textContent = selectedInstitution.address;
-      document.getElementById('crm-institution-selected').style.display = 'block';
+    window.addEventListener('message', messageHandler);
+
+    document.getElementById('crm-cancel-deal')?.addEventListener('click', () => {
+      window.removeEventListener('message', messageHandler);
+      modal.remove();
     });
-
-    document.getElementById('crm-cancel-deal')?.addEventListener('click', () => modal.remove());
     document.getElementById('crm-save-deal')?.addEventListener('click', async () => {
       // Clear previous errors
       modal.querySelectorAll('.crm-validation-error').forEach(el => el.style.display = 'none');
@@ -1974,6 +2020,7 @@ class GmailCRM {
       // Trigger automation rules for new deal
       await this.checkAutomationTriggers('deal_created', deal);
 
+      window.removeEventListener('message', messageHandler);
       modal.remove();
       this.renderPipelineBoard();
       this.showNotification('✅ Deal added successfully!');
@@ -9013,130 +9060,7 @@ Available variables:
     ];
   }
 
-  // Google Maps & Institution/Organization Management
-
-  async loadGoogleMapsAPI() {
-    // Check if already loaded
-    if (window.google && window.google.maps && window.google.maps.places) {
-      console.log('Google Maps API already loaded');
-      return Promise.resolve();
-    }
-
-    // Check if script is already being loaded
-    const existingScript = document.querySelector('script[src*="maps.googleapis.com"]');
-    if (existingScript) {
-      console.log('Google Maps API script already in DOM, waiting for load...');
-      return new Promise((resolve, reject) => {
-        const checkInterval = setInterval(() => {
-          if (window.google && window.google.maps && window.google.maps.places) {
-            clearInterval(checkInterval);
-            console.log('Google Maps API loaded (via existing script)');
-            resolve();
-          }
-        }, 100);
-
-        // Timeout after 10 seconds
-        setTimeout(() => {
-          clearInterval(checkInterval);
-          reject(new Error('Google Maps API load timeout'));
-        }, 10000);
-      });
-    }
-
-    // Get API key from storage
-    const result = await new Promise(resolve => {
-      chrome.storage.local.get(['googleMapsApiKey'], resolve);
-    });
-
-    const apiKey = result.googleMapsApiKey || 'AIzaSyBjxGVLxVh5gKZQ8N9kH0PmW3fZ7RKnXyI'; // Default key
-    console.log('Loading Google Maps API with key:', apiKey.substring(0, 10) + '...');
-
-    return new Promise((resolve, reject) => {
-      const script = document.createElement('script');
-      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places&callback=Function.prototype`;
-      script.async = true;
-      script.defer = true;
-      script.onload = () => {
-        console.log('Google Maps API script loaded successfully');
-        // Wait a bit for the API to fully initialize
-        setTimeout(() => {
-          if (window.google && window.google.maps && window.google.maps.places) {
-            console.log('Google Maps Places API ready');
-            resolve();
-          } else {
-            reject(new Error('Google Maps Places API not available after load'));
-          }
-        }, 100);
-      };
-      script.onerror = (error) => {
-        console.error('Failed to load Google Maps API script:', error);
-        reject(new Error('Failed to load Google Maps API script'));
-      };
-      document.head.appendChild(script);
-      console.log('Google Maps API script added to document');
-    });
-  }
-
-  async initializeInstitutionSearch(input, onSelect) {
-    try {
-      console.log('Initializing institution search...');
-      console.log('Input element:', input);
-      console.log('Input is visible:', input && input.offsetParent !== null);
-
-      if (!input) {
-        console.error('Input element not found!');
-        return;
-      }
-
-      await this.loadGoogleMapsAPI();
-      console.log('Google Maps API loaded successfully');
-      console.log('google.maps.places available:', !!google.maps.places);
-      console.log('Autocomplete constructor available:', !!google.maps.places.Autocomplete);
-
-      // Create autocomplete with establishment type for hospitals, clinics, etc.
-      const autocomplete = new google.maps.places.Autocomplete(input, {
-        types: ['establishment'],
-        fields: ['place_id', 'name', 'formatted_address', 'geometry', 'website', 'formatted_phone_number', 'types']
-      });
-
-      console.log('Autocomplete created successfully:', autocomplete);
-      console.log('Autocomplete gm_id:', autocomplete.gm_id);
-
-      // Add input listener to verify typing is detected
-      input.addEventListener('input', (e) => {
-        console.log('Input detected, value:', e.target.value);
-      });
-
-      autocomplete.addListener('place_changed', () => {
-        const place = autocomplete.getPlace();
-        console.log('Place selected:', place);
-
-        if (!place.geometry) {
-          console.warn('Place has no geometry');
-          this.showNotification('⚠️ No details available for this place');
-          return;
-        }
-
-        onSelect(place);
-      });
-
-      console.log('Institution search initialized successfully');
-
-      // Verify pac-container appears in DOM when typing
-      setTimeout(() => {
-        const pacContainer = document.querySelector('.pac-container');
-        console.log('PAC container exists:', !!pacContainer);
-        if (pacContainer) {
-          console.log('PAC container styles:', window.getComputedStyle(pacContainer).display);
-          console.log('PAC container z-index:', window.getComputedStyle(pacContainer).zIndex);
-        }
-      }, 1000);
-    } catch (error) {
-      console.error('Failed to initialize Google Maps:', error);
-      console.error('Error stack:', error.stack);
-      this.showNotification('⚠️ Failed to load Google Maps. Error: ' + error.message);
-    }
-  }
+  // Institution/Organization Management
 
   async getOrganizations() {
     const result = await new Promise(resolve => {
