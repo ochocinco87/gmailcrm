@@ -4137,7 +4137,7 @@ class GmailCRM {
       });
 
       // Add contact button
-      document.getElementById('crm-add-contact-btn')?.addEventListener('click', () => {
+      document.getElementById('crm-add-contact-btn')?.addEventListener('click', async () => {
         const email = prompt('Enter contact email:');
         if (email) {
           deal.contacts.push({
@@ -4148,7 +4148,11 @@ class GmailCRM {
             starred: false,
             addedAt: new Date().toISOString()
           });
-          this.saveDeal(deal);
+          await this.saveDeal(deal);
+
+          // Auto-link emails from this contact
+          await this.autoLinkContactEmails(deal.id, email);
+
           this.showDealSidebar(deal.id, 'people');
         }
       });
@@ -8322,6 +8326,79 @@ Available variables:
     const pipeline = this.pipelines.find(p => p.id === pipelineId);
     if (pipeline) {
       this.openPipeline(pipeline);
+    }
+  }
+
+  async autoLinkContactEmails(dealId, contactEmail) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    // Check if auto-linking is enabled
+    const settings = await new Promise(resolve => {
+      chrome.storage.local.get(['autoLinkEmails'], resolve);
+    });
+
+    if (settings.autoLinkEmails === false) {
+      this.showNotification('ℹ️ Auto-link emails is disabled. Enable in Settings.');
+      return;
+    }
+
+    this.showNotification('🔍 Scanning Gmail for emails from ' + contactEmail + '...');
+
+    try {
+      // Scan recent emails
+      const emails = await this.scanGmailEmails();
+
+      // Filter emails from this contact
+      const contactEmails = emails.filter(email =>
+        email.from === contactEmail || email.from.includes(contactEmail)
+      );
+
+      if (contactEmails.length === 0) {
+        this.showNotification('No emails found from ' + contactEmail);
+        return;
+      }
+
+      // Initialize linkedEmails if needed
+      if (!deal.linkedEmails) {
+        deal.linkedEmails = [];
+      }
+
+      // Add emails that aren't already linked
+      let addedCount = 0;
+      contactEmails.forEach(email => {
+        const alreadyLinked = deal.linkedEmails.some(e =>
+          e.threadId === email.threadId ||
+          (e.subject === email.subject && e.from === email.from)
+        );
+
+        if (!alreadyLinked) {
+          deal.linkedEmails.push({
+            subject: email.subject,
+            from: email.from,
+            date: email.date,
+            url: email.url,
+            threadId: email.threadId,
+            body: email.bodySnippet,
+            autoLinked: true,
+            linkedAt: new Date().toISOString()
+          });
+          addedCount++;
+        }
+      });
+
+      if (addedCount > 0) {
+        await this.saveDeal(deal);
+        this.showNotification(`✅ Auto-linked ${addedCount} email(s) from ${contactEmail}`);
+
+        // Re-inject badges to show newly linked emails
+        this.injectEmailBadges();
+      } else {
+        this.showNotification('All emails from ' + contactEmail + ' already linked');
+      }
+    } catch (error) {
+      console.error('Auto-link error:', error);
+      this.showNotification('❌ Error auto-linking emails');
     }
   }
 
