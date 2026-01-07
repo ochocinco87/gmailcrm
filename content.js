@@ -3455,7 +3455,7 @@ class GmailCRM {
     }
   }
 
-  showDealSidebar(dealId) {
+  showDealSidebar(dealId, viewMode = 'timeline') {
     const deal = this.deals[dealId];
     if (!deal) return;
 
@@ -3464,9 +3464,20 @@ class GmailCRM {
 
     sidebar.classList.add('active');
     sidebar.dataset.dealId = dealId;
+    sidebar.dataset.viewMode = viewMode;
 
-    // Render sidebar content with Kanban view
-    this.renderDealSidebarKanban(deal);
+    // Shift main content left
+    const pipelineContainer = document.getElementById('crm-pipeline-view');
+    if (pipelineContainer) {
+      pipelineContainer.classList.add('sidebar-open');
+    }
+
+    // Render sidebar content based on view mode
+    if (viewMode === 'timeline') {
+      this.renderDealSidebarTimeline(deal);
+    } else {
+      this.renderDealSidebarKanban(deal);
+    }
   }
 
   closeDealSidebar() {
@@ -3474,7 +3485,15 @@ class GmailCRM {
     if (sidebar) {
       sidebar.classList.remove('active');
       sidebar.dataset.dealId = '';
+      sidebar.dataset.viewMode = '';
     }
+
+    // Remove shift from main content
+    const pipelineContainer = document.getElementById('crm-pipeline-view');
+    if (pipelineContainer) {
+      pipelineContainer.classList.remove('sidebar-open');
+    }
+
     // Also close email preview if open
     this.closeEmailPreview();
   }
@@ -3799,6 +3818,266 @@ class GmailCRM {
     this.showNotification('Comment deleted');
   }
 
+  renderDealSidebarTimeline(deal) {
+    const sidebar = document.getElementById('crm-deal-sidebar');
+    if (!sidebar) return;
+
+    const stageName = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.name || 'Unknown';
+    const stageColor = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.color || '#4285f4';
+
+    // Collect all timeline items
+    const timelineItems = [];
+
+    // Add emails
+    (deal.linkedEmails || []).forEach(email => {
+      timelineItems.push({
+        type: 'email',
+        date: new Date(email.date),
+        title: email.subject || 'No Subject',
+        content: email.from,
+        icon: '📧',
+        data: email
+      });
+    });
+
+    // Add tasks
+    (deal.tasks || []).forEach(task => {
+      timelineItems.push({
+        type: 'task',
+        date: task.completedAt ? new Date(task.completedAt) : new Date(task.createdAt),
+        title: task.title,
+        content: `${task.dueDate ? `Due: ${new Date(task.dueDate).toLocaleDateString()}` : ''}${task.assignedTo ? ` • Assigned to: ${task.assignedTo}` : ''}`,
+        icon: task.completed ? '✓' : '○',
+        completed: task.completed,
+        data: task
+      });
+    });
+
+    // Add calls
+    (deal.calls || []).forEach(call => {
+      timelineItems.push({
+        type: 'call',
+        date: new Date(call.date),
+        title: call.title || 'Call',
+        content: call.url,
+        icon: '📹',
+        data: call
+      });
+    });
+
+    // Add files
+    (deal.files || []).forEach(file => {
+      timelineItems.push({
+        type: 'file',
+        date: new Date(file.date || file.createdAt),
+        title: file.name,
+        content: file.size || '',
+        icon: '📎',
+        data: file
+      });
+    });
+
+    // Add weekly updates
+    if (deal.weeklyUpdates) {
+      deal.weeklyUpdates.forEach(update => {
+        timelineItems.push({
+          type: 'weekly-update',
+          date: new Date(update.date),
+          title: 'Weekly Update',
+          content: update.text,
+          icon: '📝',
+          data: update
+        });
+      });
+    }
+
+    // Add Slack messages
+    (deal.slackMessages || []).forEach(msg => {
+      timelineItems.push({
+        type: 'slack',
+        date: new Date(msg.timestamp * 1000),
+        title: msg.user || 'Slack Message',
+        content: msg.text,
+        icon: '💬',
+        data: msg
+      });
+    });
+
+    // Sort by date (most recent first)
+    timelineItems.sort((a, b) => b.date - a.date);
+
+    const showOnlyPriorWeeks = sidebar.dataset.showPriorWeeksOnly === 'true';
+    const oneWeekAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
+
+    sidebar.innerHTML = `
+      <div class="crm-timeline-view">
+        <div class="crm-sidebar-header">
+          <div>
+            <h3>${deal.emailSubject || deal.company || 'Untitled Deal'}</h3>
+            <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">
+              <span style="background-color: ${stageColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${stageName}</span>
+            </div>
+          </div>
+          <button class="crm-close-sidebar" id="crm-close-sidebar-btn">×</button>
+        </div>
+
+        <div class="crm-deal-view-toggle">
+          <button class="crm-view-toggle-btn active" id="crm-timeline-view-btn">Timeline</button>
+          <button class="crm-view-toggle-btn" id="crm-kanban-view-btn">Kanban</button>
+        </div>
+
+        <div class="crm-timeline-container">
+          ${showOnlyPriorWeeks ? `
+            <div class="crm-weekly-update-toggle">
+              <input type="checkbox" id="crm-show-all-timeline" />
+              <label for="crm-show-all-timeline">Show all items</label>
+            </div>
+          ` : `
+            <div class="crm-weekly-update-toggle">
+              <input type="checkbox" id="crm-show-only-prior-weeks" />
+              <label for="crm-show-only-prior-weeks">Show only prior weeks' updates</label>
+            </div>
+          `}
+
+          ${timelineItems.filter(item => {
+            if (!showOnlyPriorWeeks) return true;
+            if (item.type === 'weekly-update') return item.date < oneWeekAgo;
+            return false;
+          }).map(item => `
+            <div class="crm-timeline-item ${item.type} ${item.completed ? 'completed' : ''}">
+              <div class="crm-timeline-icon">${item.icon}</div>
+              <div class="crm-timeline-header">
+                <div class="crm-timeline-title">${item.title}</div>
+                <div class="crm-timeline-date">${item.date.toLocaleString()}</div>
+              </div>
+              ${item.content ? `<div class="crm-timeline-content">${item.content}</div>` : ''}
+              ${item.data && item.data.images ? item.data.images.map(img => `
+                <img src="${img}" class="crm-timeline-slack-image" alt="Slack image" />
+              `).join('') : ''}
+            </div>
+          `).join('')}
+
+          ${timelineItems.length === 0 ? '<p style="text-align: center; color: #9aa0a6; padding: 40px;">No activity yet</p>' : ''}
+        </div>
+
+        <div class="crm-timeline-input-container">
+          <div class="crm-timeline-input-header">
+            <div class="crm-timeline-input-type">Add Task</div>
+            <div class="crm-timeline-ai-badge">🤖 AI Auto-assign</div>
+          </div>
+          <textarea
+            class="crm-timeline-input"
+            id="crm-timeline-task-input"
+            placeholder="Enter task description..."
+            rows="3"
+          ></textarea>
+          <div class="crm-timeline-input-actions">
+            <select class="crm-timeline-assign-to" id="crm-timeline-assign-to">
+              <option value="">Auto-assign with AI</option>
+              <option value="me">Assign to me</option>
+              ${this.currentUser ? `<option value="${this.currentUser.email}">${this.currentUser.name || this.currentUser.email}</option>` : ''}
+            </select>
+            <button class="crm-timeline-submit-btn" id="crm-timeline-submit-task">Add Task</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Event listeners
+    document.getElementById('crm-close-sidebar-btn')?.addEventListener('click', () => {
+      this.closeDealSidebar();
+    });
+
+    document.getElementById('crm-timeline-view-btn')?.addEventListener('click', () => {
+      this.showDealSidebar(deal.id, 'timeline');
+    });
+
+    document.getElementById('crm-kanban-view-btn')?.addEventListener('click', () => {
+      this.showDealSidebar(deal.id, 'kanban');
+    });
+
+    document.getElementById('crm-show-only-prior-weeks')?.addEventListener('change', (e) => {
+      sidebar.dataset.showPriorWeeksOnly = e.target.checked ? 'true' : 'false';
+      this.showDealSidebar(deal.id, 'timeline');
+    });
+
+    document.getElementById('crm-show-all-timeline')?.addEventListener('change', (e) => {
+      sidebar.dataset.showPriorWeeksOnly = e.target.checked ? 'false' : 'true';
+      this.showDealSidebar(deal.id, 'timeline');
+    });
+
+    document.getElementById('crm-timeline-submit-task')?.addEventListener('click', async () => {
+      await this.addTaskFromTimeline(deal.id);
+    });
+  }
+
+  async addTaskFromTimeline(dealId) {
+    const deal = this.deals[dealId];
+    if (!deal) return;
+
+    const taskInput = document.getElementById('crm-timeline-task-input');
+    const assignToSelect = document.getElementById('crm-timeline-assign-to');
+
+    const taskText = taskInput.value.trim();
+    if (!taskText) return;
+
+    let assignedTo = assignToSelect.value;
+
+    // AI auto-assign if selected
+    if (!assignedTo || assignedTo === '') {
+      assignedTo = await this.aiAutoAssignTask(taskText, deal);
+    } else if (assignedTo === 'me') {
+      assignedTo = this.currentUser?.email || this.currentUser?.name || 'Me';
+    }
+
+    // Create task
+    if (!deal.tasks) deal.tasks = [];
+    deal.tasks.push({
+      title: taskText,
+      assignedTo: assignedTo,
+      priority: 'Medium',
+      completed: false,
+      createdAt: new Date().toISOString(),
+      completedAt: null
+    });
+
+    await this.saveDeal(deal);
+    this.showNotification(`✅ Task added${assignedTo ? ` • Assigned to ${assignedTo}` : ''}`);
+    this.showDealSidebar(dealId, 'timeline');
+  }
+
+  async aiAutoAssignTask(taskText, deal) {
+    // Use Gemini to determine who should be assigned
+    const geminiApiKey = await new Promise(resolve => {
+      chrome.storage.local.get(['geminiApiKey'], result => {
+        resolve(result.geminiApiKey);
+      });
+    });
+
+    if (!geminiApiKey) {
+      return 'Unassigned';
+    }
+
+    try {
+      const prompt = `Based on this task: "${taskText}" for a deal at "${deal.company || deal.emailSubject}", who should it be assigned to? Consider the contact: ${deal.contactEmail || 'unknown'}. Return only the person's name or email, or "Unassigned" if unclear.`;
+
+      const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }]
+        })
+      });
+
+      const data = await response.json();
+      const assignee = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || 'Unassigned';
+      return assignee;
+    } catch (error) {
+      console.error('AI auto-assign error:', error);
+      return 'Unassigned';
+    }
+  }
+
   renderDealSidebarKanban(deal) {
     const sidebar = document.getElementById('crm-deal-sidebar');
     if (!sidebar) return;
@@ -3813,16 +4092,26 @@ class GmailCRM {
 
     sidebar.innerHTML = `
       <div class="deal-detail-kanban">
-        <div class="deal-detail-header">
+        <div class="crm-sidebar-header">
           <div>
-            <div class="deal-detail-title">${deal.emailSubject || 'Untitled Deal'}</div>
-            <div class="deal-detail-meta">
-              <span style="background-color: ${stageColor}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 12px;">${stageName}</span>
-              <span>💰 ${deal.value ? `$${Number(deal.value).toLocaleString()}` : 'No value'}</span>
-              <span>👤 ${deal.contactEmail || 'No contact'}</span>
+            <h3>${deal.emailSubject || 'Untitled Deal'}</h3>
+            <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">
+              <span style="background-color: ${stageColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${stageName}</span>
+              <span style="margin-left: 8px;">💰 ${deal.value ? `$${Number(deal.value).toLocaleString()}` : 'No value'}</span>
             </div>
           </div>
-          <button class="crm-close-sidebar" id="crm-close-sidebar-btn" style="font-size: 24px; background: none; border: none; cursor: pointer;">×</button>
+          <button class="crm-close-sidebar" id="crm-close-sidebar-btn">×</button>
+        </div>
+
+        <div class="crm-deal-view-toggle">
+          <button class="crm-view-toggle-btn" id="crm-timeline-view-btn">Timeline</button>
+          <button class="crm-view-toggle-btn active" id="crm-kanban-view-btn">Kanban</button>
+        </div>
+
+        <div class="deal-detail-header" style="padding: 12px 16px; background: #f8f9fa; border-bottom: 1px solid #e8eaed;">
+          <div class="deal-detail-meta">
+            <span>👤 ${deal.contactEmail || 'No contact'}</span>
+          </div>
         </div>
 
         <div class="deal-detail-kanban-grid">
@@ -3914,6 +4203,14 @@ class GmailCRM {
     // Add event listeners
     document.getElementById('crm-close-sidebar-btn')?.addEventListener('click', () => {
       this.closeDealSidebar();
+    });
+
+    document.getElementById('crm-timeline-view-btn')?.addEventListener('click', () => {
+      this.showDealSidebar(deal.id, 'timeline');
+    });
+
+    document.getElementById('crm-kanban-view-btn')?.addEventListener('click', () => {
+      this.showDealSidebar(deal.id, 'kanban');
     });
 
     document.getElementById('crm-add-task-btn')?.addEventListener('click', () => {
