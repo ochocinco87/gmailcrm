@@ -1,11 +1,7 @@
-// Google Places API Autocomplete using REST API (no CSP issues)
+// OpenStreetMap Nominatim Autocomplete (no API key, no CSP issues)
 class PlacesAutocomplete {
   constructor(inputElement, apiKey, onSelect) {
-    console.log('PlacesAutocomplete constructor called', {
-      inputElement,
-      apiKey: apiKey ? apiKey.substring(0, 10) + '...' : 'missing',
-      onSelect: typeof onSelect
-    });
+    console.log('PlacesAutocomplete constructor called (using OpenStreetMap Nominatim)');
 
     if (!inputElement) {
       console.error('PlacesAutocomplete: Input element is null or undefined');
@@ -13,22 +9,13 @@ class PlacesAutocomplete {
     }
 
     this.input = inputElement;
-    this.apiKey = apiKey;
     this.onSelect = onSelect;
     this.resultsContainer = null;
-    this.sessionToken = this.generateSessionToken();
     this.selectedIndex = -1;
 
     this.init();
   }
 
-  generateSessionToken() {
-    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
-      const r = Math.random() * 16 | 0;
-      const v = c === 'x' ? r : (r & 0x3 | 0x8);
-      return v.toString(16);
-    });
-  }
 
   init() {
     console.log('PlacesAutocomplete init() called');
@@ -124,46 +111,69 @@ class PlacesAutocomplete {
 
   async searchPlaces(query) {
     try {
-      console.log('Searching places:', query);
+      console.log('Searching places with Nominatim:', query);
 
-      // Use Places API Autocomplete endpoint
-      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=establishment&key=${this.apiKey}&sessiontoken=${this.sessionToken}`;
+      // Use OpenStreetMap Nominatim API (free, no API key needed)
+      const url = `https://nominatim.openstreetmap.org/search?` +
+        `q=${encodeURIComponent(query + ' hospital clinic medical')}` +
+        `&format=json` +
+        `&addressdetails=1` +
+        `&limit=10` +
+        `&countrycodes=us`;
 
-      // Use a proxy or CORS-enabled endpoint
-      // Since we're in a content script, we need to use chrome.runtime to make the request
-      const response = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          type: 'places-autocomplete',
-          query: query,
-          apiKey: this.apiKey,
-          sessionToken: this.sessionToken
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            resolve(response);
-          }
-        });
+      const response = await fetch(url, {
+        headers: {
+          'User-Agent': 'Gmail-CRM-Extension/4.2.1'
+        }
       });
 
-      console.log('Places API response:', response);
+      if (!response.ok) {
+        throw new Error(`Nominatim API error: ${response.statusText}`);
+      }
 
-      if (response.predictions && response.predictions.length > 0) {
-        this.showResults(response.predictions);
+      const data = await response.json();
+      console.log('Nominatim API response:', data);
+
+      if (data && data.length > 0) {
+        // Filter for healthcare facilities
+        const healthcarePlaces = data.filter(place => {
+          const type = place.type || '';
+          const name = (place.name || '').toLowerCase();
+          const displayName = (place.display_name || '').toLowerCase();
+
+          return type === 'hospital' ||
+                 type === 'clinic' ||
+                 type === 'doctors' ||
+                 name.includes('hospital') ||
+                 name.includes('clinic') ||
+                 name.includes('medical') ||
+                 displayName.includes('hospital') ||
+                 displayName.includes('clinic') ||
+                 displayName.includes('medical');
+        });
+
+        const results = healthcarePlaces.length > 0 ? healthcarePlaces : data;
+
+        if (results.length > 0) {
+          this.showResults(results);
+        } else {
+          this.hideResults();
+        }
       } else {
         this.hideResults();
       }
     } catch (error) {
       console.error('Places search error:', error);
+      this.hideResults();
     }
   }
 
-  showResults(predictions) {
-    console.log('showResults called with', predictions.length, 'predictions');
+  showResults(places) {
+    console.log('showResults called with', places.length, 'places');
     this.resultsContainer.innerHTML = '';
     this.selectedIndex = -1;
 
-    predictions.forEach(prediction => {
+    places.forEach(place => {
       const item = document.createElement('div');
       item.className = 'place-result-item';
       item.style.cssText = `
@@ -173,12 +183,16 @@ class PlacesAutocomplete {
         transition: background 0.15s ease;
       `;
 
+      // Extract name and address from Nominatim response
+      const name = place.name || place.display_name.split(',')[0];
+      const address = place.display_name.replace(name + ', ', '');
+
       item.innerHTML = `
         <div style="font-weight: 500; color: #202124; margin-bottom: 4px;">
-          ${this.highlightMatch(prediction.structured_formatting.main_text, prediction.structured_formatting.main_text_matched_substrings)}
+          ${this.escapeHtml(name)}
         </div>
         <div style="font-size: 12px; color: #5f6368;">
-          ${prediction.structured_formatting.secondary_text || ''}
+          ${this.escapeHtml(address)}
         </div>
       `;
 
@@ -191,7 +205,7 @@ class PlacesAutocomplete {
       });
 
       item.addEventListener('click', () => {
-        this.selectPlace(prediction.place_id, prediction.description);
+        this.selectPlace(place);
       });
 
       this.resultsContainer.appendChild(item);
@@ -211,66 +225,34 @@ class PlacesAutocomplete {
     });
   }
 
-  highlightMatch(text, matches) {
-    if (!matches || matches.length === 0) return text;
-
-    let result = '';
-    let lastIndex = 0;
-
-    matches.forEach(match => {
-      result += text.substring(lastIndex, match.offset);
-      result += `<strong>${text.substring(match.offset, match.offset + match.length)}</strong>`;
-      lastIndex = match.offset + match.length;
-    });
-
-    result += text.substring(lastIndex);
-    return result;
+  escapeHtml(text) {
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
-  async selectPlace(placeId, description) {
-    console.log('Selected place:', placeId, description);
-    this.input.value = description;
+  selectPlace(place) {
+    console.log('Selected place:', place);
+
+    const name = place.name || place.display_name.split(',')[0];
+    this.input.value = name;
     this.hideResults();
 
-    try {
-      // Get place details
-      const details = await new Promise((resolve, reject) => {
-        chrome.runtime.sendMessage({
-          type: 'place-details',
-          placeId: placeId,
-          apiKey: this.apiKey,
-          sessionToken: this.sessionToken
-        }, (response) => {
-          if (chrome.runtime.lastError) {
-            reject(chrome.runtime.lastError);
-          } else {
-            resolve(response);
-          }
-        });
-      });
-
-      console.log('Place details:', details);
-
-      if (details.result) {
-        const place = details.result;
-        this.onSelect({
-          place_id: place.place_id,
-          name: place.name,
-          formatted_address: place.formatted_address,
-          geometry: {
-            location: place.geometry.location
-          },
-          website: place.website,
-          formatted_phone_number: place.formatted_phone_number,
-          types: place.types
-        });
-      }
-
-      // Generate new session token for next search
-      this.sessionToken = this.generateSessionToken();
-    } catch (error) {
-      console.error('Place details error:', error);
-    }
+    // Call onSelect with Nominatim data formatted to match expected structure
+    this.onSelect({
+      place_id: place.place_id || place.osm_id,
+      name: name,
+      formatted_address: place.display_name,
+      geometry: {
+        location: {
+          lat: parseFloat(place.lat),
+          lng: parseFloat(place.lon)
+        }
+      },
+      website: place.address?.website || null,
+      formatted_phone_number: place.address?.phone || null,
+      types: [place.type || 'healthcare']
+    });
   }
 
   hideResults() {

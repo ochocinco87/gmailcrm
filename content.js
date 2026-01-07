@@ -1860,20 +1860,13 @@ class GmailCRM {
 
     loadOrganizationsDropdown();
 
-    // Initialize Places API autocomplete (REST API - no CSP issues)
+    // Initialize PlacesAutocomplete (using OpenStreetMap - no API key needed)
     let selectedInstitution = null;
     let placesAutocomplete = null;
 
     // Initialize autocomplete after a short delay to ensure DOM is ready
-    setTimeout(async () => {
-      console.log('Initializing PlacesAutocomplete...');
-      console.log('PlacesAutocomplete class available?', typeof PlacesAutocomplete);
-
-      const result = await new Promise(resolve => {
-        chrome.storage.local.get(['googleMapsApiKey'], resolve);
-      });
-      const apiKey = result.googleMapsApiKey || 'AIzaSyBjxGVLxVh5gKZQ8N9kH0PmW3fZ7RKnXyI';
-      console.log('API key retrieved:', apiKey ? apiKey.substring(0, 10) + '...' : 'missing');
+    setTimeout(() => {
+      console.log('Initializing PlacesAutocomplete with OpenStreetMap...');
 
       const institutionInput = document.getElementById('crm-institution-search');
       console.log('Institution input element:', institutionInput);
@@ -1883,7 +1876,7 @@ class GmailCRM {
         return;
       }
 
-      placesAutocomplete = new PlacesAutocomplete(institutionInput, apiKey, (place) => {
+      placesAutocomplete = new PlacesAutocomplete(institutionInput, null, (place) => {
         selectedInstitution = {
           placeId: place.place_id,
           name: place.name,
