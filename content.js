@@ -1815,9 +1815,7 @@ class GmailCRM {
         </div>
         <div class="crm-form-group">
           <label>Institution <span style="color: #ea4335;">*</span></label>
-          <iframe id="crm-institution-autocomplete-iframe"
-                  style="width: 100%; height: 50px; border: none; display: block; margin-bottom: 8px;">
-          </iframe>
+          <input type="text" id="crm-institution-search" class="crm-input" placeholder="Search for hospital, clinic, or medical facility..." autocomplete="off" />
           <div class="crm-validation-error" id="crm-institution-error" style="display: none;"></div>
           <div id="crm-institution-selected" style="display: none; margin-top: 8px; padding: 12px; background: #e8f0fe; border-radius: 6px; font-size: 13px;">
             <div style="font-weight: 600; margin-bottom: 4px;" id="crm-selected-institution-name"></div>
@@ -1862,79 +1860,50 @@ class GmailCRM {
 
     loadOrganizationsDropdown();
 
-    // Initialize iframe-based institution autocomplete
+    // Initialize Places API autocomplete (REST API - no CSP issues)
     let selectedInstitution = null;
-    const iframe = document.getElementById('crm-institution-autocomplete-iframe');
-    iframe.src = chrome.runtime.getURL('institution-autocomplete.html');
+    let placesAutocomplete = null;
 
-    // Message handler for iframe communication
-    const messageHandler = async (event) => {
-      // Verify message is from our iframe
-      if (event.source !== iframe.contentWindow) return;
+    (async () => {
+      const result = await new Promise(resolve => {
+        chrome.storage.local.get(['googleMapsApiKey'], resolve);
+      });
+      const apiKey = result.googleMapsApiKey || 'AIzaSyBjxGVLxVh5gKZQ8N9kH0PmW3fZ7RKnXyI';
 
-      console.log('Received message from iframe:', event.data);
+      const institutionInput = document.getElementById('crm-institution-search');
+      placesAutocomplete = new PlacesAutocomplete(institutionInput, apiKey, (place) => {
+        selectedInstitution = {
+          placeId: place.place_id,
+          name: place.name,
+          address: place.formatted_address,
+          location: place.geometry?.location,
+          website: place.website || null,
+          phone: place.formatted_phone_number || null,
+          types: place.types || []
+        };
 
-      switch (event.data.type) {
-        case 'institution-iframe-ready':
-          // Get API key and initialize autocomplete
-          const result = await new Promise(resolve => {
-            chrome.storage.local.get(['googleMapsApiKey'], resolve);
-          });
-          const apiKey = result.googleMapsApiKey || 'AIzaSyBjxGVLxVh5gKZQ8N9kH0PmW3fZ7RKnXyI';
-          iframe.contentWindow.postMessage({
-            type: 'init-institution-autocomplete',
-            apiKey: apiKey
-          }, '*');
-          console.log('Sent init message to iframe');
-          break;
-
-        case 'institution-autocomplete-ready':
-          console.log('Institution autocomplete ready');
-          break;
-
-        case 'institution-selected':
-          const place = event.data.place;
-          selectedInstitution = {
-            placeId: place.place_id,
-            name: place.name,
-            address: place.formatted_address,
-            location: place.geometry?.location,
-            website: place.website || null,
-            phone: place.formatted_phone_number || null,
-            types: place.types || []
-          };
-
-          // Extract domain from website
-          if (selectedInstitution.website) {
-            try {
-              const url = new URL(selectedInstitution.website);
-              selectedInstitution.domain = url.hostname.replace('www.', '');
-            } catch (e) {
-              selectedInstitution.domain = null;
-            }
+        // Extract domain from website
+        if (selectedInstitution.website) {
+          try {
+            const url = new URL(selectedInstitution.website);
+            selectedInstitution.domain = url.hostname.replace('www.', '');
+          } catch (e) {
+            selectedInstitution.domain = null;
           }
+        }
 
-          // Show selected institution details
-          document.getElementById('crm-selected-institution-name').textContent = selectedInstitution.name;
-          document.getElementById('crm-selected-institution-address').textContent = selectedInstitution.address;
-          document.getElementById('crm-institution-selected').style.display = 'block';
-          console.log('Institution selected:', selectedInstitution);
-          break;
-
-        case 'institution-error':
-          this.showNotification('⚠️ ' + event.data.message);
-          break;
-
-        case 'institution-input':
-          // Input is being typed - can use for validation
-          break;
-      }
-    };
-
-    window.addEventListener('message', messageHandler);
+        // Show selected institution details
+        document.getElementById('crm-selected-institution-name').textContent = selectedInstitution.name;
+        document.getElementById('crm-selected-institution-address').textContent = selectedInstitution.address;
+        document.getElementById('crm-institution-selected').style.display = 'block';
+        console.log('Institution selected:', selectedInstitution);
+      });
+    })();
 
     document.getElementById('crm-cancel-deal')?.addEventListener('click', () => {
-      window.removeEventListener('message', messageHandler);
+      if (placesAutocomplete) {
+        placesAutocomplete.destroy();
+      }
       modal.remove();
     });
     document.getElementById('crm-save-deal')?.addEventListener('click', async () => {
@@ -2020,7 +1989,9 @@ class GmailCRM {
       // Trigger automation rules for new deal
       await this.checkAutomationTriggers('deal_created', deal);
 
-      window.removeEventListener('message', messageHandler);
+      if (placesAutocomplete) {
+        placesAutocomplete.destroy();
+      }
       modal.remove();
       this.renderPipelineBoard();
       this.showNotification('✅ Deal added successfully!');

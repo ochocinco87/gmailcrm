@@ -295,6 +295,25 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   }
+
+  // Google Places API proxy
+  if (request.type === 'places-autocomplete') {
+    handlePlacesAutocomplete(request).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ error: error.message });
+    });
+    return true;
+  }
+
+  if (request.type === 'place-details') {
+    handlePlaceDetails(request).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ error: error.message });
+    });
+    return true;
+  }
 });
 
 // Listen for storage changes to sync across tabs
@@ -974,6 +993,66 @@ async function deleteFirestoreDocument(path) {
   }
 
   return true;
+}
+
+// Google Places API handlers
+async function handlePlacesAutocomplete(request) {
+  try {
+    const { query, apiKey, sessionToken } = request;
+
+    const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?` +
+      `input=${encodeURIComponent(query)}` +
+      `&types=establishment` +
+      `&key=${apiKey}` +
+      `&sessiontoken=${sessionToken}`;
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Places API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+      throw new Error(`Places API status: ${data.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Places autocomplete error:', error);
+    throw error;
+  }
+}
+
+async function handlePlaceDetails(request) {
+  try {
+    const { placeId, apiKey, sessionToken } = request;
+
+    const fields = 'place_id,name,formatted_address,geometry,website,formatted_phone_number,types';
+    const url = `https://maps.googleapis.com/maps/api/place/details/json?` +
+      `place_id=${placeId}` +
+      `&fields=${fields}` +
+      `&key=${apiKey}` +
+      `&sessiontoken=${sessionToken}`;
+
+    const response = await fetch(url);
+
+    if (!response.ok) {
+      throw new Error(`Place Details API error: ${response.statusText}`);
+    }
+
+    const data = await response.json();
+
+    if (data.status !== 'OK') {
+      throw new Error(`Place Details API status: ${data.status}`);
+    }
+
+    return data;
+  } catch (error) {
+    console.error('Place details error:', error);
+    throw error;
+  }
 }
 
 console.log('Gmail CRM background service worker loaded');
