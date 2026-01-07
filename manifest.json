@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Effortless - Gmail CRM",
-  "version": "4.1.1",
+  "version": "4.1.2",
   "description": "Effortless CRM with powerful voice control. Manage deals, contacts, and pipelines directly from your Gmail inbox using natural voice commands.",
   "permissions": [
     "storage",
@@ -47,6 +47,9 @@
     "16": "icons/icon16.png",
     "48": "icons/icon48.png",
     "128": "icons/icon128.png"
+  },
+  "sandbox": {
+    "pages": ["institution-autocomplete.html"]
   },
   "web_accessible_resources": [
     {
