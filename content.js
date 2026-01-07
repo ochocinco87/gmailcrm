@@ -1562,24 +1562,24 @@ class GmailCRM {
     row.innerHTML = `
       <td class="crm-td-checkbox"><input type="checkbox" /></td>
       <td class="crm-td-name">
-        <span class="crm-deal-link" data-deal-id="${deal.id}">${deal.emailSubject || 'Untitled'}</span>
+        <span class="crm-deal-link" data-deal-id="${deal.id}">${this.escapeHtml(deal.emailSubject || 'Untitled')}</span>
       </td>
       <td class="crm-td-status">${statusDropdown}</td>
-      <td class="crm-td-priority">${deal.priority || 'High'}</td>
+      <td class="crm-td-priority">${this.escapeHtml(deal.priority || 'High')}</td>
       <td class="crm-td-value">${formattedValue}</td>
       <td class="crm-td-prob">${deal.probability || '90'}%</td>
       <td class="crm-td-weighted"><strong>${formattedWeightedValue}</strong></td>
-      <td class="crm-td-contact">${deal.contactEmail || ''}</td>
-      <td class="crm-td-company">${magic.companyName || '-'}</td>
+      <td class="crm-td-contact">${this.escapeHtml(deal.contactEmail || '')}</td>
+      <td class="crm-td-company">${this.escapeHtml(magic.companyName || '-')}</td>
       <td class="crm-td-age">${magic.dealAge}d</td>
       <td class="crm-td-last-activity ${activityClass}">${daysAgo}d ago</td>
-      <td class="crm-td-assigned">${deal.assignedTo || ''}</td>
+      <td class="crm-td-assigned">${this.escapeHtml(deal.assignedTo || '')}</td>
       <td class="crm-td-weekly-update">
         <input type="text"
           class="crm-weekly-update-input"
           data-deal-id="${deal.id}"
           placeholder="Add weekly update..."
-          value="${deal.weeklyUpdate || ''}"
+          value="${this.escapeHtml(deal.weeklyUpdate || '')}"
           title="${deal.weeklyUpdateDate ? `Last updated: ${new Date(deal.weeklyUpdateDate).toLocaleString()}` : 'No update yet'}"
         />
       </td>
@@ -7038,6 +7038,14 @@ Respond in JSON format:
     }
 
     return parts.join('\n');
+  }
+
+  // HTML escaping helper to prevent XSS
+  escapeHtml(text) {
+    if (!text) return '';
+    const div = document.createElement('div');
+    div.textContent = text;
+    return div.innerHTML;
   }
 
   // Magic Columns - Auto-calculated fields
