@@ -8251,8 +8251,9 @@ Available variables:
   startEmailBadgeMonitoring() {
     // Initial injection
     this.injectEmailBadges();
+    this.injectEmailDetailBadges();
 
-    // Set up MutationObserver to watch for new emails
+    // Set up MutationObserver to watch for new emails in list view
     const emailListContainer = document.querySelector('.AO');
     if (emailListContainer) {
       const observer = new MutationObserver(() => {
@@ -8267,9 +8268,34 @@ Available variables:
       console.log('Gmail CRM: Email badge monitoring started');
     }
 
+    // Set up observer for email detail view
+    const emailDetailContainer = document.querySelector('.nH.aHU');
+    if (emailDetailContainer) {
+      const detailObserver = new MutationObserver(() => {
+        this.injectEmailDetailBadges();
+      });
+
+      detailObserver.observe(emailDetailContainer, {
+        childList: true,
+        subtree: true
+      });
+
+      console.log('Gmail CRM: Email detail badge monitoring started');
+    }
+
+    // Listen for URL hash changes (when user switches between emails)
+    window.addEventListener('hashchange', () => {
+      // Clear detail badge markers so they can be re-injected
+      document.querySelectorAll('[data-crm-detail-badged]').forEach(el => {
+        delete el.dataset.crmDetailBadged;
+      });
+      this.injectEmailDetailBadges();
+    });
+
     // Also re-inject badges when deals change
     setInterval(() => {
       this.injectEmailBadges();
+      this.injectEmailDetailBadges();
     }, 5000); // Every 5 seconds
   }
 
@@ -8365,6 +8391,100 @@ Available variables:
 
     // Insert badges after subject
     subjectEl.parentElement.appendChild(badgeContainer);
+  }
+
+  injectEmailDetailBadges() {
+    // Find email detail view header (where labels like "External", "Inbox" appear)
+    const labelContainers = document.querySelectorAll('.hN:not([data-crm-detail-badged])');
+
+    labelContainers.forEach(labelContainer => {
+      // Mark as processed
+      labelContainer.dataset.crmDetailBadged = 'true';
+
+      // Get current email metadata
+      const subjectEl = document.querySelector('[data-legacy-message-id] h2');
+      const subject = subjectEl?.textContent?.trim();
+      if (!subject) return;
+
+      // Get thread ID from URL
+      const threadId = window.location.hash.match(/#inbox\/([^/]+)/)?.[1];
+
+      // Get sender email
+      const senderEl = document.querySelector('[email]');
+      const senderEmail = senderEl?.getAttribute('email');
+
+      // Check if this email is linked to any deals
+      const linkedDeals = [];
+      Object.values(this.deals).forEach(deal => {
+        if (!deal.linkedEmails) return;
+
+        const isLinked = deal.linkedEmails.some(email => {
+          // Match by thread ID, subject, or sender
+          if (threadId && email.threadId === threadId) return true;
+          if (email.subject === subject) return true;
+          if (senderEmail && email.from === senderEmail && email.subject === subject) return true;
+          return false;
+        });
+
+        if (isLinked) {
+          const pipeline = this.pipelines.find(p => p.id === deal.pipelineId);
+          linkedDeals.push({
+            deal: deal,
+            pipeline: pipeline
+          });
+        }
+      });
+
+      // Inject badges if email is linked
+      if (linkedDeals.length > 0) {
+        this.addBadgesToEmailDetailHeader(labelContainer, linkedDeals);
+      }
+    });
+  }
+
+  addBadgesToEmailDetailHeader(labelContainer, linkedDeals) {
+    // Check if badges already exist
+    if (labelContainer.querySelector('.crm-email-badge-container')) return;
+
+    const badgeContainer = document.createElement('span');
+    badgeContainer.className = 'crm-email-badge-container';
+    badgeContainer.style.display = 'inline-flex';
+    badgeContainer.style.marginLeft = '8px';
+
+    linkedDeals.forEach(({ deal, pipeline }) => {
+      // Deal badge
+      const dealBadge = document.createElement('span');
+      dealBadge.className = 'crm-email-badge crm-deal-badge';
+      dealBadge.textContent = deal.emailSubject || deal.company || 'Deal';
+      dealBadge.dataset.dealId = deal.id;
+      dealBadge.title = `Click to open ${deal.emailSubject || 'deal'}`;
+
+      // Pipeline badge
+      const pipelineBadge = document.createElement('span');
+      pipelineBadge.className = 'crm-email-badge crm-pipeline-badge';
+      pipelineBadge.textContent = pipeline?.name || 'Pipeline';
+      pipelineBadge.dataset.pipelineId = pipeline?.id;
+      pipelineBadge.title = `Click to view ${pipeline?.name || 'pipeline'}`;
+
+      // Click handlers
+      dealBadge.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openDealFromBadge(deal.id);
+      });
+
+      pipelineBadge.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openPipelineFromBadge(pipeline?.id);
+      });
+
+      badgeContainer.appendChild(dealBadge);
+      badgeContainer.appendChild(pipelineBadge);
+    });
+
+    // Insert badges after labels
+    labelContainer.appendChild(badgeContainer);
   }
 
   openDealFromBadge(dealId) {
