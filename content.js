@@ -1864,13 +1864,25 @@ class GmailCRM {
     let selectedInstitution = null;
     let placesAutocomplete = null;
 
-    (async () => {
+    // Initialize autocomplete after a short delay to ensure DOM is ready
+    setTimeout(async () => {
+      console.log('Initializing PlacesAutocomplete...');
+      console.log('PlacesAutocomplete class available?', typeof PlacesAutocomplete);
+
       const result = await new Promise(resolve => {
         chrome.storage.local.get(['googleMapsApiKey'], resolve);
       });
       const apiKey = result.googleMapsApiKey || 'AIzaSyBjxGVLxVh5gKZQ8N9kH0PmW3fZ7RKnXyI';
+      console.log('API key retrieved:', apiKey ? apiKey.substring(0, 10) + '...' : 'missing');
 
       const institutionInput = document.getElementById('crm-institution-search');
+      console.log('Institution input element:', institutionInput);
+
+      if (!institutionInput) {
+        console.error('Institution input not found! ID: crm-institution-search');
+        return;
+      }
+
       placesAutocomplete = new PlacesAutocomplete(institutionInput, apiKey, (place) => {
         selectedInstitution = {
           placeId: place.place_id,
@@ -1898,7 +1910,9 @@ class GmailCRM {
         document.getElementById('crm-institution-selected').style.display = 'block';
         console.log('Institution selected:', selectedInstitution);
       });
-    })();
+
+      console.log('PlacesAutocomplete initialization complete');
+    }, 100);
 
     document.getElementById('crm-cancel-deal')?.addEventListener('click', () => {
       if (placesAutocomplete) {
