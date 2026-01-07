@@ -883,10 +883,17 @@ Be concise and clear.`
     }
 
     // Update the UI to show the new deal
-    if (window.gmailCRM.currentPipeline?.id === currentPipeline.id) {
-      stepEl = window.visualExecutionSidebar?.showStep('Refreshing view...', 'progress');
-      await this.delay(300);
+    stepEl = window.visualExecutionSidebar?.showStep('Refreshing view...', 'progress');
+    await this.delay(300);
 
+    try {
+      // Ensure the pipeline is set correctly
+      window.gmailCRM.currentPipeline = currentPipeline;
+
+      // Small delay to ensure state is updated
+      await this.delay(100);
+
+      // Refresh the view
       window.gmailCRM.showPipelineView();
 
       if (stepEl) {
@@ -894,7 +901,7 @@ Be concise and clear.`
         stepEl.querySelector('.voice-exec-icon').textContent = '✅';
         stepEl.querySelector('.voice-exec-text').textContent = 'View updated';
       }
-      await this.delay(500);
+      await this.delay(300);
 
       // Scroll to and highlight the new deal
       setTimeout(() => {
@@ -904,6 +911,14 @@ Be concise and clear.`
           newDealCard.style.animation = 'highlightField 2s ease';
         }
       }, 500);
+    } catch (error) {
+      console.error('Error refreshing view:', error);
+      // Still mark as complete to avoid hanging
+      if (stepEl) {
+        stepEl.className = 'voice-exec-step success';
+        stepEl.querySelector('.voice-exec-icon').textContent = '✅';
+        stepEl.querySelector('.voice-exec-text').textContent = 'Deal created';
+      }
     }
 
     // Store deal in context for follow-up commands
