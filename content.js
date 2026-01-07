@@ -751,7 +751,7 @@ class GmailCRM {
       completedTaskCount: magic.completedTaskCount,
       pendingTaskCount: magic.pendingTaskCount,
       callCount: magic.callCount,
-      weeklyUpdate: deal.weeklyUpdates && deal.weeklyUpdates.length > 0 ? deal.weeklyUpdates[deal.weeklyUpdates.length - 1].text.substring(0, 60) + '...' : null
+      weeklyUpdate: deal.weeklyUpdate || (deal.weeklyUpdates && deal.weeklyUpdates.length > 0 ? deal.weeklyUpdates[deal.weeklyUpdates.length - 1].text : null)
     };
 
     // Priority color
@@ -1813,6 +1813,24 @@ class GmailCRM {
           </div>
           <div class="crm-validation-error" id="crm-deal-email-error" style="display: none;"></div>
         </div>
+        <div class="crm-form-group">
+          <label>Institution <span style="color: #ea4335;">*</span></label>
+          <input type="text" id="crm-deal-institution-search" class="crm-input" placeholder="Search for hospital, clinic, or medical facility..." required />
+          <div class="crm-validation-error" id="crm-institution-error" style="display: none;"></div>
+          <div id="crm-institution-selected" style="display: none; margin-top: 8px; padding: 12px; background: #e8f0fe; border-radius: 6px; font-size: 13px;">
+            <div style="font-weight: 600; margin-bottom: 4px;" id="crm-selected-institution-name"></div>
+            <div style="color: #5f6368; font-size: 12px;" id="crm-selected-institution-address"></div>
+            <div style="margin-top: 8px; font-size: 12px;">
+              <span style="color: #5f6368;">Organization:</span>
+              <select id="crm-institution-org-select" class="crm-input" style="margin-left: 8px; display: inline-block; width: auto;">
+                <option value="">Create new organization</option>
+              </select>
+            </div>
+            <div style="margin-top: 8px;" id="crm-new-org-input" style="display: none;">
+              <input type="text" id="crm-new-org-name" class="crm-input" placeholder="Enter organization name (e.g., UPMC)" style="margin-top: 4px;" />
+            </div>
+          </div>
+        </div>
         <div class="crm-modal-actions">
           <button class="crm-btn" id="crm-cancel-deal">Cancel</button>
           <button class="crm-btn-primary" id="crm-save-deal">Save Deal</button>
@@ -1821,6 +1839,56 @@ class GmailCRM {
     `;
 
     document.body.appendChild(modal);
+
+    // Load organizations for dropdown
+    const loadOrganizationsDropdown = async () => {
+      const orgs = await this.getOrganizations();
+      const select = document.getElementById('crm-institution-org-select');
+      orgs.forEach(org => {
+        const option = document.createElement('option');
+        option.value = org.id;
+        option.textContent = org.name;
+        select.appendChild(option);
+      });
+
+      // Show/hide new org input based on selection
+      select.addEventListener('change', () => {
+        const newOrgInput = document.getElementById('crm-new-org-input');
+        newOrgInput.style.display = select.value === '' ? 'block' : 'none';
+      });
+    };
+
+    loadOrganizationsDropdown();
+
+    // Initialize Google Maps Autocomplete for institution search
+    let selectedInstitution = null;
+
+    this.initializeInstitutionSearch(document.getElementById('crm-deal-institution-search'), (place) => {
+      selectedInstitution = {
+        placeId: place.place_id,
+        name: place.name,
+        address: place.formatted_address,
+        location: place.geometry?.location,
+        website: place.website || null,
+        phone: place.formatted_phone_number || null,
+        types: place.types || []
+      };
+
+      // Extract domain from website
+      if (selectedInstitution.website) {
+        try {
+          const url = new URL(selectedInstitution.website);
+          selectedInstitution.domain = url.hostname.replace('www.', '');
+        } catch (e) {
+          selectedInstitution.domain = null;
+        }
+      }
+
+      // Show selected institution details
+      document.getElementById('crm-selected-institution-name').textContent = selectedInstitution.name;
+      document.getElementById('crm-selected-institution-address').textContent = selectedInstitution.address;
+      document.getElementById('crm-institution-selected').style.display = 'block';
+    });
 
     document.getElementById('crm-cancel-deal')?.addEventListener('click', () => modal.remove());
     document.getElementById('crm-save-deal')?.addEventListener('click', async () => {
@@ -1852,9 +1920,33 @@ class GmailCRM {
         hasError = true;
       }
 
+      // Validate institution
+      if (!selectedInstitution) {
+        this.showValidationError('crm-institution-error', 'Please search and select an institution');
+        hasError = true;
+      }
+
       if (hasError) {
         return;
       }
+
+      // Handle organization creation or selection
+      const orgSelect = document.getElementById('crm-institution-org-select');
+      let organizationId = orgSelect.value;
+
+      if (!organizationId) {
+        // Create new organization
+        const newOrgName = document.getElementById('crm-new-org-name').value.trim();
+        if (newOrgName) {
+          organizationId = await this.createOrganization(newOrgName);
+        }
+      }
+
+      // Save or update institution
+      const institutionId = await this.saveInstitution({
+        ...selectedInstitution,
+        organizationId: organizationId || null
+      });
 
       const dealId = 'deal_' + Date.now();
       const deal = {
@@ -1869,7 +1961,12 @@ class GmailCRM {
         probability: 90,
         lastUpdated: new Date().toISOString(),
         createdAt: new Date().toISOString(),
-        status: 'Active'
+        status: 'Active',
+        institutionId: institutionId,
+        institution: selectedInstitution.name,
+        institutionAddress: selectedInstitution.address,
+        institutionDomain: selectedInstitution.domain,
+        organizationId: organizationId
       };
 
       await this.saveDeal(deal);
@@ -8914,6 +9011,125 @@ Available variables:
         body: `Hi {{firstName}},\n\nI hope this email finds you well. I wanted to check in and see how things are progressing with {{dealName}}.\n\nIs there anything I can help with or any questions I can answer?\n\nBest,\n[Your name]`
       }
     ];
+  }
+
+  // Google Maps & Institution/Organization Management
+
+  async loadGoogleMapsAPI() {
+    // Check if already loaded
+    if (window.google && window.google.maps && window.google.maps.places) {
+      return Promise.resolve();
+    }
+
+    // Get API key from storage
+    const result = await new Promise(resolve => {
+      chrome.storage.local.get(['googleMapsApiKey'], resolve);
+    });
+
+    const apiKey = result.googleMapsApiKey || 'AIzaSyBjxGVLxVh5gKZQ8N9kH0PmW3fZ7RKnXyI'; // Default key
+
+    return new Promise((resolve, reject) => {
+      const script = document.createElement('script');
+      script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+      script.async = true;
+      script.defer = true;
+      script.onload = resolve;
+      script.onerror = reject;
+      document.head.appendChild(script);
+    });
+  }
+
+  async initializeInstitutionSearch(input, onSelect) {
+    try {
+      await this.loadGoogleMapsAPI();
+
+      const autocomplete = new google.maps.places.Autocomplete(input, {
+        types: ['hospital', 'doctor', 'health', 'establishment'],
+        fields: ['place_id', 'name', 'formatted_address', 'geometry', 'website', 'formatted_phone_number', 'types']
+      });
+
+      autocomplete.addListener('place_changed', () => {
+        const place = autocomplete.getPlace();
+
+        if (!place.geometry) {
+          this.showNotification('⚠️ No details available for this place');
+          return;
+        }
+
+        onSelect(place);
+      });
+    } catch (error) {
+      console.error('Failed to initialize Google Maps:', error);
+      this.showNotification('⚠️ Failed to load Google Maps. Please add your API key in settings.');
+    }
+  }
+
+  async getOrganizations() {
+    const result = await new Promise(resolve => {
+      chrome.storage.local.get(['organizations'], resolve);
+    });
+
+    return result.organizations || [];
+  }
+
+  async createOrganization(name) {
+    const orgId = 'org_' + Date.now();
+    const organizations = await this.getOrganizations();
+
+    organizations.push({
+      id: orgId,
+      name: name,
+      createdAt: new Date().toISOString()
+    });
+
+    await new Promise(resolve => {
+      chrome.storage.local.set({ organizations }, resolve);
+    });
+
+    return orgId;
+  }
+
+  async getInstitutions() {
+    const result = await new Promise(resolve => {
+      chrome.storage.local.get(['institutions'], resolve);
+    });
+
+    return result.institutions || [];
+  }
+
+  async saveInstitution(institutionData) {
+    const institutions = await this.getInstitutions();
+
+    // Check if institution already exists by placeId
+    let existing = institutions.find(i => i.placeId === institutionData.placeId);
+
+    if (existing) {
+      // Update existing institution
+      Object.assign(existing, institutionData);
+      existing.updatedAt = new Date().toISOString();
+
+      await new Promise(resolve => {
+        chrome.storage.local.set({ institutions }, resolve);
+      });
+
+      return existing.id;
+    } else {
+      // Create new institution
+      const institutionId = 'inst_' + Date.now();
+      const newInstitution = {
+        id: institutionId,
+        ...institutionData,
+        createdAt: new Date().toISOString()
+      };
+
+      institutions.push(newInstitution);
+
+      await new Promise(resolve => {
+        chrome.storage.local.set({ institutions }, resolve);
+      });
+
+      return institutionId;
+    }
   }
 }
 
