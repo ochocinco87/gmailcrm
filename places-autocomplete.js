@@ -1,6 +1,17 @@
 // Google Places API Autocomplete using REST API (no CSP issues)
 class PlacesAutocomplete {
   constructor(inputElement, apiKey, onSelect) {
+    console.log('PlacesAutocomplete constructor called', {
+      inputElement,
+      apiKey: apiKey ? apiKey.substring(0, 10) + '...' : 'missing',
+      onSelect: typeof onSelect
+    });
+
+    if (!inputElement) {
+      console.error('PlacesAutocomplete: Input element is null or undefined');
+      return;
+    }
+
     this.input = inputElement;
     this.apiKey = apiKey;
     this.onSelect = onSelect;
@@ -20,6 +31,8 @@ class PlacesAutocomplete {
   }
 
   init() {
+    console.log('PlacesAutocomplete init() called');
+
     // Create results container
     this.resultsContainer = document.createElement('div');
     this.resultsContainer.className = 'places-autocomplete-results';
@@ -42,22 +55,32 @@ class PlacesAutocomplete {
     this.resultsContainer.style.left = rect.left + 'px';
 
     document.body.appendChild(this.resultsContainer);
+    console.log('PlacesAutocomplete: Results container added to body', {
+      top: this.resultsContainer.style.top,
+      left: this.resultsContainer.style.left,
+      zIndex: this.resultsContainer.style.zIndex
+    });
 
     // Input event listener
     let debounceTimer;
     this.input.addEventListener('input', (e) => {
+      console.log('Input event fired:', e.target.value);
       clearTimeout(debounceTimer);
       const query = e.target.value.trim();
 
       if (query.length < 3) {
+        console.log('Query too short (<3 chars), hiding results');
         this.hideResults();
         return;
       }
 
+      console.log('Debouncing search for:', query);
       debounceTimer = setTimeout(() => {
         this.searchPlaces(query);
       }, 300);
     });
+
+    console.log('PlacesAutocomplete: Input listener attached');
 
     // Keyboard navigation
     this.input.addEventListener('keydown', (e) => {
@@ -136,6 +159,7 @@ class PlacesAutocomplete {
   }
 
   showResults(predictions) {
+    console.log('showResults called with', predictions.length, 'predictions');
     this.resultsContainer.innerHTML = '';
     this.selectedIndex = -1;
 
@@ -178,6 +202,13 @@ class PlacesAutocomplete {
     this.resultsContainer.style.left = rect.left + 'px';
     this.resultsContainer.style.minWidth = this.input.offsetWidth + 'px';
     this.resultsContainer.style.display = 'block';
+
+    console.log('Results dropdown displayed:', {
+      display: this.resultsContainer.style.display,
+      top: this.resultsContainer.style.top,
+      left: this.resultsContainer.style.left,
+      childCount: this.resultsContainer.children.length
+    });
   }
 
   highlightMatch(text, matches) {
