@@ -114,16 +114,17 @@ class PlacesAutocomplete {
       console.log('Searching places with Nominatim:', query);
 
       // Use OpenStreetMap Nominatim API (free, no API key needed)
+      // Search for the query as-is, then filter for healthcare
       const url = `https://nominatim.openstreetmap.org/search?` +
-        `q=${encodeURIComponent(query + ' hospital clinic medical')}` +
+        `q=${encodeURIComponent(query)}` +
         `&format=json` +
         `&addressdetails=1` +
-        `&limit=10` +
+        `&limit=20` +
         `&countrycodes=us`;
 
       const response = await fetch(url, {
         headers: {
-          'User-Agent': 'Gmail-CRM-Extension/4.2.1'
+          'User-Agent': 'Gmail-CRM-Extension/4.3.0'
         }
       });
 
@@ -138,21 +139,28 @@ class PlacesAutocomplete {
         // Filter for healthcare facilities
         const healthcarePlaces = data.filter(place => {
           const type = place.type || '';
+          const className = place.class || '';
           const name = (place.name || '').toLowerCase();
           const displayName = (place.display_name || '').toLowerCase();
 
-          return type === 'hospital' ||
+          // Check if it's a healthcare facility
+          return className === 'amenity' && (type === 'hospital' || type === 'clinic' || type === 'doctors') ||
+                 type === 'hospital' ||
                  type === 'clinic' ||
                  type === 'doctors' ||
                  name.includes('hospital') ||
                  name.includes('clinic') ||
                  name.includes('medical') ||
+                 name.includes('health') ||
                  displayName.includes('hospital') ||
                  displayName.includes('clinic') ||
-                 displayName.includes('medical');
+                 displayName.includes('medical center');
         });
 
-        const results = healthcarePlaces.length > 0 ? healthcarePlaces : data;
+        console.log('Healthcare places filtered:', healthcarePlaces.length, 'out of', data.length);
+
+        // Show healthcare places if found, otherwise show all results
+        const results = healthcarePlaces.length > 0 ? healthcarePlaces : data.slice(0, 10);
 
         if (results.length > 0) {
           this.showResults(results);
