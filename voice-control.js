@@ -1558,12 +1558,38 @@ Be concise and clear.`
     const threadId = window.location.hash.match(/#inbox\/([^/]+)/)?.[1] || Date.now().toString();
     const url = window.location.href;
 
+    // Extract email body - try multiple selectors for Gmail's structure
+    let body = '';
+    const bodySelectors = [
+      '.a3s.aiL',  // Main email body class
+      '.ii.gt',    // Alternative body class
+      'div[data-message-id] .a3s',  // Body within message
+      '.gs .ii',   // Another variant
+    ];
+
+    for (const selector of bodySelectors) {
+      const bodyEl = document.querySelector(selector);
+      if (bodyEl && bodyEl.textContent.trim()) {
+        body = bodyEl.textContent.trim();
+        break;
+      }
+    }
+
+    // If still no body, try getting all text from the message area
+    if (!body) {
+      const messageArea = document.querySelector('[data-legacy-message-id]');
+      if (messageArea) {
+        body = messageArea.textContent.trim();
+      }
+    }
+
     return {
       threadId,
       subject,
       from,
       date: Date.now(),
-      url
+      url,
+      body: body || 'Email body could not be extracted'
     };
   }
 

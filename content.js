@@ -3226,6 +3226,7 @@ class GmailCRM {
       date: emailMetadata.date,
       threadId: emailMetadata.threadId,
       url: emailMetadata.url,
+      body: emailMetadata.body || emailMetadata.bodySnippet || '',
       linkedAt: new Date().toISOString()
     });
 
@@ -3548,7 +3549,7 @@ class GmailCRM {
         <div class="email-preview-from"><strong>From:</strong> ${email.from || 'Unknown'}</div>
         <div class="email-preview-date"><strong>Date:</strong> ${new Date(email.date).toLocaleString()}</div>
         <div class="email-preview-body">
-          ${email.body ? email.body.replace(/\n/g, '<br>') : 'Email body not available. <a href="' + (email.url || '#') + '" target="_blank">Open in Gmail</a>'}
+          ${email.body ? email.body.replace(/\n/g, '<br>') : (email.threadId ? '<a href="#" class="crm-email-preview-open-link" data-thread-id="' + email.threadId + '">Open email in Gmail to view content</a>' : 'Email body not available')}
         </div>
       </div>
     `;
@@ -3564,6 +3565,18 @@ class GmailCRM {
     document.getElementById('email-preview-close-btn')?.addEventListener('click', () => {
       this.closeEmailPreview();
     });
+
+    // Open in Gmail link handler
+    const openLink = panel.querySelector('.crm-email-preview-open-link');
+    if (openLink) {
+      openLink.addEventListener('click', (e) => {
+        e.preventDefault();
+        const threadId = openLink.dataset.threadId;
+        if (threadId) {
+          window.location.hash = `#inbox/${threadId}`;
+        }
+      });
+    }
   }
 
   closeEmailPreview() {
@@ -4292,17 +4305,21 @@ class GmailCRM {
                  data-item-index="${index}"
                  ${item.type === 'email' && item.data ? `
                    data-email-url="${this.escapeHtml(item.data.url || '')}"
+                   data-email-thread-id="${this.escapeHtml(item.data.threadId || '')}"
                    data-email-id="${this.escapeHtml(item.data.id || '')}"
                    data-email-subject="${this.escapeHtml(item.data.subject || '')}"
                    data-email-from="${this.escapeHtml(item.data.from || '')}"
                    data-email-body="${this.escapeHtml((item.data.body || '').substring(0, 500))}"
-                 ` : ''}>
-              <div class="crm-timeline-icon">${item.icon}</div>
+                 ` : ''}
+                 ${item.type === 'task' && item.data ? `data-task-id="${this.escapeHtml(item.data.id || '')}"` : ''}>
+              ${item.type === 'task' ? `
+                <input type="checkbox" class="crm-timeline-task-checkbox" ${item.completed ? 'checked' : ''} data-task-id="${this.escapeHtml(item.data.id || '')}" />
+              ` : `<div class="crm-timeline-icon">${item.icon}</div>`}
               <div class="crm-timeline-header">
-                <div class="crm-timeline-title ${item.type === 'email' ? 'crm-email-title-link' : ''}">${item.title}</div>
+                <div class="crm-timeline-title ${item.type === 'email' ? 'crm-email-title-link' : ''} ${item.type === 'task' && item.completed ? 'task-strikethrough' : ''}">${item.title}</div>
                 <div class="crm-timeline-date">${item.date.toLocaleString()}</div>
               </div>
-              ${item.content ? `<div class="crm-timeline-content">${item.content}</div>` : ''}
+              ${item.content ? `<div class="crm-timeline-content ${item.type === 'task' && item.completed ? 'task-strikethrough' : ''}">${item.content}</div>` : ''}
               ${item.data && item.data.images ? item.data.images.map(img => `
                 <img src="${img}" class="crm-timeline-slack-image" alt="Slack image" />
               `).join('') : ''}
@@ -4372,11 +4389,24 @@ class GmailCRM {
 
     // Email click and hover handlers
     sidebar.querySelectorAll('.crm-email-item').forEach(emailItem => {
-      // Click handler - open email in Gmail
+      // Click handler - open email in Gmail (same window)
       emailItem.addEventListener('click', () => {
-        const emailUrl = emailItem.dataset.emailUrl;
-        if (emailUrl) {
-          window.open(emailUrl, '_blank');
+        const threadId = emailItem.dataset.emailThreadId;
+        if (threadId) {
+          // Navigate to email within Gmail
+          window.location.hash = `#inbox/${threadId}`;
+        } else {
+          // Fallback: try to extract thread ID from URL
+          const emailUrl = emailItem.dataset.emailUrl;
+          if (emailUrl) {
+            const match = emailUrl.match(/\/([a-f0-9]+)$/);
+            if (match) {
+              window.location.hash = `#inbox/${match[1]}`;
+            } else {
+              // Last resort: open in current window
+              window.location.href = emailUrl;
+            }
+          }
         }
       });
 
@@ -4395,6 +4425,26 @@ class GmailCRM {
 
       // Add visual cue that email is clickable
       emailItem.style.cursor = 'pointer';
+    });
+
+    // Task checkbox handlers
+    sidebar.querySelectorAll('.crm-timeline-task-checkbox').forEach(checkbox => {
+      checkbox.addEventListener('change', async (e) => {
+        e.stopPropagation(); // Prevent triggering parent click events
+        const taskId = checkbox.dataset.taskId;
+        if (!deal.tasks) return;
+
+        // Find and update the task
+        const task = deal.tasks.find(t => t.id === taskId);
+        if (task) {
+          task.completed = checkbox.checked;
+          task.completedAt = checkbox.checked ? new Date().toISOString() : null;
+          await this.saveDeal(deal);
+
+          // Refresh timeline view to show strikethrough
+          this.showDealSidebar(deal.id, 'timeline');
+        }
+      });
     });
   }
 
@@ -4748,7 +4798,7 @@ class GmailCRM {
         <h4>Linked Emails (${linkedEmails.length})</h4>
         <div class="crm-emails-list">
           ${linkedEmails.slice().reverse().map((email, idx) => `
-            <div class="crm-email-item crm-email-link-item" data-email-url="${email.url || '#'}">
+            <div class="crm-email-item crm-email-link-item" data-email-url="${email.url || '#'}" data-email-thread-id="${email.threadId || ''}">
               <div class="crm-email-subject">${email.subject || 'No Subject'}</div>
               <div class="crm-email-meta">
                 <span>${email.from || 'Unknown'}</span> • <span>${new Date(email.date).toLocaleDateString()}</span>
@@ -5044,12 +5094,25 @@ class GmailCRM {
       });
     });
 
-    // Linked email click listeners - open email in Gmail
+    // Linked email click listeners - open email in Gmail (same window)
     sidebar.querySelectorAll('.crm-email-link-item').forEach(emailItem => {
       emailItem.addEventListener('click', () => {
-        const url = emailItem.dataset.emailUrl;
-        if (url && url !== '#') {
-          window.location.href = url;
+        const threadId = emailItem.dataset.emailThreadId;
+        if (threadId) {
+          // Navigate to email within Gmail
+          window.location.hash = `#inbox/${threadId}`;
+        } else {
+          // Fallback: try to extract thread ID from URL
+          const url = emailItem.dataset.emailUrl;
+          if (url && url !== '#') {
+            const match = url.match(/\/([a-f0-9]+)$/);
+            if (match) {
+              window.location.hash = `#inbox/${match[1]}`;
+            } else {
+              // Last resort: open in current window
+              window.location.href = url;
+            }
+          }
         }
       });
     });
