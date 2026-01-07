@@ -468,6 +468,33 @@
   background: #f8f9fa;
 }
 
+/* Weekly Update input in table */
+.crm-weekly-update-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid #dadce0;
+  border-radius: 4px;
+  font-size: 13px;
+  background: white;
+  font-family: inherit;
+  transition: border-color 0.2s ease;
+}
+
+.crm-weekly-update-input:focus {
+  outline: none;
+  border-color: #667eea;
+  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.1);
+}
+
+.crm-weekly-update-input::placeholder {
+  color: #9aa0a6;
+}
+
+.crm-td-weekly-update {
+  min-width: 200px;
+  max-width: 300px;
+}
+
 /* ========== Kanban View ========== */
 .crm-kanban-view {
   flex: 1;

@@ -483,6 +483,7 @@ class GmailCRM {
                 <th class="crm-th-age">Age</th>
                 <th class="crm-th-last-activity">Last Activity</th>
                 <th class="crm-th-assigned">Assigned To</th>
+                <th class="crm-th-weekly-update">Weekly Update</th>
               </tr>
             </thead>
             <tbody id="crm-deals-tbody"></tbody>
@@ -653,7 +654,7 @@ class GmailCRM {
         const stageRow = document.createElement('tr');
         stageRow.className = 'crm-stage-row';
         stageRow.innerHTML = `
-          <td colspan="10" class="crm-stage-group" style="background-color: ${stage.color}20; border-left: 4px solid ${stage.color};">
+          <td colspan="13" class="crm-stage-group" style="background-color: ${stage.color}20; border-left: 4px solid ${stage.color};">
             <strong>${stage.name}</strong>
             <button class="crm-add-to-stage" data-stage-id="${stage.id}">+ Add</button>
           </td>
@@ -1573,6 +1574,15 @@ class GmailCRM {
       <td class="crm-td-age">${magic.dealAge}d</td>
       <td class="crm-td-last-activity ${activityClass}">${daysAgo}d ago</td>
       <td class="crm-td-assigned">${deal.assignedTo || ''}</td>
+      <td class="crm-td-weekly-update">
+        <input type="text"
+          class="crm-weekly-update-input"
+          data-deal-id="${deal.id}"
+          placeholder="Add weekly update..."
+          value="${deal.weeklyUpdate || ''}"
+          title="${deal.weeklyUpdateDate ? `Last updated: ${new Date(deal.weeklyUpdateDate).toLocaleString()}` : 'No update yet'}"
+        />
+      </td>
     `;
 
     // Add click handler for deal name
@@ -1582,6 +1592,46 @@ class GmailCRM {
         dealLink.addEventListener('click', (e) => {
           e.stopPropagation();
           this.showDealSidebar(deal.id);
+        });
+      }
+
+      // Add weekly update change handler
+      const weeklyUpdateInput = row.querySelector('.crm-weekly-update-input');
+      if (weeklyUpdateInput) {
+        weeklyUpdateInput.addEventListener('blur', async (e) => {
+          const newValue = e.target.value.trim();
+          if (newValue !== (deal.weeklyUpdate || '')) {
+            // Save old update to history
+            if (!deal.weeklyUpdates) {
+              deal.weeklyUpdates = [];
+            }
+
+            // If there was a previous update, save it to history
+            if (deal.weeklyUpdate) {
+              deal.weeklyUpdates.push({
+                text: deal.weeklyUpdate,
+                date: deal.weeklyUpdateDate || new Date().toISOString()
+              });
+            }
+
+            // Set new update
+            deal.weeklyUpdate = newValue;
+            deal.weeklyUpdateDate = new Date().toISOString();
+            deal.lastUpdated = new Date().toISOString();
+
+            await this.saveDeal(deal);
+            this.showNotification('✅ Weekly update saved');
+
+            // Update tooltip
+            e.target.title = `Last updated: ${new Date(deal.weeklyUpdateDate).toLocaleString()}`;
+          }
+        });
+
+        // Save on Enter key
+        weeklyUpdateInput.addEventListener('keydown', (e) => {
+          if (e.key === 'Enter') {
+            e.target.blur();
+          }
         });
       }
 
