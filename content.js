@@ -47,6 +47,9 @@ class GmailCRM {
     // Inject development helper
     this.injectDevHelper();
 
+    // Start monitoring for emails to add badges
+    this.startEmailBadgeMonitoring();
+
     this.initialized = true;
     console.log('Gmail CRM: Initialized successfully');
   }
@@ -8175,6 +8178,151 @@ Available variables:
 
     const composeUrl = `https://mail.google.com/mail/?view=cm&fs=1&${params.toString()}`;
     window.open(composeUrl, '_blank');
+  }
+
+  // Email Badge System
+  startEmailBadgeMonitoring() {
+    // Initial injection
+    this.injectEmailBadges();
+
+    // Set up MutationObserver to watch for new emails
+    const emailListContainer = document.querySelector('.AO');
+    if (emailListContainer) {
+      const observer = new MutationObserver(() => {
+        this.injectEmailBadges();
+      });
+
+      observer.observe(emailListContainer, {
+        childList: true,
+        subtree: true
+      });
+
+      console.log('Gmail CRM: Email badge monitoring started');
+    }
+
+    // Also re-inject badges when deals change
+    setInterval(() => {
+      this.injectEmailBadges();
+    }, 5000); // Every 5 seconds
+  }
+
+  injectEmailBadges() {
+    const emailRows = document.querySelectorAll('tr.zA:not([data-crm-badged])');
+
+    emailRows.forEach(row => {
+      // Mark as processed
+      row.dataset.crmBadged = 'true';
+
+      // Find the subject/title area
+      const subjectEl = row.querySelector('.bog span, .y6 span');
+      if (!subjectEl) return;
+
+      const subject = subjectEl.textContent?.trim();
+      if (!subject) return;
+
+      // Get thread ID
+      const threadId = subjectEl.getAttribute('data-thread-id') ||
+                      row.querySelector('[data-thread-id]')?.getAttribute('data-thread-id');
+
+      // Find sender email
+      const senderEl = row.querySelector('.yW span[email]');
+      const senderEmail = senderEl?.getAttribute('email');
+
+      // Check if this email is linked to any deals
+      const linkedDeals = [];
+      Object.values(this.deals).forEach(deal => {
+        if (!deal.linkedEmails) return;
+
+        const isLinked = deal.linkedEmails.some(email => {
+          // Match by thread ID, subject, or sender
+          if (threadId && email.threadId === threadId) return true;
+          if (email.subject === subject) return true;
+          if (senderEmail && email.from === senderEmail && email.subject === subject) return true;
+          return false;
+        });
+
+        if (isLinked) {
+          const pipeline = this.pipelines.find(p => p.id === deal.pipelineId);
+          linkedDeals.push({
+            deal: deal,
+            pipeline: pipeline
+          });
+        }
+      });
+
+      // Inject badges if email is linked
+      if (linkedDeals.length > 0) {
+        this.addBadgesToEmailRow(row, subjectEl, linkedDeals);
+      }
+    });
+  }
+
+  addBadgesToEmailRow(row, subjectEl, linkedDeals) {
+    // Check if badges already exist
+    if (row.querySelector('.crm-email-badge-container')) return;
+
+    const badgeContainer = document.createElement('span');
+    badgeContainer.className = 'crm-email-badge-container';
+
+    linkedDeals.forEach(({ deal, pipeline }) => {
+      // Deal badge
+      const dealBadge = document.createElement('span');
+      dealBadge.className = 'crm-email-badge crm-deal-badge';
+      dealBadge.textContent = deal.emailSubject || deal.company || 'Deal';
+      dealBadge.dataset.dealId = deal.id;
+      dealBadge.title = `Click to open ${deal.emailSubject || 'deal'}`;
+
+      // Pipeline badge
+      const pipelineBadge = document.createElement('span');
+      pipelineBadge.className = 'crm-email-badge crm-pipeline-badge';
+      pipelineBadge.textContent = pipeline?.name || 'Pipeline';
+      pipelineBadge.dataset.pipelineId = pipeline?.id;
+      pipelineBadge.title = `Click to view ${pipeline?.name || 'pipeline'}`;
+
+      // Click handlers
+      dealBadge.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openDealFromBadge(deal.id);
+      });
+
+      pipelineBadge.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        this.openPipelineFromBadge(pipeline?.id);
+      });
+
+      badgeContainer.appendChild(dealBadge);
+      badgeContainer.appendChild(pipelineBadge);
+    });
+
+    // Insert badges after subject
+    subjectEl.parentElement.appendChild(badgeContainer);
+  }
+
+  openDealFromBadge(dealId) {
+    // Show pipeline view first if not already shown
+    if (!this.currentPipeline) {
+      const deal = this.deals[dealId];
+      if (deal) {
+        const pipeline = this.pipelines.find(p => p.id === deal.pipelineId);
+        if (pipeline) {
+          this.openPipeline(pipeline);
+        }
+      }
+    }
+
+    // Open deal sidebar
+    setTimeout(() => {
+      this.showDealSidebar(dealId, 'general');
+    }, 300);
+  }
+
+  openPipelineFromBadge(pipelineId) {
+    const pipeline = this.pipelines.find(p => p.id === pipelineId);
+    if (pipeline) {
+      this.openPipeline(pipeline);
+    }
   }
 
   getDefaultEmailTemplates() {
