@@ -262,23 +262,6 @@ class GmailCRM {
         <button class="crm-nav-add" title="Add Pipeline">+</button>
       </div>
       <div class="crm-nav-list" id="crm-pipelines-list"></div>
-      <div class="crm-nav-settings">
-        <div class="crm-nav-item crm-settings-link" id="crm-settings-link">
-          <span class="crm-nav-icon">⚙️</span>
-          <span class="crm-nav-name">Settings & Features</span>
-        </div>
-      </div>
-      <div class="crm-sync-section">
-        <button class="crm-sync-btn" id="crm-sync-emails-btn" title="Basic email sync">
-          📧 Sync Emails
-        </button>
-        <button class="crm-sync-btn-smart" id="crm-smart-sync-btn" title="AI-powered smart sync with Gemini">
-          🤖 Smart Sync
-        </button>
-        <button class="crm-settings-btn" id="crm-gemini-settings-btn" title="Gemini API Settings">
-          ⚙️
-        </button>
-      </div>
     `;
 
     // Insert after Labels section or at the end
@@ -300,26 +283,6 @@ class GmailCRM {
     // Add pipeline button
     this.pipelinesNav.querySelector('.crm-nav-add')?.addEventListener('click', () => {
       this.showPipelineEditor();
-    });
-
-    // Sync emails button
-    this.pipelinesNav.querySelector('#crm-sync-emails-btn')?.addEventListener('click', () => {
-      this.syncEmailsToDeals();
-    });
-
-    // Smart sync with Gemini button
-    this.pipelinesNav.querySelector('#crm-smart-sync-btn')?.addEventListener('click', () => {
-      this.smartSyncWithGemini();
-    });
-
-    // Gemini settings button
-    this.pipelinesNav.querySelector('#crm-gemini-settings-btn')?.addEventListener('click', () => {
-      this.showGeminiSettings();
-    });
-
-    // Settings & Features link
-    this.pipelinesNav.querySelector('#crm-settings-link')?.addEventListener('click', () => {
-      this.showSettingsPanel();
     });
   }
 
@@ -2790,12 +2753,16 @@ class GmailCRM {
 
     sidebar.innerHTML = `
       <div class="voice-sidebar-header">
-        <h3>Voice Assistant</h3>
+        <h3>AI Assistant</h3>
         <div class="voice-sidebar-controls">
           <button class="voice-sidebar-collapse" title="Collapse">◀</button>
         </div>
       </div>
       <div class="voice-sidebar-content">
+        <div class="voice-deal-search">
+          <input type="text" class="voice-search-input" id="voice-search-deals" placeholder="🔍 Search deals across all pipelines..." />
+          <div class="voice-search-results" id="voice-search-results"></div>
+        </div>
         <div class="voice-content-main">
           <div class="voice-execution-steps"></div>
           <div class="voice-pipeline-visualization"></div>
@@ -2810,6 +2777,17 @@ class GmailCRM {
             <div class="voice-parsed-command"></div>
           </div>
           <button class="voice-mic-button" title="Click to start/stop listening">🎤</button>
+        </div>
+        <div class="voice-sidebar-controls-bottom">
+          <button class="voice-control-btn" id="voice-sync-emails-btn" title="Basic email sync">
+            📧 Sync Emails
+          </button>
+          <button class="voice-control-btn" id="voice-smart-sync-btn" title="AI-powered smart sync">
+            🤖 Smart Sync
+          </button>
+          <button class="voice-control-btn" id="voice-settings-btn" title="Settings & Features">
+            ⚙️ Settings
+          </button>
         </div>
       </div>
     `;
@@ -2873,6 +2851,95 @@ class GmailCRM {
     };
 
     setupMicButton();
+
+    // Setup deal search
+    const searchInput = sidebar.querySelector('#voice-search-deals');
+    const searchResults = sidebar.querySelector('#voice-search-results');
+
+    searchInput.addEventListener('input', (e) => {
+      const query = e.target.value.trim().toLowerCase();
+      if (query.length < 2) {
+        searchResults.style.display = 'none';
+        return;
+      }
+
+      // Search across all deals in all pipelines
+      const allDeals = Object.values(this.deals);
+      const matches = allDeals.filter(deal => {
+        const searchText = [
+          deal.emailSubject,
+          deal.company,
+          deal.companyName,
+          deal.contactEmail,
+          deal.institution,
+          deal.status
+        ].filter(Boolean).join(' ').toLowerCase();
+
+        return searchText.includes(query);
+      }).slice(0, 10); // Limit to 10 results
+
+      if (matches.length === 0) {
+        searchResults.innerHTML = '<div class="voice-search-empty">No deals found</div>';
+        searchResults.style.display = 'block';
+        return;
+      }
+
+      searchResults.innerHTML = matches.map(deal => {
+        const pipeline = this.pipelines.find(p => p.id === deal.pipelineId);
+        return `
+          <div class="voice-search-result-item" data-deal-id="${deal.id}">
+            <div class="voice-search-result-title">${deal.emailSubject || deal.company || 'Untitled'}</div>
+            <div class="voice-search-result-meta">
+              ${pipeline?.name || 'Unknown Pipeline'} • ${deal.contactEmail || ''}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      searchResults.style.display = 'block';
+
+      // Add click handlers to results
+      searchResults.querySelectorAll('.voice-search-result-item').forEach(item => {
+        item.addEventListener('click', () => {
+          const dealId = item.dataset.dealId;
+          const deal = this.deals[dealId];
+
+          // Open the pipeline that contains this deal
+          const pipeline = this.pipelines.find(p => p.id === deal.pipelineId);
+          if (pipeline) {
+            this.openPipeline(pipeline);
+            // Open deal sidebar after a short delay
+            setTimeout(() => {
+              this.showDealSidebar(dealId, 'general');
+            }, 300);
+          }
+
+          // Clear search
+          searchInput.value = '';
+          searchResults.style.display = 'none';
+        });
+      });
+    });
+
+    // Hide search results when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!sidebar.contains(e.target)) {
+        searchResults.style.display = 'none';
+      }
+    });
+
+    // Setup control buttons
+    sidebar.querySelector('#voice-sync-emails-btn')?.addEventListener('click', () => {
+      this.syncEmailsToDeals();
+    });
+
+    sidebar.querySelector('#voice-smart-sync-btn')?.addEventListener('click', () => {
+      this.smartSyncWithGemini();
+    });
+
+    sidebar.querySelector('#voice-settings-btn')?.addEventListener('click', () => {
+      this.showSettingsPanel();
+    });
 
     // Add floating toggle button
     const floatingToggle = document.createElement('div');
@@ -7841,6 +7908,9 @@ Respond in JSON format:
   // Magic Columns - Auto-calculated fields
 
   getMagicColumns(deal) {
+    const lastEmailData = this.getLastEmailData(deal);
+    const taskData = this.getTaskData(deal);
+
     return {
       dealAge: this.calculateDealAge(deal),
       daysSinceLastActivity: this.calculateDaysSinceLastActivity(deal),
@@ -7848,7 +7918,63 @@ Respond in JSON format:
       companyName: this.extractCompanyFromEmail(deal.contactEmail),
       weightedValue: this.calculateWeightedValue(deal),
       expectedCloseDate: this.estimateCloseDate(deal),
-      stageVelocity: this.calculateStageVelocity(deal)
+      stageVelocity: this.calculateStageVelocity(deal),
+      // New automatic columns
+      lastEmailDate: lastEmailData.date,
+      lastEmailSender: lastEmailData.sender,
+      emailCount: deal.linkedEmails?.length || 0,
+      taskCount: taskData.total,
+      completedTaskCount: taskData.completed,
+      pendingTaskCount: taskData.pending,
+      lastTaskDate: taskData.lastDate,
+      callCount: deal.calls?.length || 0,
+      fileCount: deal.files?.length || 0,
+      noteCount: deal.notesHistory?.length || 0
+    };
+  }
+
+  getLastEmailData(deal) {
+    if (!deal.linkedEmails || deal.linkedEmails.length === 0) {
+      return { date: null, sender: null };
+    }
+
+    // Get most recent email
+    const sortedEmails = [...deal.linkedEmails].sort((a, b) =>
+      new Date(b.date) - new Date(a.date)
+    );
+
+    const lastEmail = sortedEmails[0];
+    return {
+      date: lastEmail.date ? new Date(lastEmail.date).toLocaleDateString() : null,
+      sender: lastEmail.from || null
+    };
+  }
+
+  getTaskData(deal) {
+    if (!deal.tasks || deal.tasks.length === 0) {
+      return { total: 0, completed: 0, pending: 0, lastDate: null };
+    }
+
+    const completed = deal.tasks.filter(t => t.completed).length;
+    const pending = deal.tasks.length - completed;
+
+    // Get most recent task date
+    const sortedTasks = [...deal.tasks].sort((a, b) => {
+      const dateA = new Date(a.completedAt || a.createdAt || 0);
+      const dateB = new Date(b.completedAt || b.createdAt || 0);
+      return dateB - dateA;
+    });
+
+    const lastTask = sortedTasks[0];
+    const lastDate = lastTask ?
+      new Date(lastTask.completedAt || lastTask.createdAt).toLocaleDateString() :
+      null;
+
+    return {
+      total: deal.tasks.length,
+      completed,
+      pending,
+      lastDate
     };
   }
 
