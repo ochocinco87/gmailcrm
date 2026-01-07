@@ -105,6 +105,12 @@ class GmailCRM {
     });
     this.followUpSequences = sequencesResult.followUpSequences || [];
 
+    // Load column order from local storage
+    const columnOrderResult = await new Promise(resolve => {
+      chrome.storage.local.get(['tableColumnOrder'], resolve);
+    });
+    this.tableColumnOrder = columnOrderResult.tableColumnOrder || this.getDefaultColumnOrder();
+
     // Save default pipelines if none exist
     if (pipelines.length === 0) {
       for (const pipeline of this.pipelines) {
@@ -470,20 +476,12 @@ class GmailCRM {
         <div class="crm-deals-table-container" id="crm-table-view" style="display: ${this.pipelineViewMode === 'table' ? 'block' : 'none'};">
           <table class="crm-deals-table">
             <thead>
-              <tr>
-                <th class="crm-th-checkbox"><input type="checkbox" /></th>
-                <th class="crm-th-name">Name</th>
-                <th class="crm-th-status">Status</th>
-                <th class="crm-th-priority">Priority</th>
-                <th class="crm-th-value">Deal Size</th>
-                <th class="crm-th-prob">Prob</th>
-                <th class="crm-th-weighted">Weighted $</th>
-                <th class="crm-th-contact">Contact</th>
-                <th class="crm-th-company">Company</th>
-                <th class="crm-th-age">Age</th>
-                <th class="crm-th-last-activity">Last Activity</th>
-                <th class="crm-th-assigned">Assigned To</th>
-                <th class="crm-th-weekly-update">Weekly Update</th>
+              <tr id="crm-table-header">
+                ${this.tableColumnOrder.map((col, index) => `
+                  <th class="crm-th-${col.id}" draggable="true" data-col-index="${index}" data-col-id="${col.id}">
+                    ${col.id === 'checkbox' ? '<input type="checkbox" />' : `<span class="crm-th-label">${col.label}</span><span class="crm-drag-handle">⋮⋮</span>`}
+                  </th>
+                `).join('')}
               </tr>
             </thead>
             <tbody id="crm-deals-tbody"></tbody>
@@ -564,6 +562,9 @@ class GmailCRM {
       this.filters.sortBy = e.target.value;
       this.applyFilters();
     });
+
+    // Set up column drag and drop
+    this.setupColumnDragAndDrop();
 
     document.getElementById('crm-clear-filters')?.addEventListener('click', () => {
       this.filters = { search: '', status: '', priority: '', sortBy: 'date' };
@@ -1534,56 +1535,12 @@ class GmailCRM {
     // Calculate magic columns
     const magic = this.getMagicColumns(deal);
 
-    const formattedValue = deal.value ? `$${Number(deal.value).toLocaleString()}` : '';
-    const formattedWeightedValue = magic.weightedValue ? `$${magic.weightedValue.toLocaleString()}` : '';
+    // Generate cells in column order
+    const cells = this.tableColumnOrder.map(col => {
+      return this.getCellHtml(col.id, deal, magic);
+    }).join('');
 
-    // Status options
-    const statusOptions = [
-      'Active', 'On Hold', 'Waiting Response', 'In Review',
-      'Negotiating', 'Pending Approval', 'Closed Won', 'Closed Lost'
-    ];
-    const currentStatus = deal.status || 'Active';
-
-    const statusDropdown = `
-      <select class="crm-status-select" data-deal-id="${deal.id}">
-        ${statusOptions.map(status =>
-          `<option value="${status}" ${status === currentStatus ? 'selected' : ''}>${status}</option>`
-        ).join('')}
-      </select>
-    `;
-
-    // Format last activity with color coding
-    const daysAgo = magic.daysSinceLastActivity;
-    let activityClass = '';
-    if (daysAgo > 14) activityClass = 'crm-activity-cold';
-    else if (daysAgo > 7) activityClass = 'crm-activity-warm';
-    else activityClass = 'crm-activity-hot';
-
-    row.innerHTML = `
-      <td class="crm-td-checkbox"><input type="checkbox" /></td>
-      <td class="crm-td-name">
-        <span class="crm-deal-link" data-deal-id="${deal.id}">${this.escapeHtml(deal.emailSubject || 'Untitled')}</span>
-      </td>
-      <td class="crm-td-status">${statusDropdown}</td>
-      <td class="crm-td-priority">${this.escapeHtml(deal.priority || 'High')}</td>
-      <td class="crm-td-value">${formattedValue}</td>
-      <td class="crm-td-prob">${deal.probability || '90'}%</td>
-      <td class="crm-td-weighted"><strong>${formattedWeightedValue}</strong></td>
-      <td class="crm-td-contact">${this.escapeHtml(deal.contactEmail || '')}</td>
-      <td class="crm-td-company">${this.escapeHtml(magic.companyName || '-')}</td>
-      <td class="crm-td-age">${magic.dealAge}d</td>
-      <td class="crm-td-last-activity ${activityClass}">${daysAgo}d ago</td>
-      <td class="crm-td-assigned">${this.escapeHtml(deal.assignedTo || '')}</td>
-      <td class="crm-td-weekly-update">
-        <input type="text"
-          class="crm-weekly-update-input"
-          data-deal-id="${deal.id}"
-          placeholder="Add weekly update..."
-          value="${this.escapeHtml(deal.weeklyUpdate || '')}"
-          title="${deal.weeklyUpdateDate ? `Last updated: ${new Date(deal.weeklyUpdateDate).toLocaleString()}` : 'No update yet'}"
-        />
-      </td>
-    `;
+    row.innerHTML = cells;
 
     // Add click handler for deal name
     setTimeout(() => {
@@ -3505,7 +3462,7 @@ class GmailCRM {
     }
   }
 
-  showDealSidebar(dealId, viewMode = 'timeline') {
+  showDealSidebar(dealId, viewMode = 'general') {
     const deal = this.deals[dealId];
     if (!deal) return;
 
@@ -3523,10 +3480,21 @@ class GmailCRM {
     }
 
     // Render sidebar content based on view mode
-    if (viewMode === 'timeline') {
-      this.renderDealSidebarTimeline(deal);
-    } else {
-      this.renderDealSidebarKanban(deal);
+    switch (viewMode) {
+      case 'general':
+        this.renderDealSidebarGeneral(deal);
+        break;
+      case 'people':
+        this.renderDealSidebarPeople(deal);
+        break;
+      case 'timeline':
+        this.renderDealSidebarTimeline(deal);
+        break;
+      case 'kanban':
+        this.renderDealSidebarKanban(deal);
+        break;
+      default:
+        this.renderDealSidebarGeneral(deal);
     }
   }
 
@@ -3868,6 +3836,311 @@ class GmailCRM {
     this.showNotification('Comment deleted');
   }
 
+  renderDealSidebarGeneral(deal) {
+    const sidebar = document.getElementById('crm-deal-sidebar');
+    if (!sidebar) return;
+
+    const stageName = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.name || 'Unknown';
+    const stageColor = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.color || '#4285f4';
+    const magic = this.getMagicColumns(deal);
+
+    sidebar.innerHTML = `
+      <div class="crm-general-view">
+        <div class="crm-sidebar-header">
+          <div>
+            <h3>${this.escapeHtml(deal.emailSubject || deal.company || 'Untitled Deal')}</h3>
+            <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">
+              <span style="background-color: ${stageColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${stageName}</span>
+            </div>
+          </div>
+          <button class="crm-close-sidebar" id="crm-close-sidebar-btn">×</button>
+        </div>
+
+        <div class="crm-deal-view-toggle">
+          <button class="crm-view-toggle-btn active" id="crm-general-view-btn">General</button>
+          <button class="crm-view-toggle-btn" id="crm-people-view-btn">People</button>
+          <button class="crm-view-toggle-btn" id="crm-timeline-view-btn">Timeline</button>
+          <button class="crm-view-toggle-btn" id="crm-kanban-view-btn">Kanban</button>
+        </div>
+
+        <div class="crm-general-container">
+          <div class="crm-general-field">
+            <label>Deal Name</label>
+            <input type="text" id="crm-edit-name" value="${this.escapeHtml(deal.emailSubject || '')}" />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Status</label>
+            <select id="crm-edit-status">
+              ${['Active', 'On Hold', 'Waiting Response', 'In Review', 'Negotiating', 'Pending Approval', 'Closed Won', 'Closed Lost'].map(status =>
+                `<option value="${status}" ${(deal.status || 'Active') === status ? 'selected' : ''}>${status}</option>`
+              ).join('')}
+            </select>
+          </div>
+
+          <div class="crm-general-field">
+            <label>Priority</label>
+            <select id="crm-edit-priority">
+              ${['High', 'Medium', 'Low'].map(priority =>
+                `<option value="${priority}" ${(deal.priority || 'High') === priority ? 'selected' : ''}>${priority}</option>`
+              ).join('')}
+            </select>
+          </div>
+
+          <div class="crm-general-field">
+            <label>Deal Size ($)</label>
+            <input type="number" id="crm-edit-value" value="${deal.value || ''}" />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Probability (%)</label>
+            <input type="number" id="crm-edit-probability" value="${deal.probability || 90}" min="0" max="100" />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Weighted Value</label>
+            <input type="text" value="$${magic.weightedValue?.toLocaleString() || '0'}" disabled />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Contact Email</label>
+            <input type="email" id="crm-edit-contact" value="${this.escapeHtml(deal.contactEmail || '')}" />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Company</label>
+            <input type="text" value="${this.escapeHtml(magic.companyName || '')}" disabled />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Assigned To</label>
+            <input type="text" id="crm-edit-assigned" value="${this.escapeHtml(deal.assignedTo || '')}" />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Deal Age (days)</label>
+            <input type="text" value="${magic.dealAge}" disabled />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Days Since Last Activity</label>
+            <input type="text" value="${magic.daysSinceLastActivity}" disabled />
+          </div>
+
+          <div class="crm-general-field">
+            <label>Weekly Update</label>
+            <textarea id="crm-edit-weekly-update" rows="3">${this.escapeHtml(deal.weeklyUpdate || '')}</textarea>
+            ${deal.weeklyUpdateDate ? `<div class="crm-field-hint">Last updated: ${new Date(deal.weeklyUpdateDate).toLocaleString()}</div>` : ''}
+          </div>
+
+          <button class="crm-save-general-btn" id="crm-save-general-btn">Save Changes</button>
+        </div>
+      </div>
+    `;
+
+    // Add event listeners
+    setTimeout(() => {
+      document.getElementById('crm-close-sidebar-btn')?.addEventListener('click', () => {
+        this.closeDealSidebar();
+      });
+
+      document.getElementById('crm-general-view-btn')?.addEventListener('click', () => {
+        this.showDealSidebar(deal.id, 'general');
+      });
+
+      document.getElementById('crm-people-view-btn')?.addEventListener('click', () => {
+        this.showDealSidebar(deal.id, 'people');
+      });
+
+      document.getElementById('crm-timeline-view-btn')?.addEventListener('click', () => {
+        this.showDealSidebar(deal.id, 'timeline');
+      });
+
+      document.getElementById('crm-kanban-view-btn')?.addEventListener('click', () => {
+        this.showDealSidebar(deal.id, 'kanban');
+      });
+
+      document.getElementById('crm-save-general-btn')?.addEventListener('click', async () => {
+        // Update deal with new values
+        const oldWeeklyUpdate = deal.weeklyUpdate;
+
+        deal.emailSubject = document.getElementById('crm-edit-name').value;
+        deal.status = document.getElementById('crm-edit-status').value;
+        deal.priority = document.getElementById('crm-edit-priority').value;
+        deal.value = parseFloat(document.getElementById('crm-edit-value').value) || 0;
+        deal.probability = parseFloat(document.getElementById('crm-edit-probability').value) || 90;
+        deal.contactEmail = document.getElementById('crm-edit-contact').value;
+        deal.assignedTo = document.getElementById('crm-edit-assigned').value;
+
+        const newWeeklyUpdate = document.getElementById('crm-edit-weekly-update').value;
+
+        // Handle weekly update history
+        if (newWeeklyUpdate !== oldWeeklyUpdate) {
+          if (!deal.weeklyUpdates) {
+            deal.weeklyUpdates = [];
+          }
+          if (oldWeeklyUpdate) {
+            deal.weeklyUpdates.push({
+              text: oldWeeklyUpdate,
+              date: deal.weeklyUpdateDate || new Date().toISOString()
+            });
+          }
+          deal.weeklyUpdate = newWeeklyUpdate;
+          deal.weeklyUpdateDate = new Date().toISOString();
+        }
+
+        deal.lastUpdated = new Date().toISOString();
+
+        await this.saveDeal(deal);
+        this.showNotification('✅ Deal updated successfully');
+        this.renderPipelineBoard();
+        this.showDealSidebar(deal.id, 'general');
+      });
+    }, 0);
+  }
+
+  renderDealSidebarPeople(deal) {
+    const sidebar = document.getElementById('crm-deal-sidebar');
+    if (!sidebar) return;
+
+    const stageName = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.name || 'Unknown';
+    const stageColor = this.currentPipeline?.stages.find(s => s.id === deal.stageId)?.color || '#4285f4';
+
+    // Extract contacts from linked emails
+    if (!deal.contacts) {
+      deal.contacts = [];
+    }
+
+    // Auto-populate contacts from emails if not already added
+    const emailAddresses = new Set();
+    (deal.linkedEmails || []).forEach(email => {
+      if (email.from) emailAddresses.add(email.from);
+      if (email.to) emailAddresses.add(email.to);
+    });
+
+    emailAddresses.forEach(email => {
+      if (!deal.contacts.find(c => c.email === email)) {
+        deal.contacts.push({
+          id: `contact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+          email: email,
+          name: email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+          position: '',
+          starred: false,
+          addedAt: new Date().toISOString()
+        });
+      }
+    });
+
+    sidebar.innerHTML = `
+      <div class="crm-people-view">
+        <div class="crm-sidebar-header">
+          <div>
+            <h3>${this.escapeHtml(deal.emailSubject || deal.company || 'Untitled Deal')}</h3>
+            <div style="font-size: 12px; color: #5f6368; margin-top: 4px;">
+              <span style="background-color: ${stageColor}; color: white; padding: 2px 8px; border-radius: 10px; font-size: 11px;">${stageName}</span>
+            </div>
+          </div>
+          <button class="crm-close-sidebar" id="crm-close-sidebar-btn">×</button>
+        </div>
+
+        <div class="crm-deal-view-toggle">
+          <button class="crm-view-toggle-btn" id="crm-general-view-btn">General</button>
+          <button class="crm-view-toggle-btn active" id="crm-people-view-btn">People</button>
+          <button class="crm-view-toggle-btn" id="crm-timeline-view-btn">Timeline</button>
+          <button class="crm-view-toggle-btn" id="crm-kanban-view-btn">Kanban</button>
+        </div>
+
+        <div class="crm-people-container">
+          <div class="crm-people-header">
+            <h4>Contacts (${deal.contacts.length})</h4>
+            <button class="crm-add-contact-btn" id="crm-add-contact-btn">+ Add Contact</button>
+          </div>
+
+          <div class="crm-people-list">
+            ${deal.contacts.sort((a, b) => (b.starred ? 1 : 0) - (a.starred ? 1 : 0)).map(contact => `
+              <div class="crm-contact-card" data-contact-id="${contact.id}">
+                <div class="crm-contact-star ${contact.starred ? 'starred' : ''}" data-contact-id="${contact.id}">
+                  ${contact.starred ? '★' : '☆'}
+                </div>
+                <div class="crm-contact-details">
+                  <div class="crm-contact-name">${this.escapeHtml(contact.name || contact.email)}</div>
+                  <div class="crm-contact-email">${this.escapeHtml(contact.email)}</div>
+                  <input type="text" class="crm-contact-position" data-contact-id="${contact.id}" placeholder="Position/Title" value="${this.escapeHtml(contact.position || '')}" />
+                </div>
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    // Add event listeners
+    setTimeout(() => {
+      document.getElementById('crm-close-sidebar-btn')?.addEventListener('click', () => {
+        this.closeDealSidebar();
+      });
+
+      document.getElementById('crm-general-view-btn')?.addEventListener('click', () => {
+        this.showDealSidebar(deal.id, 'general');
+      });
+
+      document.getElementById('crm-people-view-btn')?.addEventListener('click', () => {
+        this.showDealSidebar(deal.id, 'people');
+      });
+
+      document.getElementById('crm-timeline-view-btn')?.addEventListener('click', () => {
+        this.showDealSidebar(deal.id, 'timeline');
+      });
+
+      document.getElementById('crm-kanban-view-btn')?.addEventListener('click', () => {
+        this.showDealSidebar(deal.id, 'kanban');
+      });
+
+      // Star/unstar contacts
+      document.querySelectorAll('.crm-contact-star').forEach(star => {
+        star.addEventListener('click', async (e) => {
+          const contactId = e.target.dataset.contactId;
+          const contact = deal.contacts.find(c => c.id === contactId);
+          if (contact) {
+            contact.starred = !contact.starred;
+            await this.saveDeal(deal);
+            this.showDealSidebar(deal.id, 'people');
+          }
+        });
+      });
+
+      // Update position
+      document.querySelectorAll('.crm-contact-position').forEach(input => {
+        input.addEventListener('blur', async (e) => {
+          const contactId = e.target.dataset.contactId;
+          const contact = deal.contacts.find(c => c.id === contactId);
+          if (contact) {
+            contact.position = e.target.value;
+            await this.saveDeal(deal);
+            this.showNotification('✅ Contact position updated');
+          }
+        });
+      });
+
+      // Add contact button
+      document.getElementById('crm-add-contact-btn')?.addEventListener('click', () => {
+        const email = prompt('Enter contact email:');
+        if (email) {
+          deal.contacts.push({
+            id: `contact-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+            email: email,
+            name: email.split('@')[0].replace(/[._]/g, ' ').replace(/\b\w/g, l => l.toUpperCase()),
+            position: '',
+            starred: false,
+            addedAt: new Date().toISOString()
+          });
+          this.saveDeal(deal);
+          this.showDealSidebar(deal.id, 'people');
+        }
+      });
+    }, 0);
+  }
+
   renderDealSidebarTimeline(deal) {
     const sidebar = document.getElementById('crm-deal-sidebar');
     if (!sidebar) return;
@@ -3972,6 +4245,8 @@ class GmailCRM {
         </div>
 
         <div class="crm-deal-view-toggle">
+          <button class="crm-view-toggle-btn" id="crm-general-view-btn">General</button>
+          <button class="crm-view-toggle-btn" id="crm-people-view-btn">People</button>
           <button class="crm-view-toggle-btn active" id="crm-timeline-view-btn">Timeline</button>
           <button class="crm-view-toggle-btn" id="crm-kanban-view-btn">Kanban</button>
         </div>
@@ -4036,6 +4311,14 @@ class GmailCRM {
     // Event listeners
     document.getElementById('crm-close-sidebar-btn')?.addEventListener('click', () => {
       this.closeDealSidebar();
+    });
+
+    document.getElementById('crm-general-view-btn')?.addEventListener('click', () => {
+      this.showDealSidebar(deal.id, 'general');
+    });
+
+    document.getElementById('crm-people-view-btn')?.addEventListener('click', () => {
+      this.showDealSidebar(deal.id, 'people');
     });
 
     document.getElementById('crm-timeline-view-btn')?.addEventListener('click', () => {
@@ -4154,6 +4437,8 @@ class GmailCRM {
         </div>
 
         <div class="crm-deal-view-toggle">
+          <button class="crm-view-toggle-btn" id="crm-general-view-btn">General</button>
+          <button class="crm-view-toggle-btn" id="crm-people-view-btn">People</button>
           <button class="crm-view-toggle-btn" id="crm-timeline-view-btn">Timeline</button>
           <button class="crm-view-toggle-btn active" id="crm-kanban-view-btn">Kanban</button>
         </div>
@@ -4253,6 +4538,14 @@ class GmailCRM {
     // Add event listeners
     document.getElementById('crm-close-sidebar-btn')?.addEventListener('click', () => {
       this.closeDealSidebar();
+    });
+
+    document.getElementById('crm-general-view-btn')?.addEventListener('click', () => {
+      this.showDealSidebar(deal.id, 'general');
+    });
+
+    document.getElementById('crm-people-view-btn')?.addEventListener('click', () => {
+      this.showDealSidebar(deal.id, 'people');
     });
 
     document.getElementById('crm-timeline-view-btn')?.addEventListener('click', () => {
@@ -7046,6 +7339,122 @@ Respond in JSON format:
     const div = document.createElement('div');
     div.textContent = text;
     return div.innerHTML;
+  }
+
+  // Column order management
+  getDefaultColumnOrder() {
+    return [
+      { id: 'checkbox', label: '', field: null },
+      { id: 'name', label: 'Name', field: 'emailSubject' },
+      { id: 'status', label: 'Status', field: 'status' },
+      { id: 'priority', label: 'Priority', field: 'priority' },
+      { id: 'value', label: 'Deal Size', field: 'value' },
+      { id: 'prob', label: 'Prob', field: 'probability' },
+      { id: 'weighted', label: 'Weighted $', field: 'weightedValue' },
+      { id: 'contact', label: 'Contact', field: 'contactEmail' },
+      { id: 'company', label: 'Company', field: 'companyName' },
+      { id: 'age', label: 'Age', field: 'dealAge' },
+      { id: 'last-activity', label: 'Last Activity', field: 'daysSinceLastActivity' },
+      { id: 'assigned', label: 'Assigned To', field: 'assignedTo' },
+      { id: 'weekly-update', label: 'Weekly Update', field: 'weeklyUpdate' }
+    ];
+  }
+
+  async saveColumnOrder() {
+    await new Promise(resolve => {
+      chrome.storage.local.set({ tableColumnOrder: this.tableColumnOrder }, resolve);
+    });
+  }
+
+  setupColumnDragAndDrop() {
+    const headers = document.querySelectorAll('#crm-table-header th[draggable="true"]');
+    let draggedColumn = null;
+
+    headers.forEach(header => {
+      header.addEventListener('dragstart', (e) => {
+        draggedColumn = parseInt(header.dataset.colIndex);
+        header.classList.add('dragging');
+        e.dataTransfer.effectAllowed = 'move';
+      });
+
+      header.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        e.dataTransfer.dropEffect = 'move';
+        header.classList.add('drag-over');
+      });
+
+      header.addEventListener('dragleave', () => {
+        header.classList.remove('drag-over');
+      });
+
+      header.addEventListener('drop', async (e) => {
+        e.preventDefault();
+        header.classList.remove('drag-over');
+
+        const dropIndex = parseInt(header.dataset.colIndex);
+
+        if (draggedColumn !== null && draggedColumn !== dropIndex) {
+          // Reorder columns
+          const col = this.tableColumnOrder.splice(draggedColumn, 1)[0];
+          this.tableColumnOrder.splice(dropIndex, 0, col);
+
+          await this.saveColumnOrder();
+          this.renderPipelineBoard(); // Re-render to show new order
+        }
+      });
+
+      header.addEventListener('dragend', () => {
+        header.classList.remove('dragging');
+        headers.forEach(h => h.classList.remove('drag-over'));
+        draggedColumn = null;
+      });
+    });
+  }
+
+  getCellHtml(columnId, deal, magic) {
+    const statusOptions = [
+      'Active', 'On Hold', 'Waiting Response', 'In Review',
+      'Negotiating', 'Pending Approval', 'Closed Won', 'Closed Lost'
+    ];
+    const currentStatus = deal.status || 'Active';
+    const formattedValue = deal.value ? `$${Number(deal.value).toLocaleString()}` : '';
+    const formattedWeightedValue = magic.weightedValue ? `$${magic.weightedValue.toLocaleString()}` : '';
+    const daysAgo = magic.daysSinceLastActivity;
+    let activityClass = '';
+    if (daysAgo > 14) activityClass = 'crm-activity-cold';
+    else if (daysAgo > 7) activityClass = 'crm-activity-warm';
+    else activityClass = 'crm-activity-hot';
+
+    switch (columnId) {
+      case 'checkbox':
+        return '<td class="crm-td-checkbox"><input type="checkbox" /></td>';
+      case 'name':
+        return `<td class="crm-td-name"><span class="crm-deal-link" data-deal-id="${deal.id}">${this.escapeHtml(deal.emailSubject || 'Untitled')}</span></td>`;
+      case 'status':
+        return `<td class="crm-td-status"><select class="crm-status-select" data-deal-id="${deal.id}">${statusOptions.map(status => `<option value="${status}" ${status === currentStatus ? 'selected' : ''}>${status}</option>`).join('')}</select></td>`;
+      case 'priority':
+        return `<td class="crm-td-priority">${this.escapeHtml(deal.priority || 'High')}</td>`;
+      case 'value':
+        return `<td class="crm-td-value">${formattedValue}</td>`;
+      case 'prob':
+        return `<td class="crm-td-prob">${deal.probability || '90'}%</td>`;
+      case 'weighted':
+        return `<td class="crm-td-weighted"><strong>${formattedWeightedValue}</strong></td>`;
+      case 'contact':
+        return `<td class="crm-td-contact">${this.escapeHtml(deal.contactEmail || '')}</td>`;
+      case 'company':
+        return `<td class="crm-td-company">${this.escapeHtml(magic.companyName || '-')}</td>`;
+      case 'age':
+        return `<td class="crm-td-age">${magic.dealAge}d</td>`;
+      case 'last-activity':
+        return `<td class="crm-td-last-activity ${activityClass}">${daysAgo}d ago</td>`;
+      case 'assigned':
+        return `<td class="crm-td-assigned">${this.escapeHtml(deal.assignedTo || '')}</td>`;
+      case 'weekly-update':
+        return `<td class="crm-td-weekly-update"><input type="text" class="crm-weekly-update-input" data-deal-id="${deal.id}" placeholder="Add weekly update..." value="${this.escapeHtml(deal.weeklyUpdate || '')}" title="${deal.weeklyUpdateDate ? `Last updated: ${new Date(deal.weeklyUpdateDate).toLocaleString()}` : 'No update yet'}" /></td>`;
+      default:
+        return '<td></td>';
+    }
   }
 
   // Magic Columns - Auto-calculated fields
