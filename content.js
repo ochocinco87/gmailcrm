@@ -408,6 +408,7 @@ class GmailCRM {
               📊
             </button>
           </div>
+          ${this.pipelineViewMode === 'kanban' ? '<button class="crm-btn" id="crm-customize-kanban-btn">🎨 Customize Cards</button>' : ''}
           ${pipeline.type === 'customer-tracking' ? '<button class="crm-btn" id="crm-dashboard-btn">📊 Dashboard</button>' : ''}
           <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
           <button class="crm-btn" id="crm-settings-btn">⚙️ Settings</button>
@@ -445,7 +446,7 @@ class GmailCRM {
         </div>
       </div>
 
-      <div class="crm-stages-bar">
+      <div class="crm-stages-bar" style="display: ${this.pipelineViewMode === 'kanban' ? 'none' : 'flex'};">
         ${stagesHeader}
       </div>
 
@@ -563,6 +564,10 @@ class GmailCRM {
     document.getElementById('crm-dashboard-btn')?.addEventListener('click', () => {
       this.showDashboard();
     });
+
+    document.getElementById('crm-customize-kanban-btn')?.addEventListener('click', () => {
+      this.showKanbanCardEditor();
+    });
   }
 
   switchViewMode(mode) {
@@ -589,6 +594,31 @@ class GmailCRM {
     if (kanbanView) kanbanView.style.display = 'none';
     if (mapView) mapView.style.display = 'none';
     if (dashboardView) dashboardView.style.display = 'none';
+
+    // Update stages bar visibility
+    const stagesBar = document.querySelector('.crm-stages-bar');
+    if (stagesBar) {
+      stagesBar.style.display = mode === 'kanban' ? 'none' : 'flex';
+    }
+
+    // Update customize button visibility
+    const customizeBtn = document.getElementById('crm-customize-kanban-btn');
+    const pipelineActions = document.querySelector('.crm-pipeline-actions');
+
+    // Remove existing customize button
+    if (customizeBtn) {
+      customizeBtn.remove();
+    }
+
+    // Add customize button if in kanban mode
+    if (mode === 'kanban' && pipelineActions) {
+      const btn = document.createElement('button');
+      btn.className = 'crm-btn';
+      btn.id = 'crm-customize-kanban-btn';
+      btn.innerHTML = '🎨 Customize Cards';
+      btn.addEventListener('click', () => this.showKanbanCardEditor());
+      pipelineActions.insertBefore(btn, pipelineActions.children[1]);
+    }
 
     if (mode === 'table') {
       document.getElementById('crm-table-view-btn')?.classList.add('active');
@@ -696,36 +726,92 @@ class GmailCRM {
   }
 
   createKanbanCard(deal, stage) {
+    // Get pipeline-specific card settings
+    const cardSettings = this.currentPipeline?.kanbanCardSettings || this.getDefaultKanbanCardSettings();
+
     // Calculate magic columns
     const magic = this.getMagicColumns(deal);
 
-    const value = deal.value ? `$${deal.value.toLocaleString()}` : '-';
-    const weightedValue = magic.weightedValue ? `$${magic.weightedValue.toLocaleString()}` : '-';
-    const priority = deal.priority || 'Medium';
+    // Prepare data values
+    const dataValues = {
+      company: magic.companyName || deal.company || deal.institution || '-',
+      contact: deal.contacts && deal.contacts.length > 0 ? deal.contacts.join(', ') : (deal.contactEmail || '-'),
+      value: deal.value ? `$${deal.value.toLocaleString()}` : null,
+      weightedValue: magic.weightedValue ? `$${magic.weightedValue.toLocaleString()}` : null,
+      priority: deal.priority || 'Medium',
+      dealAge: magic.dealAge,
+      lastActivity: magic.daysSinceLastActivity,
+      lastNote: deal.notesHistory && deal.notesHistory.length > 0 ? deal.notesHistory[deal.notesHistory.length - 1].text.substring(0, 60) + '...' : null,
+      emailCount: magic.emailCount,
+      taskCount: magic.taskCount,
+      status: deal.status || 'Active',
+      assignedTo: deal.assignedTo || null,
+      lastEmailDate: magic.lastEmailDate,
+      lastEmailSender: magic.lastEmailSender,
+      completedTaskCount: magic.completedTaskCount,
+      pendingTaskCount: magic.pendingTaskCount,
+      callCount: magic.callCount,
+      weeklyUpdate: deal.weeklyUpdates && deal.weeklyUpdates.length > 0 ? deal.weeklyUpdates[deal.weeklyUpdates.length - 1].text.substring(0, 60) + '...' : null
+    };
+
+    // Priority color
     const priorityColor = {
       'High': '#ea4335',
       'Medium': '#fbbc04',
       'Low': '#34a853'
-    }[priority] || '#5f6368';
+    }[dataValues.priority] || '#5f6368';
 
-    const contacts = deal.contacts && deal.contacts.length > 0
-      ? deal.contacts.join(', ')
-      : (deal.contactEmail || '-');
-
-    const company = magic.companyName || deal.company || deal.institution || '-';
-
-    // Get last note if exists
-    const lastNote = deal.notesHistory && deal.notesHistory.length > 0
-      ? deal.notesHistory[deal.notesHistory.length - 1].text.substring(0, 60) + '...'
-      : '';
-
-    const linkedEmailsCount = deal.linkedEmails?.length || 0;
-
-    // Format last activity with color
-    const daysAgo = magic.daysSinceLastActivity;
+    // Activity color
     let activityColor = '#34a853';
-    if (daysAgo > 14) activityColor = '#ea4335';
-    else if (daysAgo > 7) activityColor = '#fbbc04';
+    if (dataValues.lastActivity > 14) activityColor = '#ea4335';
+    else if (dataValues.lastActivity > 7) activityColor = '#fbbc04';
+
+    // Build card body HTML based on settings
+    const bodyHTML = cardSettings.map(prop => {
+      const value = dataValues[prop];
+      if (!value && value !== 0) return '';
+
+      switch (prop) {
+        case 'company':
+          return `<div class="crm-kanban-card-row">🏢 ${value}</div>`;
+        case 'contact':
+          return `<div class="crm-kanban-card-row">👤 ${value}</div>`;
+        case 'value':
+          return dataValues.weightedValue ?
+            `<div class="crm-kanban-card-row">💰 ${value} <span style="color: #1a73e8; font-weight: 600;">(${dataValues.weightedValue})</span></div>` :
+            `<div class="crm-kanban-card-row">💰 ${value}</div>`;
+        case 'weightedValue':
+          return ''; // Shown with value
+        case 'dealAge':
+          return `<div class="crm-kanban-card-row">📅 ${value}d old</div>`;
+        case 'lastActivity':
+          return `<div class="crm-kanban-card-row" style="color: ${activityColor};">⏱️ ${value}d ago</div>`;
+        case 'lastNote':
+          return `<div class="crm-kanban-card-note">📝 ${value}</div>`;
+        case 'emailCount':
+          return `<div class="crm-kanban-card-row">📧 ${value} emails</div>`;
+        case 'taskCount':
+          return `<div class="crm-kanban-card-row">✓ ${value} tasks</div>`;
+        case 'status':
+          return `<div class="crm-kanban-card-row">📊 ${value}</div>`;
+        case 'assignedTo':
+          return `<div class="crm-kanban-card-row">👥 ${value}</div>`;
+        case 'lastEmailDate':
+          return `<div class="crm-kanban-card-row">📅 Last email: ${value}</div>`;
+        case 'lastEmailSender':
+          return `<div class="crm-kanban-card-row">👤 ${value}</div>`;
+        case 'completedTaskCount':
+          return `<div class="crm-kanban-card-row">✅ ${value} completed</div>`;
+        case 'pendingTaskCount':
+          return `<div class="crm-kanban-card-row">⏳ ${value} pending</div>`;
+        case 'callCount':
+          return `<div class="crm-kanban-card-row">📞 ${value} calls</div>`;
+        case 'weeklyUpdate':
+          return `<div class="crm-kanban-card-note">📰 ${value}</div>`;
+        default:
+          return '';
+      }
+    }).filter(Boolean).join('');
 
     return `
       <div class="crm-kanban-card"
@@ -736,42 +822,15 @@ class GmailCRM {
           <div class="crm-kanban-card-title" title="${deal.emailSubject || deal.title || 'Untitled'}">
             ${deal.emailSubject || deal.title || 'Untitled'}
           </div>
-          <div class="crm-kanban-card-priority" style="background-color: ${priorityColor};" title="${priority} priority">
+          <div class="crm-kanban-card-priority" style="background-color: ${priorityColor};" title="${dataValues.priority} priority">
           </div>
         </div>
 
         <div class="crm-kanban-card-body">
-          <div class="crm-kanban-card-company">
-            🏢 ${company}
-          </div>
-          <div class="crm-kanban-card-contact">
-            👤 ${contacts}
-          </div>
-          ${value !== '-' ? `
-          <div class="crm-kanban-card-value">
-            💰 ${value} <span style="color: #1a73e8; font-weight: 600;">(${weightedValue})</span>
-          </div>
-          ` : ''}
-          <div class="crm-kanban-card-meta">
-            <span title="Deal age">📅 ${magic.dealAge}d old</span>
-            <span title="Days since last activity" style="color: ${activityColor};">⏱ ${daysAgo}d ago</span>
-          </div>
-          ${lastNote ? `
-          <div class="crm-kanban-card-note">
-            📝 ${lastNote}
-          </div>
-          ` : ''}
+          ${bodyHTML}
         </div>
 
         <div class="crm-kanban-card-footer">
-          <span class="crm-kanban-card-status" title="Status: ${deal.status || 'Active'}">
-            ${deal.status || 'Active'}
-          </span>
-          ${linkedEmailsCount > 0 ? `
-          <span class="crm-kanban-card-emails" title="${linkedEmailsCount} linked emails">
-            📧 ${linkedEmailsCount}
-          </span>
-          ` : ''}
           <span class="crm-kanban-card-date" title="Last updated: ${new Date(deal.lastUpdated).toLocaleString()}">
             ${this.formatDateShort(deal.lastUpdated)}
           </span>
@@ -2436,6 +2495,127 @@ class GmailCRM {
         }
       });
     });
+  }
+
+  showKanbanCardEditor() {
+    if (!this.currentPipeline) return;
+
+    // Get current card settings or use defaults
+    const currentSettings = this.currentPipeline.kanbanCardSettings || this.getDefaultKanbanCardSettings();
+
+    // Define all available properties
+    const availableProperties = [
+      { id: 'company', label: '🏢 Company', category: 'basic' },
+      { id: 'contact', label: '👤 Contact', category: 'basic' },
+      { id: 'value', label: '💰 Deal Value', category: 'basic' },
+      { id: 'weightedValue', label: '💵 Weighted Value', category: 'automatic' },
+      { id: 'priority', label: '⚠️ Priority', category: 'basic' },
+      { id: 'dealAge', label: '📅 Deal Age', category: 'automatic' },
+      { id: 'lastActivity', label: '⏱️ Last Activity', category: 'automatic' },
+      { id: 'lastNote', label: '📝 Last Note', category: 'timeline' },
+      { id: 'emailCount', label: '📧 Email Count', category: 'automatic' },
+      { id: 'taskCount', label: '✓ Task Count', category: 'automatic' },
+      { id: 'status', label: '📊 Status', category: 'basic' },
+      { id: 'assignedTo', label: '👥 Assigned To', category: 'basic' },
+      { id: 'lastEmailDate', label: '📅 Last Email Date', category: 'automatic' },
+      { id: 'lastEmailSender', label: '👤 Last Email Sender', category: 'automatic' },
+      { id: 'completedTaskCount', label: '✅ Completed Tasks', category: 'automatic' },
+      { id: 'pendingTaskCount', label: '⏳ Pending Tasks', category: 'automatic' },
+      { id: 'callCount', label: '📞 Call Count', category: 'automatic' },
+      { id: 'weeklyUpdate', label: '📰 Weekly Update', category: 'timeline' }
+    ];
+
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+    modal.innerHTML = `
+      <div class="crm-modal-content" style="max-width: 700px;">
+        <h2>🎨 Customize Kanban Cards</h2>
+        <p style="color: #5f6368; margin-bottom: 20px;">Select which properties to display on ${this.currentPipeline.name} Kanban cards</p>
+
+        <div class="kanban-editor-sections">
+          <div class="kanban-editor-section">
+            <h3>Basic Properties</h3>
+            <div class="kanban-properties-list" id="kanban-basic-props"></div>
+          </div>
+
+          <div class="kanban-editor-section">
+            <h3>Automatic Columns</h3>
+            <div class="kanban-properties-list" id="kanban-auto-props"></div>
+          </div>
+
+          <div class="kanban-editor-section">
+            <h3>Timeline Data</h3>
+            <div class="kanban-properties-list" id="kanban-timeline-props"></div>
+          </div>
+        </div>
+
+        <div class="crm-modal-actions">
+          <button class="crm-btn" id="kanban-editor-cancel">Cancel</button>
+          <button class="crm-btn" id="kanban-editor-reset">Reset to Default</button>
+          <button class="crm-btn-primary" id="kanban-editor-save">Save</button>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Render property checkboxes
+    const renderProps = (containerId, category) => {
+      const container = document.getElementById(containerId);
+      const props = availableProperties.filter(p => p.category === category);
+
+      container.innerHTML = props.map(prop => `
+        <label class="kanban-prop-checkbox">
+          <input type="checkbox" value="${prop.id}" ${currentSettings.includes(prop.id) ? 'checked' : ''} />
+          <span>${prop.label}</span>
+        </label>
+      `).join('');
+    };
+
+    renderProps('kanban-basic-props', 'basic');
+    renderProps('kanban-auto-props', 'automatic');
+    renderProps('kanban-timeline-props', 'timeline');
+
+    // Cancel button
+    document.getElementById('kanban-editor-cancel').addEventListener('click', () => {
+      modal.remove();
+    });
+
+    // Reset button
+    document.getElementById('kanban-editor-reset').addEventListener('click', () => {
+      const defaultSettings = this.getDefaultKanbanCardSettings();
+      modal.querySelectorAll('input[type="checkbox"]').forEach(checkbox => {
+        checkbox.checked = defaultSettings.includes(checkbox.value);
+      });
+    });
+
+    // Save button
+    document.getElementById('kanban-editor-save').addEventListener('click', () => {
+      const selectedProps = [];
+      modal.querySelectorAll('input[type="checkbox"]:checked').forEach(checkbox => {
+        selectedProps.push(checkbox.value);
+      });
+
+      // Save to pipeline settings
+      this.currentPipeline.kanbanCardSettings = selectedProps;
+
+      // Update pipeline in storage
+      const pipelineIdx = this.pipelines.findIndex(p => p.id === this.currentPipeline.id);
+      if (pipelineIdx !== -1) {
+        this.pipelines[pipelineIdx] = this.currentPipeline;
+      }
+
+      chrome.storage.local.set({ pipelines: this.pipelines }, () => {
+        modal.remove();
+        this.showNotification('✓ Kanban card settings saved!');
+        // Re-render kanban view with new settings
+        this.renderKanbanView();
+      });
+    });
+  }
+
+  getDefaultKanbanCardSettings() {
+    return ['company', 'contact', 'value', 'weightedValue', 'dealAge', 'lastActivity', 'status'];
   }
 
   observeNavigation() {
