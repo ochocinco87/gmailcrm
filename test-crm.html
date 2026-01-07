@@ -1,0 +1,251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Gmail CRM - Dev Test Page</title>
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      font-family: 'Google Sans', Roboto, Arial, sans-serif;
+      background: #f1f3f4;
+    }
+
+    #dev-header {
+      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      color: white;
+      padding: 12px 20px;
+      font-size: 14px;
+      font-weight: 500;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: sticky;
+      top: 0;
+      z-index: 10000;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.2);
+    }
+
+    #dev-header-left {
+      display: flex;
+      gap: 20px;
+      align-items: center;
+    }
+
+    .dev-badge {
+      background: rgba(255,255,255,0.2);
+      padding: 4px 12px;
+      border-radius: 12px;
+      font-size: 12px;
+    }
+
+    .dev-reload-btn {
+      background: white;
+      color: #667eea;
+      border: none;
+      padding: 6px 16px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-weight: 500;
+      font-size: 13px;
+    }
+
+    .dev-reload-btn:hover {
+      background: #f8f9fa;
+    }
+
+    #gmail-container {
+      display: flex;
+      height: calc(100vh - 48px);
+    }
+
+    /* Simulate Gmail left sidebar */
+    #gmail-sidebar {
+      width: 256px;
+      background: #f6f8fc;
+      border-right: 1px solid #e8eaed;
+      overflow-y: auto;
+    }
+
+    /* Main content area */
+    #gmail-main {
+      flex: 1;
+      background: white;
+      overflow-y: auto;
+      position: relative;
+    }
+  </style>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Dev Mode Header -->
+  <div id="dev-header">
+    <div id="dev-header-left">
+      <span>🚀 Gmail CRM - Development Mode</span>
+      <span class="dev-badge">Just refresh this page to see changes!</span>
+    </div>
+    <button class="dev-reload-btn" onclick="location.reload()">🔄 Reload</button>
+  </div>
+
+  <!-- Simulated Gmail Layout -->
+  <div id="gmail-container">
+    <div id="gmail-sidebar">
+      <!-- CRM will inject navigation here -->
+    </div>
+    <div id="gmail-main">
+      <!-- CRM will inject pipeline view here -->
+    </div>
+  </div>
+
+  <!-- Mock Chrome APIs for testing -->
+  <script>
+    // Mock chrome.storage API
+    window.chrome = {
+      storage: {
+        local: {
+          get: function(keys, callback) {
+            const data = {};
+            if (typeof keys === 'string') keys = [keys];
+            if (!keys) keys = Object.keys(localStorage);
+
+            keys.forEach(key => {
+              const value = localStorage.getItem(key);
+              if (value) {
+                try {
+                  data[key] = JSON.parse(value);
+                } catch(e) {
+                  data[key] = value;
+                }
+              }
+            });
+            callback(data);
+          },
+          set: function(data, callback) {
+            Object.keys(data).forEach(key => {
+              localStorage.setItem(key, JSON.stringify(data[key]));
+            });
+            if (callback) callback();
+          },
+          remove: function(keys, callback) {
+            if (typeof keys === 'string') keys = [keys];
+            keys.forEach(key => localStorage.removeItem(key));
+            if (callback) callback();
+          },
+          clear: function(callback) {
+            localStorage.clear();
+            if (callback) callback();
+          }
+        },
+        sync: {
+          get: function(keys, callback) {
+            return chrome.storage.local.get(keys, callback);
+          },
+          set: function(data, callback) {
+            return chrome.storage.local.set(data, callback);
+          }
+        }
+      },
+      runtime: {
+        sendMessage: function(message, callback) {
+          console.log('📤 Message sent:', message);
+          if (callback) callback({ success: true });
+        },
+        onMessage: {
+          addListener: function(callback) {
+            console.log('📨 Message listener added');
+          }
+        },
+        getURL: function(path) {
+          return './' + path;
+        }
+      }
+    };
+
+    // Mock gmail page detection
+    window.location.hostname = 'mail.google.com';
+
+    console.log('✅ Chrome API mocked - Development mode active');
+    console.log('💡 Tip: Open DevTools (F12) to see console output');
+    console.log('🔄 Just refresh this page to see your code changes!');
+  </script>
+
+  <!-- Load Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-database-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js"></script>
+
+  <!-- Load Firebase sync script -->
+  <script src="firebase-sync.js"></script>
+
+  <!-- Load Voice Control -->
+  <script src="voice-control.js"></script>
+
+  <!-- Load Main CRM Script -->
+  <script src="content.js"></script>
+
+  <!-- Initialize CRM -->
+  <script>
+    window.addEventListener('load', async () => {
+      console.log('🚀 Initializing Gmail CRM in dev mode...');
+
+      // Wait a bit for scripts to load
+      await new Promise(resolve => setTimeout(resolve, 500));
+
+      // Initialize the CRM
+      if (window.gmailCRM) {
+        console.log('✅ Gmail CRM loaded successfully');
+        console.log('📊 Access CRM instance via: window.gmailCRM');
+      } else {
+        console.error('❌ Gmail CRM not found - check console for errors');
+      }
+    });
+
+    // Helper functions for testing
+    window.devHelpers = {
+      clearData: () => {
+        localStorage.clear();
+        console.log('🗑️  All data cleared - reload to start fresh');
+      },
+      showData: () => {
+        console.log('📦 Current stored data:', {
+          deals: localStorage.getItem('gmailCRM_deals'),
+          pipelines: localStorage.getItem('gmailCRM_pipelines'),
+          columnOrder: localStorage.getItem('tableColumnOrder')
+        });
+      },
+      createTestDeal: () => {
+        if (!window.gmailCRM) {
+          console.error('CRM not loaded yet');
+          return;
+        }
+        const testDeal = {
+          id: 'test-' + Date.now(),
+          emailSubject: 'Test Deal - ' + new Date().toLocaleTimeString(),
+          contactEmail: 'test@example.com',
+          value: 50000,
+          probability: 75,
+          status: 'Active',
+          priority: 'High',
+          assignedTo: 'Test User',
+          stageId: window.gmailCRM.currentPipeline?.stages[0]?.id,
+          pipelineId: window.gmailCRM.currentPipeline?.id,
+          linkedEmails: [],
+          tasks: [],
+          createdAt: new Date().toISOString(),
+          lastUpdated: new Date().toISOString()
+        };
+        window.gmailCRM.deals[testDeal.id] = testDeal;
+        window.gmailCRM.saveDeal(testDeal);
+        window.gmailCRM.renderPipelineBoard();
+        console.log('✅ Test deal created:', testDeal);
+      }
+    };
+
+    console.log('🛠️  Dev Helpers available:');
+    console.log('  devHelpers.clearData() - Clear all stored data');
+    console.log('  devHelpers.showData() - Show current data');
+    console.log('  devHelpers.createTestDeal() - Create a test deal');
+  </script>
+</body>
+</html>
