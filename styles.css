@@ -78,6 +78,21 @@
   color: #202124;
 }
 
+/* Settings Link */
+.crm-nav-settings {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid #e8eaed;
+}
+
+.crm-settings-link {
+  font-weight: 500;
+}
+
+.crm-settings-link:hover {
+  background: linear-gradient(135deg, rgba(102, 126, 234, 0.1) 0%, rgba(118, 75, 162, 0.1) 100%);
+}
+
 /* Sync Section */
 .crm-sync-section {
   padding: 8px 16px 12px 16px;
@@ -1035,6 +1050,151 @@
   font-size: 11px;
   margin-right: 8px;
   font-weight: 600;
+}
+
+/* ========== Settings Panel ========== */
+.crm-settings-modal {
+  max-width: 800px;
+  width: 95%;
+  max-height: 90vh;
+}
+
+.crm-settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-bottom: 2px solid #e8eaed;
+  padding-bottom: 16px;
+  margin-bottom: 20px;
+}
+
+.crm-settings-header h2 {
+  margin: 0;
+}
+
+.crm-settings-body {
+  max-height: calc(90vh - 200px);
+  overflow-y: auto;
+  padding-right: 8px;
+}
+
+.crm-settings-section {
+  margin-bottom: 32px;
+  padding: 20px;
+  background: #f8f9fa;
+  border-radius: 8px;
+  border-left: 4px solid #667eea;
+}
+
+.crm-settings-section h3 {
+  margin: 0 0 16px 0;
+  font-size: 16px;
+  color: #202124;
+  font-weight: 500;
+}
+
+.crm-checkbox-label {
+  display: flex;
+  align-items: center;
+  cursor: pointer;
+  user-select: none;
+}
+
+.crm-checkbox-label input[type="checkbox"] {
+  margin-right: 8px;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+}
+
+.crm-help-text {
+  font-size: 12px;
+  color: #5f6368;
+  margin: 4px 0 0 0;
+}
+
+.crm-help-text a {
+  color: #1a73e8;
+  text-decoration: none;
+}
+
+.crm-help-text a:hover {
+  text-decoration: underline;
+}
+
+.crm-feature-info {
+  margin-top: 12px;
+  padding: 12px;
+  background: white;
+  border-radius: 4px;
+  font-size: 13px;
+}
+
+.crm-feature-info ul {
+  margin: 8px 0 0 0;
+  padding-left: 20px;
+}
+
+.crm-feature-info li {
+  margin: 4px 0;
+  color: #5f6368;
+}
+
+.crm-features-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.crm-feature-card {
+  background: white;
+  padding: 16px;
+  border-radius: 8px;
+  text-align: center;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border: 1px solid #e8eaed;
+}
+
+.crm-feature-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.crm-feature-icon {
+  font-size: 32px;
+  margin-bottom: 8px;
+}
+
+.crm-feature-title {
+  font-size: 14px;
+  font-weight: 500;
+  color: #202124;
+  margin-bottom: 4px;
+}
+
+.crm-feature-desc {
+  font-size: 12px;
+  color: #5f6368;
+  line-height: 1.4;
+}
+
+.crm-btn-danger {
+  background: #ea4335 !important;
+  color: white !important;
+}
+
+.crm-btn-danger:hover {
+  background: #d33426 !important;
+}
+
+.crm-settings-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 2px solid #e8eaed;
 }
 
 /* ========== Pipeline Editor ========== */
@@ -2252,6 +2412,83 @@
   padding: 12px;
   border-radius: 8px;
   margin-bottom: 8px;
+}
+
+/* Email Items - Clickable and Hoverable */
+.crm-email-item {
+  transition: background-color 0.2s, transform 0.2s;
+}
+
+.crm-email-item:hover {
+  background-color: #e8f0fe;
+  transform: translateX(4px);
+}
+
+.crm-email-title-link {
+  color: #1a73e8;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* Email Tooltip */
+.crm-email-tooltip {
+  position: absolute;
+  z-index: 20000;
+  background: white;
+  border: 1px solid #e8eaed;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+  padding: 16px;
+  max-width: 400px;
+  width: max-content;
+  animation: tooltipFadeIn 0.2s ease-out;
+}
+
+@keyframes tooltipFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.crm-email-tooltip-header {
+  font-size: 14px;
+  font-weight: 500;
+  color: #202124;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #e8eaed;
+}
+
+.crm-email-tooltip-from {
+  font-size: 12px;
+  color: #5f6368;
+  margin-bottom: 8px;
+}
+
+.crm-email-tooltip-body {
+  font-size: 13px;
+  color: #202124;
+  line-height: 1.5;
+  max-height: 200px;
+  overflow-y: auto;
+  padding: 8px;
+  background: #f8f9fa;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.crm-email-tooltip-footer {
+  font-size: 11px;
+  color: #1a73e8;
+  font-weight: 500;
+  text-align: right;
 }
 
 .crm-timeline-meta {

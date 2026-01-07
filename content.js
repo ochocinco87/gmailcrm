@@ -259,6 +259,12 @@ class GmailCRM {
         <button class="crm-nav-add" title="Add Pipeline">+</button>
       </div>
       <div class="crm-nav-list" id="crm-pipelines-list"></div>
+      <div class="crm-nav-settings">
+        <div class="crm-nav-item crm-settings-link" id="crm-settings-link">
+          <span class="crm-nav-icon">⚙️</span>
+          <span class="crm-nav-name">Settings & Features</span>
+        </div>
+      </div>
       <div class="crm-sync-section">
         <button class="crm-sync-btn" id="crm-sync-emails-btn" title="Basic email sync">
           📧 Sync Emails
@@ -306,6 +312,11 @@ class GmailCRM {
     // Gemini settings button
     this.pipelinesNav.querySelector('#crm-gemini-settings-btn')?.addEventListener('click', () => {
       this.showGeminiSettings();
+    });
+
+    // Settings & Features link
+    this.pipelinesNav.querySelector('#crm-settings-link')?.addEventListener('click', () => {
+      this.showSettingsPanel();
     });
   }
 
@@ -4268,11 +4279,20 @@ class GmailCRM {
             if (!showOnlyPriorWeeks) return true;
             if (item.type === 'weekly-update') return item.date < oneWeekAgo;
             return false;
-          }).map(item => `
-            <div class="crm-timeline-item ${item.type} ${item.completed ? 'completed' : ''}">
+          }).map((item, index) => `
+            <div class="crm-timeline-item ${item.type} ${item.completed ? 'completed' : ''} ${item.type === 'email' ? 'crm-email-item' : ''}"
+                 data-item-type="${item.type}"
+                 data-item-index="${index}"
+                 ${item.type === 'email' && item.data ? `
+                   data-email-url="${this.escapeHtml(item.data.url || '')}"
+                   data-email-id="${this.escapeHtml(item.data.id || '')}"
+                   data-email-subject="${this.escapeHtml(item.data.subject || '')}"
+                   data-email-from="${this.escapeHtml(item.data.from || '')}"
+                   data-email-body="${this.escapeHtml((item.data.body || '').substring(0, 500))}"
+                 ` : ''}>
               <div class="crm-timeline-icon">${item.icon}</div>
               <div class="crm-timeline-header">
-                <div class="crm-timeline-title">${item.title}</div>
+                <div class="crm-timeline-title ${item.type === 'email' ? 'crm-email-title-link' : ''}">${item.title}</div>
                 <div class="crm-timeline-date">${item.date.toLocaleString()}</div>
               </div>
               ${item.content ? `<div class="crm-timeline-content">${item.content}</div>` : ''}
@@ -4342,6 +4362,33 @@ class GmailCRM {
     document.getElementById('crm-timeline-submit-task')?.addEventListener('click', async () => {
       await this.addTaskFromTimeline(deal.id);
     });
+
+    // Email click and hover handlers
+    sidebar.querySelectorAll('.crm-email-item').forEach(emailItem => {
+      // Click handler - open email in Gmail
+      emailItem.addEventListener('click', () => {
+        const emailUrl = emailItem.dataset.emailUrl;
+        if (emailUrl) {
+          window.open(emailUrl, '_blank');
+        }
+      });
+
+      // Hover handler - show tooltip with full email
+      emailItem.addEventListener('mouseenter', (e) => {
+        this.showEmailTooltip(e, {
+          subject: emailItem.dataset.emailSubject,
+          from: emailItem.dataset.emailFrom,
+          body: emailItem.dataset.emailBody
+        });
+      });
+
+      emailItem.addEventListener('mouseleave', () => {
+        this.hideEmailTooltip();
+      });
+
+      // Add visual cue that email is clickable
+      emailItem.style.cursor = 'pointer';
+    });
   }
 
   async addTaskFromTimeline(dealId) {
@@ -4408,6 +4455,58 @@ class GmailCRM {
     } catch (error) {
       console.error('AI auto-assign error:', error);
       return 'Unassigned';
+    }
+  }
+
+  showEmailTooltip(event, email) {
+    // Remove any existing tooltip
+    this.hideEmailTooltip();
+
+    const tooltip = document.createElement('div');
+    tooltip.id = 'crm-email-tooltip';
+    tooltip.className = 'crm-email-tooltip';
+
+    tooltip.innerHTML = `
+      <div class="crm-email-tooltip-header">
+        <strong>${this.escapeHtml(email.subject || 'No Subject')}</strong>
+      </div>
+      <div class="crm-email-tooltip-from">
+        From: ${this.escapeHtml(email.from || 'Unknown')}
+      </div>
+      <div class="crm-email-tooltip-body">
+        ${this.escapeHtml(email.body || 'Email body not available')}
+      </div>
+      <div class="crm-email-tooltip-footer">
+        Click to open in Gmail →
+      </div>
+    `;
+
+    document.body.appendChild(tooltip);
+
+    // Position tooltip near the mouse
+    const rect = event.target.closest('.crm-email-item').getBoundingClientRect();
+    const tooltipRect = tooltip.getBoundingClientRect();
+
+    let top = rect.top + window.scrollY;
+    let left = rect.right + 10;
+
+    // Adjust if tooltip goes off screen
+    if (left + tooltipRect.width > window.innerWidth) {
+      left = rect.left - tooltipRect.width - 10;
+    }
+
+    if (top + tooltipRect.height > window.innerHeight + window.scrollY) {
+      top = window.innerHeight + window.scrollY - tooltipRect.height - 10;
+    }
+
+    tooltip.style.top = `${top}px`;
+    tooltip.style.left = `${left}px`;
+  }
+
+  hideEmailTooltip() {
+    const tooltip = document.getElementById('crm-email-tooltip');
+    if (tooltip) {
+      tooltip.remove();
     }
   }
 
@@ -6672,6 +6771,218 @@ class GmailCRM {
           modal.remove();
           this.showNotification('✓ Gemini settings saved!');
         });
+      });
+    });
+  }
+
+  showSettingsPanel() {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal';
+
+    // Get current settings
+    chrome.storage.local.get([
+      'geminiApiKey',
+      'geminiEnabled',
+      'autoLinkEmails',
+      'emailScanCount',
+      'voiceEnabled'
+    ], (settings) => {
+      const autoLink = settings.autoLinkEmails !== false; // default true
+      const scanCount = settings.emailScanCount || 200;
+      const voiceEnabled = settings.voiceEnabled !== false; // default true
+
+      modal.innerHTML = `
+        <div class="crm-modal-content crm-settings-modal">
+          <div class="crm-settings-header">
+            <h2>⚙️ Settings & Features</h2>
+            <button class="crm-close-sidebar" id="crm-close-settings-btn">×</button>
+          </div>
+
+          <div class="crm-settings-body">
+            <!-- AI & Automation Section -->
+            <div class="crm-settings-section">
+              <h3>🤖 AI & Automation</h3>
+
+              <div class="crm-form-group">
+                <label><strong>Gemini API Key</strong></label>
+                <input type="password" id="crm-settings-gemini-key" class="crm-input"
+                       value="${this.escapeHtml(settings.geminiApiKey || '')}"
+                       placeholder="Enter your Gemini API key" />
+                <p class="crm-help-text">
+                  Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a>
+                </p>
+              </div>
+
+              <div class="crm-form-group">
+                <label class="crm-checkbox-label">
+                  <input type="checkbox" id="crm-settings-gemini-enabled" ${settings.geminiEnabled ? 'checked' : ''} />
+                  <span><strong>Enable Smart Sync</strong> - AI-powered email analysis</span>
+                </label>
+              </div>
+
+              <div class="crm-form-group">
+                <label><strong>Email Scan Count for AI Suggestions</strong></label>
+                <input type="number" id="crm-settings-scan-count" class="crm-input"
+                       value="${scanCount}" min="50" max="500" step="50" />
+                <p class="crm-help-text">Number of recent emails to scan for deal suggestions (50-500)</p>
+              </div>
+            </div>
+
+            <!-- Email Management Section -->
+            <div class="crm-settings-section">
+              <h3>📧 Email Management</h3>
+
+              <div class="crm-form-group">
+                <label class="crm-checkbox-label">
+                  <input type="checkbox" id="crm-settings-auto-link" ${autoLink ? 'checked' : ''} />
+                  <span><strong>Auto-Link Emails by Contact</strong> - Automatically pull emails from deal contacts</span>
+                </label>
+                <p class="crm-help-text" style="margin-left: 24px;">
+                  When enabled, all emails from a contact will automatically appear in their associated deals
+                </p>
+              </div>
+
+              <div class="crm-feature-info">
+                <strong>Manual Email Logging:</strong>
+                <ul>
+                  <li>Voice command: "Log this email to [Deal Name]"</li>
+                  <li>Search box in voice panel to find and associate emails</li>
+                  <li>Option to link just one email or all emails with contacts</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Voice Control Section -->
+            <div class="crm-settings-section">
+              <h3>🎤 Voice Control</h3>
+
+              <div class="crm-form-group">
+                <label class="crm-checkbox-label">
+                  <input type="checkbox" id="crm-settings-voice-enabled" ${voiceEnabled ? 'checked' : ''} />
+                  <span><strong>Enable Voice Commands</strong></span>
+                </label>
+                <p class="crm-help-text" style="margin-left: 24px;">
+                  Control your CRM using natural voice commands
+                </p>
+              </div>
+
+              <div class="crm-feature-info">
+                <strong>Available Commands:</strong>
+                <ul>
+                  <li>"Create deal [name]"</li>
+                  <li>"Log this email to [deal]"</li>
+                  <li>"Show pipeline"</li>
+                  <li>"Effortless mode" - Voice-guided pipeline review</li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Features Overview Section -->
+            <div class="crm-settings-section">
+              <h3>✨ Features Overview</h3>
+
+              <div class="crm-features-grid">
+                <div class="crm-feature-card">
+                  <div class="crm-feature-icon">📊</div>
+                  <div class="crm-feature-title">Pipeline Management</div>
+                  <div class="crm-feature-desc">Multiple pipelines, draggable columns, custom stages</div>
+                </div>
+
+                <div class="crm-feature-card">
+                  <div class="crm-feature-icon">👥</div>
+                  <div class="crm-feature-title">Contact Management</div>
+                  <div class="crm-feature-desc">Star important contacts, add positions, auto-link emails</div>
+                </div>
+
+                <div class="crm-feature-card">
+                  <div class="crm-feature-icon">📧</div>
+                  <div class="crm-feature-title">Email Integration</div>
+                  <div class="crm-feature-desc">Link emails to deals, preview, hover tooltips</div>
+                </div>
+
+                <div class="crm-feature-card">
+                  <div class="crm-feature-icon">🤖</div>
+                  <div class="crm-feature-title">AI-Powered Sync</div>
+                  <div class="crm-feature-desc">Auto-suggest deals from emails, smart assignment</div>
+                </div>
+
+                <div class="crm-feature-card">
+                  <div class="crm-feature-icon">🎤</div>
+                  <div class="crm-feature-title">Voice Control</div>
+                  <div class="crm-feature-desc">Hands-free CRM management with natural commands</div>
+                </div>
+
+                <div class="crm-feature-card">
+                  <div class="crm-feature-icon">📱</div>
+                  <div class="crm-feature-title">Deal Views</div>
+                  <div class="crm-feature-desc">General, People, Timeline, Kanban - 4 ways to view</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Data Management Section -->
+            <div class="crm-settings-section">
+              <h3>💾 Data Management</h3>
+
+              <div class="crm-form-group">
+                <button class="crm-btn crm-btn-danger" id="crm-clear-all-data">
+                  🗑️ Clear All Data
+                </button>
+                <p class="crm-help-text">
+                  ⚠️ Warning: This will delete all pipelines, deals, and settings. Cannot be undone!
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div class="crm-settings-footer">
+            <button class="crm-btn" id="crm-settings-cancel">Cancel</button>
+            <button class="crm-btn-primary" id="crm-settings-save">Save Settings</button>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(modal);
+
+      // Event listeners
+      document.getElementById('crm-close-settings-btn')?.addEventListener('click', () => modal.remove());
+      document.getElementById('crm-settings-cancel')?.addEventListener('click', () => modal.remove());
+
+      document.getElementById('crm-settings-save')?.addEventListener('click', () => {
+        const geminiKey = document.getElementById('crm-settings-gemini-key').value.trim();
+        const geminiEnabled = document.getElementById('crm-settings-gemini-enabled').checked;
+        const autoLinkEmails = document.getElementById('crm-settings-auto-link').checked;
+        const emailScanCount = parseInt(document.getElementById('crm-settings-scan-count').value) || 200;
+        const voiceEnabled = document.getElementById('crm-settings-voice-enabled').checked;
+
+        chrome.storage.local.set({
+          geminiApiKey: geminiKey,
+          geminiEnabled: geminiEnabled,
+          autoLinkEmails: autoLinkEmails,
+          emailScanCount: emailScanCount,
+          voiceEnabled: voiceEnabled
+        }, () => {
+          modal.remove();
+          this.showNotification('✅ Settings saved successfully!');
+
+          // Reload if voice setting changed
+          if (voiceEnabled !== settings.voiceEnabled) {
+            this.showNotification('🔄 Reloading to apply voice settings...');
+            setTimeout(() => location.reload(), 1500);
+          }
+        });
+      });
+
+      document.getElementById('crm-clear-all-data')?.addEventListener('click', () => {
+        if (confirm('⚠️ Are you sure you want to delete ALL data? This cannot be undone!')) {
+          if (confirm('⚠️⚠️ Last chance! This will permanently delete all pipelines, deals, and settings!')) {
+            chrome.storage.local.clear(() => {
+              modal.remove();
+              this.showNotification('🗑️ All data cleared. Reloading...');
+              setTimeout(() => location.reload(), 1500);
+            });
+          }
+        }
       });
     });
   }
