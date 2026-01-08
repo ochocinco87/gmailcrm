@@ -96,6 +96,12 @@ class GmailCRM {
     });
     this.pipelineViewMode = viewModeResult.pipelineViewMode || 'table';
 
+    // Load map region mode from local storage
+    const mapRegionResult = await new Promise(resolve => {
+      chrome.storage.local.get(['mapRegionMode'], resolve);
+    });
+    this.mapRegionMode = mapRegionResult.mapRegionMode || 'usa';
+
     // Load automation rules from local storage
     const automationResult = await new Promise(resolve => {
       chrome.storage.local.get(['automationRules'], resolve);
@@ -471,6 +477,14 @@ class GmailCRM {
         </div>
 
         <div class="crm-map-view" id="crm-map-view" style="display: ${this.pipelineViewMode === 'map' ? 'block' : 'none'};">
+          <div class="crm-map-controls" style="position: absolute; top: 10px; right: 10px; z-index: 1000; background: white; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.15); padding: 8px; display: flex; gap: 4px;">
+            <button class="crm-map-region-btn ${this.mapRegionMode === 'usa' ? 'active' : ''}" id="crm-map-usa-btn" style="padding: 6px 12px; border: 1px solid #dadce0; background: ${this.mapRegionMode === 'usa' ? '#1a73e8' : 'white'}; color: ${this.mapRegionMode === 'usa' ? 'white' : '#5f6368'}; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">
+              🇺🇸 USA
+            </button>
+            <button class="crm-map-region-btn ${this.mapRegionMode === 'international' ? 'active' : ''}" id="crm-map-intl-btn" style="padding: 6px 12px; border: 1px solid #dadce0; background: ${this.mapRegionMode === 'international' ? '#1a73e8' : 'white'}; color: ${this.mapRegionMode === 'international' ? 'white' : '#5f6368'}; border-radius: 4px; cursor: pointer; font-size: 12px; font-weight: 500;">
+              🌍 International
+            </button>
+          </div>
           <div id="crm-map-container" style="width: 100%; height: 100%;"></div>
         </div>
 
@@ -510,6 +524,15 @@ class GmailCRM {
 
     document.getElementById('crm-map-view-btn')?.addEventListener('click', () => {
       this.switchViewMode('map');
+    });
+
+    // Map region mode toggle buttons
+    document.getElementById('crm-map-usa-btn')?.addEventListener('click', () => {
+      this.switchMapRegionMode('usa');
+    });
+
+    document.getElementById('crm-map-intl-btn')?.addEventListener('click', () => {
+      this.switchMapRegionMode('international');
     });
 
     document.getElementById('crm-dashboard-view-btn')?.addEventListener('click', () => {
@@ -645,6 +668,35 @@ class GmailCRM {
       }
       this.renderDashboard();
     }
+  }
+
+  switchMapRegionMode(mode) {
+    console.log('Gmail CRM: Switching to map region mode:', mode);
+    this.mapRegionMode = mode;
+
+    // Save preference
+    chrome.storage.local.set({ mapRegionMode: mode });
+
+    // Update button styles
+    const usaBtn = document.getElementById('crm-map-usa-btn');
+    const intlBtn = document.getElementById('crm-map-intl-btn');
+
+    if (usaBtn && intlBtn) {
+      if (mode === 'usa') {
+        usaBtn.style.background = '#1a73e8';
+        usaBtn.style.color = 'white';
+        intlBtn.style.background = 'white';
+        intlBtn.style.color = '#5f6368';
+      } else {
+        intlBtn.style.background = '#1a73e8';
+        intlBtn.style.color = 'white';
+        usaBtn.style.background = 'white';
+        usaBtn.style.color = '#5f6368';
+      }
+    }
+
+    // Re-render the map with new region settings
+    this.renderMapView();
   }
 
   renderDealsTable() {
@@ -1050,8 +1102,20 @@ class GmailCRM {
     // Clear existing map if any
     mapContainer.innerHTML = '';
 
-    // Initialize map centered on US
-    const map = L.map('crm-map-container').setView([39.8283, -98.5795], 4);
+    // Set map center and zoom based on region mode
+    let center, zoom;
+    if (this.mapRegionMode === 'usa') {
+      // USA: centered on geographic center of US
+      center = [39.8283, -98.5795];
+      zoom = 4;
+    } else {
+      // International: centered on Europe/Atlantic, showing more of the world
+      center = [30, 0];
+      zoom = 2;
+    }
+
+    // Initialize map with region-specific settings
+    const map = L.map('crm-map-container').setView(center, zoom);
 
     // Add OpenStreetMap tiles
     L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
@@ -1097,7 +1161,7 @@ class GmailCRM {
               <strong>🏢 Institution:</strong> ${deal.institution || deal.company || '-'}
             </div>
             <div style="margin-bottom: 4px;">
-              <strong>📍 Location:</strong> ${deal.city}, ${deal.state}
+              <strong>📍 Address:</strong> ${deal.institutionAddress || (deal.city && deal.state ? `${deal.city}, ${deal.state}` : '-')}
             </div>
             <div style="margin-bottom: 4px;">
               <strong>📊 Stage:</strong> <span style="background-color: ${stageColor}; color: white; padding: 2px 6px; border-radius: 3px; font-size: 11px;">${stageName}</span>
@@ -1988,6 +2052,8 @@ class GmailCRM {
         institution: selectedInstitution.name,
         institutionAddress: selectedInstitution.address,
         institutionDomain: selectedInstitution.domain,
+        latitude: selectedInstitution.location?.lat,
+        longitude: selectedInstitution.location?.lng,
         organizationId: organizationId
       };
 
@@ -8103,6 +8169,7 @@ Respond in JSON format:
       { id: 'weighted', label: 'Weighted $', field: 'weightedValue' },
       { id: 'contact', label: 'Contact', field: 'contactEmail' },
       { id: 'company', label: 'Company', field: 'companyName' },
+      { id: 'address', label: 'Address', field: 'institutionAddress' },
       { id: 'age', label: 'Age', field: 'dealAge' },
       { id: 'last-activity', label: 'Last Activity', field: 'daysSinceLastActivity' },
       { id: 'assigned', label: 'Assigned To', field: 'assignedTo' },
@@ -8194,6 +8261,8 @@ Respond in JSON format:
         return `<td class="crm-td-contact">${this.escapeHtml(deal.contactEmail || '')}</td>`;
       case 'company':
         return `<td class="crm-td-company">${this.escapeHtml(magic.companyName || '-')}</td>`;
+      case 'address':
+        return `<td class="crm-td-address">${this.escapeHtml(magic.institutionAddress || '-')}</td>`;
       case 'age':
         return `<td class="crm-td-age">${magic.dealAge}d</td>`;
       case 'last-activity':
@@ -8217,7 +8286,8 @@ Respond in JSON format:
       dealAge: this.calculateDealAge(deal),
       daysSinceLastActivity: this.calculateDaysSinceLastActivity(deal),
       emailDomain: this.extractEmailDomain(deal.contactEmail),
-      companyName: this.extractCompanyFromEmail(deal.contactEmail),
+      companyName: deal.institution || this.extractCompanyFromEmail(deal.contactEmail),
+      institutionAddress: deal.institutionAddress || '',
       weightedValue: this.calculateWeightedValue(deal),
       expectedCloseDate: this.estimateCloseDate(deal),
       stageVelocity: this.calculateStageVelocity(deal),
