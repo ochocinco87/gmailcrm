@@ -21,133 +21,52 @@
     .settings-container {
       max-width: 800px;
       margin: 0 auto;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
     }
 
     .settings-header {
-      padding: 24px;
-      border-bottom: 1px solid #e8eaed;
+      background: white;
+      padding: 32px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
     }
 
     .settings-header h1 {
-      font-size: 24px;
+      font-size: 32px;
       color: #202124;
       margin-bottom: 8px;
     }
 
     .settings-header h1::before {
       content: '✨ ';
-      font-size: 20px;
     }
 
-    .user-info {
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      margin-top: 16px;
-      padding: 12px;
-      background: #f8f9fa;
-      border-radius: 6px;
-    }
-
-    .user-avatar {
-      width: 40px;
-      height: 40px;
-      border-radius: 50%;
-      background: #1a73e8;
-      color: white;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 600;
-    }
-
-    .user-details {
-      flex: 1;
-    }
-
-    .user-name {
-      font-weight: 600;
-      color: #202124;
-    }
-
-    .user-email {
-      font-size: 13px;
-      color: #5f6368;
-    }
-
-    .user-role {
-      display: inline-block;
-      padding: 4px 8px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 600;
-      text-transform: uppercase;
-    }
-
-    .role-admin {
-      background: #e8f0fe;
-      color: #1967d2;
-    }
-
-    .role-editor {
-      background: #e6f4ea;
-      color: #137333;
-    }
-
-    .role-viewer {
-      background: #fef7e0;
-      color: #b06000;
-    }
-
-    .tabs {
-      display: flex;
-      border-bottom: 1px solid #e8eaed;
-      padding: 0 24px;
-    }
-
-    .tab {
-      padding: 16px 24px;
-      border: none;
-      background: none;
+    .settings-header p {
       color: #5f6368;
       font-size: 14px;
-      font-weight: 500;
-      cursor: pointer;
-      border-bottom: 2px solid transparent;
-      transition: all 0.2s;
     }
 
-    .tab:hover {
-      color: #202124;
-      background: #f8f9fa;
-    }
-
-    .tab.active {
-      color: #1a73e8;
-      border-bottom-color: #1a73e8;
-    }
-
-    .tab-content {
-      display: none;
+    .section-card {
+      background: white;
       padding: 24px;
-    }
-
-    .tab-content.active {
-      display: block;
-    }
-
-    .section {
-      margin-bottom: 32px;
+      border-radius: 8px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+      margin-bottom: 20px;
     }
 
     .section-title {
-      font-size: 16px;
+      font-size: 20px;
       font-weight: 600;
       color: #202124;
       margin-bottom: 16px;
+      padding-bottom: 12px;
+      border-bottom: 2px solid #e8eaed;
+    }
+
+    .section-subtitle {
+      font-size: 14px;
+      color: #5f6368;
+      margin-bottom: 20px;
     }
 
     .form-group {
@@ -182,8 +101,10 @@
     }
 
     .form-group textarea {
-      min-height: 100px;
+      min-height: 120px;
       resize: vertical;
+      font-family: 'Courier New', monospace;
+      font-size: 12px;
     }
 
     .form-hint {
@@ -200,6 +121,7 @@
       font-weight: 500;
       cursor: pointer;
       transition: all 0.2s;
+      margin-right: 8px;
     }
 
     .btn-primary {
@@ -221,15 +143,6 @@
       background: #f8f9fa;
     }
 
-    .btn-danger {
-      background: #d93025;
-      color: white;
-    }
-
-    .btn-danger:hover {
-      background: #c5221f;
-    }
-
     .alert {
       padding: 12px 16px;
       border-radius: 4px;
@@ -249,43 +162,79 @@
       border-left: 4px solid #d93025;
     }
 
-    .alert-warning {
-      background: #fef7e0;
-      color: #b06000;
-      border-left: 4px solid #fbbc04;
-    }
-
     .alert-info {
       background: #e8f0fe;
       color: #1967d2;
       border-left: 4px solid #1a73e8;
     }
 
-    .hidden {
-      display: none !important;
+    .alert-warning {
+      background: #fef7e0;
+      color: #b06000;
+      border-left: 4px solid #fbbc04;
     }
 
-    .users-table {
-      width: 100%;
-      border-collapse: collapse;
+    .user-card {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 16px;
+      background: #f8f9fa;
+      border-radius: 8px;
+      margin-bottom: 20px;
     }
 
-    .users-table th,
-    .users-table td {
-      padding: 12px;
-      text-align: left;
-      border-bottom: 1px solid #e8eaed;
-    }
-
-    .users-table th {
+    .user-avatar {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: #1a73e8;
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
       font-weight: 600;
+      font-size: 18px;
+    }
+
+    .user-details {
+      flex: 1;
+    }
+
+    .user-name {
+      font-weight: 600;
+      color: #202124;
+      font-size: 16px;
+    }
+
+    .user-email {
+      font-size: 13px;
       color: #5f6368;
-      font-size: 12px;
+      margin-top: 2px;
+    }
+
+    .user-role {
+      display: inline-block;
+      padding: 6px 12px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 600;
       text-transform: uppercase;
     }
 
-    .users-table td {
-      font-size: 14px;
+    .role-admin {
+      background: #e8f0fe;
+      color: #1967d2;
+    }
+
+    .role-editor {
+      background: #e6f4ea;
+      color: #137333;
+    }
+
+    .role-viewer {
+      background: #fef7e0;
+      color: #b06000;
     }
 
     .config-status {
@@ -293,11 +242,14 @@
       align-items: center;
       gap: 8px;
       margin-bottom: 16px;
+      padding: 12px;
+      background: #f8f9fa;
+      border-radius: 6px;
     }
 
     .status-dot {
-      width: 10px;
-      height: 10px;
+      width: 12px;
+      height: 12px;
       border-radius: 50%;
     }
 
@@ -309,87 +261,100 @@
       background: #ea4335;
     }
 
-    .code-block {
-      background: #f8f9fa;
-      border: 1px solid #dadce0;
+    .hidden {
+      display: none !important;
+    }
+
+    .info-box {
+      background: #e8f0fe;
+      border-left: 4px solid #1a73e8;
+      padding: 16px;
       border-radius: 4px;
-      padding: 12px;
-      font-family: 'Courier New', monospace;
+      margin-bottom: 20px;
+    }
+
+    .info-box h4 {
+      color: #1967d2;
+      font-size: 14px;
+      font-weight: 600;
+      margin-bottom: 8px;
+    }
+
+    .info-box p {
+      color: #1967d2;
+      font-size: 13px;
+      line-height: 1.6;
+    }
+
+    .info-box ol {
+      margin: 8px 0 0 20px;
+      color: #1967d2;
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .info-box code {
+      background: #d2e3fc;
+      padding: 2px 6px;
+      border-radius: 3px;
       font-size: 12px;
-      overflow-x: auto;
     }
   </style>
 </head>
 <body>
   <div class="settings-container">
+    <!-- Header -->
     <div class="settings-header">
-      <h1>Effortless CRM</h1>
+      <h1>CRM Settings</h1>
+      <p>Configure your Gmail CRM extension</p>
+    </div>
 
-      <div id="current-user-info" class="user-info hidden">
-        <img id="user-avatar" class="user-avatar" />
+    <!-- User Authentication Section -->
+    <div class="section-card">
+      <h2 class="section-title">🔐 Team Collaboration</h2>
+      <p class="section-subtitle">Sign in with your Google Workspace account to enable team features and Firebase sync</p>
+
+      <div id="auth-status" class="alert alert-warning">
+        Not signed in. Using local storage mode.
+      </div>
+
+      <div id="current-user-info" class="user-card hidden">
+        <div id="user-avatar" class="user-avatar"></div>
         <div class="user-details">
           <div class="user-name" id="user-name"></div>
           <div class="user-email" id="user-email"></div>
         </div>
         <span id="user-role-badge" class="user-role"></span>
       </div>
+
+      <button id="sign-in-btn" class="btn btn-primary">Sign in with Google Workspace</button>
+      <button id="sign-out-btn" class="btn btn-secondary hidden">Sign Out</button>
     </div>
 
-    <div class="tabs">
-      <button class="tab active" data-tab="general">General</button>
-      <button class="tab" data-tab="firebase">Firebase</button>
-      <button class="tab" data-tab="billing">Billing</button>
-      <button class="tab" data-tab="automation">Automation</button>
-      <button class="tab" data-tab="sequences">Sequences</button>
-      <button class="tab" data-tab="exports">Exports</button>
-      <button class="tab" data-tab="users" id="users-tab">Users</button>
-      <button class="tab" data-tab="organization" id="org-tab">Organization</button>
-    </div>
+    <!-- Firebase Configuration -->
+    <div class="section-card">
+      <h2 class="section-title">☁️ Firebase Configuration</h2>
+      <p class="section-subtitle">Enable multi-user collaboration and real-time sync across your team</p>
 
-    <!-- General Tab -->
-    <div class="tab-content active" data-content="general">
-      <div class="section">
-        <h2 class="section-title">Authentication</h2>
-
-        <div id="auth-status" class="alert alert-warning">
-          Not signed in. Please sign in to enable multi-user features.
-        </div>
-
-        <button id="sign-in-btn" class="btn btn-primary">Sign in with Google Workspace</button>
-        <button id="sign-out-btn" class="btn btn-secondary hidden">Sign Out</button>
+      <div class="config-status">
+        <span class="status-dot status-disconnected" id="firebase-status-dot"></span>
+        <strong id="firebase-status-text">Not configured</strong>
       </div>
 
-      <div class="section">
-        <h2 class="section-title">Gemini API</h2>
-        <div class="form-group">
-          <label for="gemini-api-key">Gemini API Key</label>
-          <input type="password" id="gemini-api-key" placeholder="AIza...">
-          <div class="form-hint">Used for AI-powered email analysis and deal extraction</div>
-        </div>
+      <div class="info-box">
+        <h4>How to get your Firebase config:</h4>
+        <ol>
+          <li>Go to <a href="https://console.firebase.google.com/" target="_blank">Firebase Console</a></li>
+          <li>Create a project or select existing one</li>
+          <li>Go to Project Settings (gear icon) → General</li>
+          <li>Scroll to "Your apps" → Click Web icon (</>)</li>
+          <li>Copy the firebaseConfig object and paste below</li>
+        </ol>
       </div>
 
-      <div class="section">
-        <button id="save-general-btn" class="btn btn-primary">Save Settings</button>
-      </div>
-    </div>
-
-    <!-- Firebase Tab -->
-    <div class="tab-content" data-content="firebase">
-      <div class="section">
-        <h2 class="section-title">Firebase Configuration</h2>
-
-        <div class="config-status">
-          <span class="status-dot" id="firebase-status-dot"></span>
-          <span id="firebase-status-text">Not configured</span>
-        </div>
-
-        <div id="firebase-alert" class="alert alert-info">
-          Configure Firebase to enable multi-user collaboration. See <code>FIREBASE_SETUP.md</code> for instructions.
-        </div>
-
-        <div class="form-group">
-          <label for="firebase-config">Firebase Configuration (JSON)</label>
-          <textarea id="firebase-config" placeholder='{
+      <div class="form-group">
+        <label for="firebase-config">Firebase Configuration (JSON)</label>
+        <textarea id="firebase-config" placeholder='{
   "apiKey": "AIza...",
   "authDomain": "your-project.firebaseapp.com",
   "projectId": "your-project-id",
@@ -397,312 +362,52 @@
   "messagingSenderId": "123456789",
   "appId": "1:123456789:web:abcdef"
 }'></textarea>
-          <div class="form-hint">Paste your Firebase config object from the Firebase Console</div>
-        </div>
-
-        <button id="save-firebase-btn" class="btn btn-primary">Save Firebase Config</button>
-        <button id="test-firebase-btn" class="btn btn-secondary">Test Connection</button>
+        <div class="form-hint">Paste your complete Firebase configuration object</div>
       </div>
 
-      <div class="section">
-        <h2 class="section-title">Data Migration</h2>
-        <p style="color: #5f6368; margin-bottom: 16px;">
-          Migrate your local data to Firebase for multi-user access
-        </p>
-        <button id="migrate-data-btn" class="btn btn-secondary">Migrate Local Data to Firebase</button>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">📊 Import / Export Data</h2>
-        <p style="color: #5f6368; margin-bottom: 16px;">
-          Import deals from CSV or export all your deals to CSV for backup and analysis
-        </p>
-
-        <div style="display: flex; gap: 12px; margin-bottom: 16px;">
-          <button id="import-csv-btn" class="btn btn-secondary">
-            📥 Import Deals from CSV
-          </button>
-          <button id="export-csv-btn" class="btn btn-secondary">
-            📤 Export Deals to CSV
-          </button>
-          <button id="export-pipelines-csv-btn" class="btn btn-secondary">
-            📤 Export Pipelines to CSV
-          </button>
-        </div>
-
-        <input type="file" id="csv-file-input" accept=".csv" style="display: none;">
-
-        <div class="form-hint">
-          <strong>CSV Format:</strong> Deal Name, Stage, Contact Email, Deal Value, Priority, Status, Notes<br>
-          Export creates a CSV with all your deals. Import expects the same format.
-        </div>
-      </div>
+      <button id="save-firebase-btn" class="btn btn-primary">Save Firebase Config</button>
+      <button id="test-firebase-btn" class="btn btn-secondary">Test Connection</button>
+      <button id="migrate-data-btn" class="btn btn-secondary">Migrate Local Data to Firebase</button>
     </div>
 
-    <!-- Billing Tab -->
-    <div class="tab-content" data-content="billing">
-      <div class="section">
-        <h2 class="section-title">💳 Subscription & Billing</h2>
+    <!-- Gemini AI -->
+    <div class="section-card">
+      <h2 class="section-title">🤖 Gemini AI</h2>
+      <p class="section-subtitle">Enable AI-powered email analysis and deal extraction</p>
 
-        <div id="subscription-status-card" style="border: 1px solid #dadce0; border-radius: 8px; padding: 20px; margin-bottom: 20px;">
-          <!-- Subscription status will be rendered here -->
-        </div>
+      <div class="form-group">
+        <label for="gemini-api-key">Gemini API Key</label>
+        <input type="password" id="gemini-api-key" placeholder="AIza...">
+        <div class="form-hint">Get your API key from <a href="https://makersuite.google.com/app/apikey" target="_blank">Google AI Studio</a></div>
       </div>
 
-      <div class="section">
-        <h2 class="section-title">📊 Pricing Plans</h2>
-
-        <div id="pricing-plans" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px; margin-bottom: 20px;">
-          <!-- Starter Plan -->
-          <div class="pricing-card" data-plan="starter">
-            <div style="border: 2px solid #dadce0; border-radius: 8px; padding: 20px;">
-              <div style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Starter</div>
-              <div style="font-size: 32px; font-weight: 700; color: #1a73e8; margin-bottom: 16px;">
-                $15<span style="font-size: 16px; font-weight: 400; color: #5f6368;">/user/month</span>
-              </div>
-              <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; color: #5f6368; font-size: 14px; line-height: 2;">
-                <li>✓ Up to 5 users</li>
-                <li>✓ Unlimited pipelines</li>
-                <li>✓ Email tracking</li>
-                <li>✓ Basic automation</li>
-                <li>✓ Email support</li>
-              </ul>
-              <button class="btn btn-secondary select-plan-btn" data-plan="starter">Select Plan</button>
-            </div>
-          </div>
-
-          <!-- Pro Plan -->
-          <div class="pricing-card" data-plan="pro">
-            <div style="border: 2px solid #1a73e8; border-radius: 8px; padding: 20px; position: relative;">
-              <div style="position: absolute; top: -12px; left: 50%; transform: translateX(-50%); background: #1a73e8; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 600;">RECOMMENDED</div>
-              <div style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Pro</div>
-              <div style="font-size: 32px; font-weight: 700; color: #1a73e8; margin-bottom: 16px;">
-                $29<span style="font-size: 16px; font-weight: 400; color: #5f6368;">/user/month</span>
-              </div>
-              <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; color: #5f6368; font-size: 14px; line-height: 2;">
-                <li>✓ Up to 50 users</li>
-                <li>✓ Everything in Starter</li>
-                <li>✓ Advanced automation</li>
-                <li>✓ Contact enrichment</li>
-                <li>✓ Email sequences</li>
-                <li>✓ Priority support</li>
-              </ul>
-              <button class="btn btn-primary select-plan-btn" data-plan="pro">Select Plan</button>
-            </div>
-          </div>
-
-          <!-- Enterprise Plan -->
-          <div class="pricing-card" data-plan="enterprise">
-            <div style="border: 2px solid #dadce0; border-radius: 8px; padding: 20px;">
-              <div style="font-size: 20px; font-weight: 600; margin-bottom: 8px;">Enterprise</div>
-              <div style="font-size: 32px; font-weight: 700; color: #1a73e8; margin-bottom: 16px;">
-                Custom
-              </div>
-              <ul style="list-style: none; padding: 0; margin: 0 0 20px 0; color: #5f6368; font-size: 14px; line-height: 2;">
-                <li>✓ Unlimited users</li>
-                <li>✓ Everything in Pro</li>
-                <li>✓ Custom integrations</li>
-                <li>✓ Dedicated support</li>
-                <li>✓ SLA guarantee</li>
-                <li>✓ On-premise option</li>
-              </ul>
-              <button class="btn btn-secondary select-plan-btn" data-plan="enterprise">Contact Sales</button>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">👥 Seat Management</h2>
-        <div id="seat-management">
-          <!-- Seat usage will be rendered here -->
-        </div>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">📜 Billing History</h2>
-        <div id="billing-history">
-          <!-- Billing history will be rendered here -->
-        </div>
-      </div>
+      <button id="save-general-btn" class="btn btn-primary">Save API Key</button>
     </div>
 
-    <!-- Automation Tab -->
-    <div class="tab-content" data-content="automation">
-      <div class="section">
-        <h2 class="section-title">⚡ Automation Rules</h2>
-        <p style="color: #5f6368; margin-bottom: 16px;">
-          Create automated workflows that trigger actions when deals meet certain conditions
-        </p>
+    <!-- CSV Import/Export -->
+    <div class="section-card">
+      <h2 class="section-title">📥 Import / Export</h2>
+      <p class="section-subtitle">Backup your data or import from other CRM systems</p>
 
-        <div id="automation-rules-list" class="automation-container">
-          <!-- Rules will be rendered here -->
-        </div>
-
-        <button id="add-automation-rule-btn" class="btn btn-primary" style="margin-top: 16px;">
-          + Add New Rule
-        </button>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">📚 Available Triggers</h2>
-        <ul style="color: #5f6368; line-height: 1.8;">
-          <li><strong>Deal Created:</strong> Triggers when a new deal is added to the CRM</li>
-          <li><strong>Stage Changed:</strong> Triggers when a deal moves to a different stage</li>
-        </ul>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">🎯 Available Actions</h2>
-        <ul style="color: #5f6368; line-height: 1.8;">
-          <li><strong>Add Comment:</strong> Automatically adds a comment to the deal</li>
-          <li><strong>Send Notification:</strong> Shows a notification message</li>
-          <li><strong>Update Field:</strong> Changes a field value on the deal</li>
-        </ul>
-      </div>
+      <button id="export-csv-btn" class="btn btn-secondary">Export Deals to CSV</button>
+      <button id="export-pipelines-csv-btn" class="btn btn-secondary">Export Pipelines to CSV</button>
+      <button id="import-csv-btn" class="btn btn-secondary">Import Deals from CSV</button>
+      <input type="file" id="csv-file-input" accept=".csv" style="display: none;">
     </div>
 
-    <!-- Sequences Tab -->
-    <div class="tab-content" data-content="sequences">
-      <div class="section">
-        <h2 class="section-title">📧 Follow-Up Sequences</h2>
-        <p style="color: #5f6368; margin-bottom: 16px;">
-          Create automated email sequences with scheduled follow-ups. Enroll deals to send personalized emails over time.
-        </p>
-
-        <div id="sequences-list" class="sequences-container">
-          <!-- Sequences will be rendered here -->
-        </div>
-
-        <button id="add-sequence-btn" class="btn btn-primary" style="margin-top: 16px;">
-          + Create New Sequence
-        </button>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">💡 How It Works</h2>
-        <ol style="color: #5f6368; line-height: 1.8;">
-          <li>Create a sequence with multiple email steps</li>
-          <li>Set delays between each step (e.g., Day 0, Day 3, Day 7)</li>
-          <li>Use variables like {{name}}, {{company}}, {{email}} for personalization</li>
-          <li>Enroll deals manually from the deal view</li>
-          <li>Track progress and stop sequences anytime</li>
-        </ol>
-      </div>
-    </div>
-
-    <!-- Exports Tab -->
-    <div class="tab-content" data-content="exports">
-      <div class="section">
-        <h2 class="section-title">📤 Scheduled Exports</h2>
-        <p style="color: #5f6368; margin-bottom: 16px;">
-          Automatically export your CRM data to CSV on a recurring schedule
-        </p>
-
-        <div id="scheduled-exports-list" class="exports-container">
-          <!-- Scheduled exports will be rendered here -->
-        </div>
-
-        <button id="add-export-schedule-btn" class="btn btn-primary" style="margin-top: 16px;">
-          + Create Export Schedule
-        </button>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">📊 Export History</h2>
-        <div id="export-history-list" style="font-size: 13px; color: #5f6368;">
-          <!-- Export history will be rendered here -->
-        </div>
-      </div>
-
-      <div class="section">
-        <h2 class="section-title">💡 How It Works</h2>
-        <ul style="color: #5f6368; line-height: 1.8;">
-          <li>Create a schedule with your preferred frequency (daily, weekly, monthly)</li>
-          <li>Select which pipeline data to export</li>
-          <li>Exports run automatically in the background</li>
-          <li>Download exported CSV files from the history section</li>
-          <li>Enable/disable schedules anytime without deleting them</li>
-        </ul>
-      </div>
-    </div>
-
-    <!-- Users Tab (Admin Only) -->
-    <div class="tab-content" data-content="users">
-      <div class="section">
-        <h2 class="section-title">User Management</h2>
-
-        <div id="users-loading" class="alert alert-info">
-          Loading users...
-        </div>
-
-        <div id="users-content" class="hidden">
-          <table class="users-table">
-            <thead>
-              <tr>
-                <th>User</th>
-                <th>Email</th>
-                <th>Role</th>
-                <th>Last Login</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="users-table-body">
-            </tbody>
-          </table>
-        </div>
-      </div>
-      <div class="section">
-        <h2 class="section-title">✉️ Email Snippets</h2>
-        <p style="color: #5f6368; margin-bottom: 16px;">
-          Create reusable text snippets for common email phrases and responses
-        </p>
-
-        <div id="snippets-list" class="snippets-container">
-          <!-- Snippets will be rendered here -->
-        </div>
-
-        <button id="add-snippet-btn" class="btn btn-primary" style="margin-top: 16px;">
-          + Add New Snippet
-        </button>
-      </div>
-    </div>
-
-    <!-- Organization Tab (Admin Only) -->
-    <div class="tab-content" data-content="organization">
-      <div class="section">
-        <h2 class="section-title">Organization Settings</h2>
-
-        <div class="form-group">
-          <label>Organization Name</label>
-          <input type="text" id="org-name" placeholder="e.g., Medivis">
-        </div>
-
-        <div class="form-group">
-          <label>Domain</label>
-          <input type="text" id="org-domain" disabled>
-        </div>
-
-        <div class="form-group">
-          <label>Subscription Status</label>
-          <input type="text" id="org-subscription-status" disabled>
-        </div>
-
-        <div class="form-group">
-          <label>Plan</label>
-          <input type="text" id="org-plan" disabled>
-        </div>
-
-        <div class="form-group">
-          <label>Seats (Used / Total)</label>
-          <input type="text" id="org-seats" disabled>
-        </div>
-
-        <button id="save-org-btn" class="btn btn-primary">Save Organization Settings</button>
-      </div>
+    <!-- About -->
+    <div class="section-card">
+      <h2 class="section-title">ℹ️ About</h2>
+      <p style="color: #5f6368; margin-bottom: 12px;">
+        <strong>Effortless - Gmail CRM</strong><br>
+        Version 5.1.0
+      </p>
+      <p style="color: #5f6368; font-size: 13px;">
+        Manage your sales pipeline directly from Gmail with powerful voice controls, HubSpot integration, and team collaboration.
+      </p>
     </div>
   </div>
 
-  <script src="settings.js"></script>
+  <script src="settings-simple.js"></script>
 </body>
 </html>
