@@ -1067,6 +1067,11 @@ class GmailCRM {
 
     if (dealsWithAddresses.length === 0) {
       console.log('Gmail CRM: Showing empty state');
+      // Destroy existing map instance if it exists
+      if (this.map) {
+        this.map.remove();
+        this.map = null;
+      }
       mapContainer.innerHTML = `
         <div class="crm-map-empty-state">
           <div class="crm-empty-icon">🗺️</div>
@@ -1082,6 +1087,11 @@ class GmailCRM {
     console.log('Gmail CRM: Leaflet available:', !!window.L);
     if (!window.L) {
       console.error('Gmail CRM: Leaflet library not loaded!');
+      // Destroy existing map instance if it exists
+      if (this.map) {
+        this.map.remove();
+        this.map = null;
+      }
       mapContainer.innerHTML = `
         <div class="crm-map-empty-state">
           <div class="crm-empty-icon">❌</div>
@@ -1099,7 +1109,14 @@ class GmailCRM {
     const mapContainer = document.getElementById('crm-map-container');
     if (!mapContainer) return;
 
-    // Clear existing map if any
+    // Properly destroy existing map instance if it exists
+    if (this.map) {
+      console.log('Gmail CRM: Removing existing map instance');
+      this.map.remove();
+      this.map = null;
+    }
+
+    // Clear container
     mapContainer.innerHTML = '';
 
     // Set map center and zoom based on region mode
