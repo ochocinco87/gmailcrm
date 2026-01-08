@@ -4174,14 +4174,55 @@ class GmailCRM {
             <div id="hubspot-pipelines-list"></div>
 
             <div style="margin-top: 24px; padding: 16px; background: #f8f9fa; border-radius: 8px;">
-              <label style="display: flex; align-items: center; margin-bottom: 12px;">
+              <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600;">Import Options</h4>
+
+              <label style="display: flex; align-items: center; margin-bottom: 10px;">
+                <input type="checkbox" id="hubspot-import-contacts" checked style="margin-right: 8px;" />
+                <span>Import associated contacts</span>
+              </label>
+
+              <label style="display: flex; align-items: center; margin-bottom: 10px;">
+                <input type="checkbox" id="hubspot-import-owners" checked style="margin-right: 8px;" />
+                <span>Import deal owners (assign to users)</span>
+              </label>
+
+              <label style="display: flex; align-items: center; margin-bottom: 10px;">
+                <input type="checkbox" id="hubspot-import-custom-fields" checked style="margin-right: 8px;" />
+                <span>Import custom properties</span>
+              </label>
+
+              <label style="display: flex; align-items: center; margin-bottom: 16px;">
+                <input type="checkbox" id="hubspot-import-activities" checked style="margin-right: 8px;" />
+                <span>Import activities (emails, notes, tasks, calls)</span>
+              </label>
+
+              <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 16px 0;" />
+
+              <label style="display: flex; align-items: center; margin-bottom: 10px;">
                 <input type="checkbox" id="hubspot-replace-pipelines" style="margin-right: 8px;" />
                 <span>Replace existing HubSpot pipelines (remove old imports and add new ones)</span>
               </label>
-              <label style="display: flex; align-items: center;">
+
+              <label style="display: flex; align-items: center; margin-bottom: 16px;">
                 <input type="checkbox" id="hubspot-skip-existing" checked style="margin-right: 8px;" />
                 <span>Skip deals that already exist (prevents duplicates)</span>
               </label>
+
+              <hr style="border: none; border-top: 1px solid #e0e0e0; margin: 16px 0;" />
+
+              <h4 style="margin: 0 0 12px 0; font-size: 14px; font-weight: 600;">Two-Way Sync & Scheduling</h4>
+
+              <label style="display: flex; align-items: center; margin-bottom: 12px;">
+                <input type="checkbox" id="hubspot-enable-sync" style="margin-right: 8px;" />
+                <span>Enable two-way sync (push changes back to HubSpot)</span>
+              </label>
+
+              <label style="display: block; margin-bottom: 8px; font-weight: 500;">Schedule Automatic Imports:</label>
+              <select id="hubspot-schedule" class="crm-input" style="width: 100%;">
+                <option value="never">No scheduled import</option>
+                <option value="daily">Daily at 6:00 AM</option>
+                <option value="weekly">Weekly (Mondays at 6:00 AM)</option>
+              </select>
             </div>
 
             <div style="display: flex; justify-content: space-between; margin-top: 20px;">
@@ -4312,6 +4353,12 @@ class GmailCRM {
 
       const replacePipelines = document.getElementById('hubspot-replace-pipelines').checked;
       const skipExisting = document.getElementById('hubspot-skip-existing').checked;
+      const importContacts = document.getElementById('hubspot-import-contacts').checked;
+      const importOwners = document.getElementById('hubspot-import-owners').checked;
+      const importCustomFields = document.getElementById('hubspot-import-custom-fields').checked;
+      const importActivities = document.getElementById('hubspot-import-activities').checked;
+      const enableSync = document.getElementById('hubspot-enable-sync').checked;
+      const schedule = document.getElementById('hubspot-schedule').value;
 
       try {
         const progressBar = document.getElementById('hubspot-progress-bar');
@@ -4326,7 +4373,11 @@ class GmailCRM {
           options: {
             pipelineMappings: selectedPipelines,
             replacePipelines,
-            skipExisting
+            skipExisting,
+            importContacts,
+            importOwners,
+            importCustomFields,
+            importActivities
           }
         });
 
@@ -4337,12 +4388,40 @@ class GmailCRM {
         progressBar.style.width = '100%';
         progressText.textContent = 'Import complete!';
 
+        // Enable two-way sync if requested
+        if (enableSync) {
+          await chrome.runtime.sendMessage({
+            action: 'enableTwoWaySync',
+            enable: true
+          });
+        }
+
+        // Setup scheduled import if requested
+        if (schedule !== 'never') {
+          await chrome.runtime.sendMessage({
+            action: 'setupScheduledImport',
+            schedule: schedule
+          });
+        }
+
         // Show success
         setTimeout(() => {
           document.getElementById('hubspot-step-4').style.display = 'none';
           document.getElementById('hubspot-step-5').style.display = 'block';
-          document.getElementById('hubspot-result-summary').textContent =
-            `Successfully imported ${response.imported.pipelines} pipeline(s) and ${response.imported.deals} deal(s) from HubSpot.`;
+
+          let summaryText = `Successfully imported ${response.imported.pipelines} pipeline(s) and ${response.imported.deals} deal(s) from HubSpot.`;
+
+          if (enableSync) {
+            summaryText += ' Two-way sync is enabled.';
+          }
+
+          if (schedule === 'daily') {
+            summaryText += ' Daily imports scheduled for 6:00 AM.';
+          } else if (schedule === 'weekly') {
+            summaryText += ' Weekly imports scheduled for Mondays at 6:00 AM.';
+          }
+
+          document.getElementById('hubspot-result-summary').textContent = summaryText;
         }, 500);
 
       } catch (error) {

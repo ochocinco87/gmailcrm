@@ -332,6 +332,33 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     });
     return true;
   }
+
+  if (request.action === 'setupScheduledImport') {
+    setupScheduledImport(request.schedule).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'syncDealToHubSpot') {
+    syncDealToHubSpot(request.accessToken, request.deal).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'enableTwoWaySync') {
+    enableTwoWaySync(request.enable).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
 });
 
 // Listen for storage changes to sync across tabs
@@ -1125,9 +1152,289 @@ async function getHubSpotDeals(accessToken, pipelineId = null) {
   }
 }
 
+async function getHubSpotDealProperties(accessToken) {
+  // Fetch all custom deal properties
+  try {
+    const response = await fetch('https://api.hubapi.com/crm/v3/properties/deals', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch deal properties: ${response.status}`);
+    }
+
+    const data = await response.json();
+    return { success: true, properties: data.results };
+  } catch (error) {
+    console.error('Error fetching HubSpot deal properties:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function getHubSpotContacts(accessToken, dealId) {
+  // Fetch contacts associated with a specific deal
+  try {
+    const response = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}/associations/contacts`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (!response.ok) {
+      if (response.status === 404) return { success: true, contacts: [] };
+      throw new Error(`Failed to fetch contacts: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const contactIds = data.results.map(r => r.id);
+
+    // Fetch contact details if we have IDs
+    if (contactIds.length === 0) {
+      return { success: true, contacts: [] };
+    }
+
+    // Batch fetch contact details
+    const contactsResponse = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/contacts/batch/read`,
+      {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          properties: ['firstname', 'lastname', 'email', 'phone', 'jobtitle', 'company'],
+          inputs: contactIds.map(id => ({ id }))
+        })
+      }
+    );
+
+    if (!contactsResponse.ok) {
+      throw new Error(`Failed to fetch contact details: ${contactsResponse.status}`);
+    }
+
+    const contactsData = await contactsResponse.json();
+    return { success: true, contacts: contactsData.results || [] };
+  } catch (error) {
+    console.warn('Error fetching contacts for deal:', dealId, error);
+    return { success: true, contacts: [] }; // Don't fail import if contacts fail
+  }
+}
+
+async function getHubSpotOwners(accessToken) {
+  // Fetch all owners (users) from HubSpot
+  try {
+    const response = await fetch('https://api.hubapi.com/crm/v3/owners?limit=100', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch owners: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    // Create owner lookup map
+    const ownerMap = {};
+    data.results.forEach(owner => {
+      ownerMap[owner.id] = {
+        id: owner.id,
+        email: owner.email,
+        firstName: owner.firstName,
+        lastName: owner.lastName,
+        fullName: `${owner.firstName} ${owner.lastName}`
+      };
+    });
+
+    return { success: true, owners: ownerMap };
+  } catch (error) {
+    console.error('Error fetching HubSpot owners:', error);
+    return { success: true, owners: {} }; // Don't fail import
+  }
+}
+
+async function getHubSpotEngagements(accessToken, dealId) {
+  // Fetch activities (emails, notes, tasks, calls) for a deal
+  try {
+    const engagements = {
+      emails: [],
+      notes: [],
+      tasks: [],
+      calls: []
+    };
+
+    // Fetch notes
+    const notesResponse = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}/associations/notes`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (notesResponse.ok) {
+      const notesData = await notesResponse.json();
+      const noteIds = notesData.results?.map(r => r.id) || [];
+
+      if (noteIds.length > 0) {
+        const notesDetailsResponse = await fetch(
+          `https://api.hubapi.com/crm/v3/objects/notes/batch/read`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              properties: ['hs_note_body', 'hs_timestamp', 'hs_created_by'],
+              inputs: noteIds.map(id => ({ id }))
+            })
+          }
+        );
+
+        if (notesDetailsResponse.ok) {
+          const notesDetails = await notesDetailsResponse.json();
+          engagements.notes = notesDetails.results || [];
+        }
+      }
+    }
+
+    // Fetch emails
+    const emailsResponse = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}/associations/emails`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (emailsResponse.ok) {
+      const emailsData = await emailsResponse.json();
+      const emailIds = emailsData.results?.map(r => r.id) || [];
+
+      if (emailIds.length > 0) {
+        const emailsDetailsResponse = await fetch(
+          `https://api.hubapi.com/crm/v3/objects/emails/batch/read`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              properties: ['hs_email_subject', 'hs_email_text', 'hs_timestamp', 'hs_email_from', 'hs_email_to'],
+              inputs: emailIds.map(id => ({ id }))
+            })
+          }
+        );
+
+        if (emailsDetailsResponse.ok) {
+          const emailsDetails = await emailsDetailsResponse.json();
+          engagements.emails = emailsDetails.results || [];
+        }
+      }
+    }
+
+    // Fetch tasks
+    const tasksResponse = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}/associations/tasks`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (tasksResponse.ok) {
+      const tasksData = await tasksResponse.json();
+      const taskIds = tasksData.results?.map(r => r.id) || [];
+
+      if (taskIds.length > 0) {
+        const tasksDetailsResponse = await fetch(
+          `https://api.hubapi.com/crm/v3/objects/tasks/batch/read`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              properties: ['hs_task_subject', 'hs_task_body', 'hs_task_status', 'hs_timestamp', 'hs_task_priority'],
+              inputs: taskIds.map(id => ({ id }))
+            })
+          }
+        );
+
+        if (tasksDetailsResponse.ok) {
+          const tasksDetails = await tasksDetailsResponse.json();
+          engagements.tasks = tasksDetails.results || [];
+        }
+      }
+    }
+
+    // Fetch calls
+    const callsResponse = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${dealId}/associations/calls`,
+      {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      }
+    );
+
+    if (callsResponse.ok) {
+      const callsData = await callsResponse.json();
+      const callIds = callsData.results?.map(r => r.id) || [];
+
+      if (callIds.length > 0) {
+        const callsDetailsResponse = await fetch(
+          `https://api.hubapi.com/crm/v3/objects/calls/batch/read`,
+          {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${accessToken}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              properties: ['hs_call_title', 'hs_call_body', 'hs_call_duration', 'hs_timestamp', 'hs_call_status'],
+              inputs: callIds.map(id => ({ id }))
+            })
+          }
+        );
+
+        if (callsDetailsResponse.ok) {
+          const callsDetails = await callsDetailsResponse.json();
+          engagements.calls = callsDetails.results || [];
+        }
+      }
+    }
+
+    return { success: true, engagements };
+  } catch (error) {
+    console.warn('Error fetching engagements for deal:', dealId, error);
+    return { success: true, engagements: { emails: [], notes: [], tasks: [], calls: [] } };
+  }
+}
+
 async function importHubSpotData(accessToken, options) {
   try {
-    console.log('Starting HubSpot import with options:', options);
+    console.log('Starting enhanced HubSpot import with options:', options);
 
     // Step 1: Get HubSpot pipelines
     const pipelinesResult = await getHubSpotPipelines(accessToken);
@@ -1135,10 +1442,35 @@ async function importHubSpotData(accessToken, options) {
       throw new Error('Failed to fetch HubSpot pipelines');
     }
 
+    // Step 2: Get owners if requested
+    let ownersMap = {};
+    if (options.importOwners) {
+      const ownersResult = await getHubSpotOwners(accessToken);
+      if (ownersResult.success) {
+        ownersMap = ownersResult.owners;
+      }
+    }
+
+    // Step 3: Get custom properties if requested
+    let customProperties = {};
+    if (options.importCustomFields) {
+      const propertiesResult = await getHubSpotDealProperties(accessToken);
+      if (propertiesResult.success) {
+        // Create a map of custom properties (excluding standard ones)
+        const standardProps = ['dealname', 'amount', 'closedate', 'dealstage', 'pipeline', 'hubspot_owner_id', 'createdate', 'notes_last_updated', 'hs_lastmodifieddate', 'description'];
+        propertiesResult.properties.forEach(prop => {
+          if (!standardProps.includes(prop.name) && !prop.name.startsWith('hs_')) {
+            customProperties[prop.name] = prop.label;
+          }
+        });
+      }
+    }
+
     const importedPipelines = [];
     const importedDeals = [];
+    let totalDealsProcessed = 0;
 
-    // Step 2: For each selected pipeline, import deals
+    // Step 4: For each selected pipeline, import deals
     for (const pipelineMapping of options.pipelineMappings) {
       if (!pipelineMapping.import) continue;
 
@@ -1161,43 +1493,157 @@ async function importHubSpotData(accessToken, options) {
 
       importedPipelines.push(mappedPipeline);
 
-      // Map deals to our format
+      // Map deals to our format (with enhanced data)
       for (const hubspotDeal of dealsResult.deals) {
         const properties = hubspotDeal.properties;
+        const dealId = hubspotDeal.id;
 
         // Find corresponding stage
         const stage = mappedPipeline.stages.find(s => s.hubspotId === properties.dealstage);
 
+        // Fetch contacts if requested
+        let contactsData = [];
+        if (options.importContacts) {
+          const contactsResult = await getHubSpotContacts(accessToken, dealId);
+          if (contactsResult.success) {
+            contactsData = contactsResult.contacts;
+          }
+        }
+
+        // Fetch engagements if requested
+        let engagementsData = { emails: [], notes: [], tasks: [], calls: [] };
+        if (options.importActivities) {
+          const engagementsResult = await getHubSpotEngagements(accessToken, dealId);
+          if (engagementsResult.success) {
+            engagementsData = engagementsResult.engagements;
+          }
+        }
+
+        // Map contacts
+        const contacts = contactsData.map(contact => {
+          const props = contact.properties;
+          return `${props.firstname || ''} ${props.lastname || ''}`.trim() || props.email;
+        }).filter(Boolean);
+
+        const primaryContact = contactsData[0]?.properties;
+        const contactEmail = primaryContact?.email || '';
+        const contactName = primaryContact ? `${primaryContact.firstname || ''} ${primaryContact.lastname || ''}`.trim() : '';
+
+        // Map owner
+        const ownerId = properties.hubspot_owner_id;
+        const owner = ownersMap[ownerId];
+        const assignedTo = owner ? owner.fullName : null;
+
+        // Map custom properties
+        const customFields = {};
+        if (options.importCustomFields) {
+          Object.keys(customProperties).forEach(propName => {
+            if (properties[propName]) {
+              customFields[propName] = properties[propName];
+            }
+          });
+        }
+
+        // Map notes from engagements
+        const notesHistory = properties.description ? [{
+          text: properties.description,
+          createdAt: properties.notes_last_updated || properties.createdate || new Date().toISOString(),
+          author: 'HubSpot Import'
+        }] : [];
+
+        engagementsData.notes.forEach(note => {
+          const props = note.properties;
+          notesHistory.push({
+            text: props.hs_note_body || '',
+            createdAt: props.hs_timestamp || new Date().toISOString(),
+            author: props.hs_created_by || 'HubSpot'
+          });
+        });
+
+        // Map emails from engagements
+        const linkedEmails = engagementsData.emails.map(email => {
+          const props = email.properties;
+          return {
+            subject: props.hs_email_subject || 'No Subject',
+            from: props.hs_email_from || '',
+            to: props.hs_email_to ? [props.hs_email_to] : [],
+            body: props.hs_email_text || '',
+            date: props.hs_timestamp || new Date().toISOString(),
+            threadId: `hubspot_email_${email.id}`,
+            source: 'hubspot'
+          };
+        });
+
+        // Map tasks from engagements
+        const tasks = engagementsData.tasks.map(task => {
+          const props = task.properties;
+          return {
+            title: props.hs_task_subject || 'Untitled Task',
+            description: props.hs_task_body || '',
+            completed: props.hs_task_status === 'COMPLETED',
+            dueDate: props.hs_timestamp || null,
+            priority: props.hs_task_priority || 'MEDIUM',
+            createdAt: props.hs_timestamp || new Date().toISOString()
+          };
+        });
+
+        // Map calls from engagements
+        const calls = engagementsData.calls.map(call => {
+          const props = call.properties;
+          return {
+            title: props.hs_call_title || 'Call',
+            notes: props.hs_call_body || '',
+            duration: props.hs_call_duration ? parseInt(props.hs_call_duration) : 0,
+            callDate: props.hs_timestamp || new Date().toISOString(),
+            status: props.hs_call_status || 'COMPLETED'
+          };
+        });
+
         const mappedDeal = {
-          id: `deal_hubspot_${hubspotDeal.id}`,
-          hubspotId: hubspotDeal.id,
-          threadId: `hubspot_${hubspotDeal.id}`,
+          id: `deal_hubspot_${dealId}`,
+          hubspotId: dealId,
+          threadId: `hubspot_${dealId}`,
           pipelineId: mappedPipeline.id,
           stageId: stage ? stage.id : mappedPipeline.stages[0].id,
           emailSubject: properties.dealname || 'Untitled Deal',
           value: parseFloat(properties.amount) || 0,
-          company: properties.dealname?.split('-')[0]?.trim() || 'Unknown Company',
-          contactEmail: '', // Will be populated if we fetch associated contacts
+          company: properties.dealname?.split('-')[0]?.trim() || primaryContact?.company || 'Unknown Company',
+          contactEmail: contactEmail,
+          contactName: contactName,
+          contacts: contacts,
           priority: 'Medium',
           probability: stage ? stage.probability : 50,
           status: 'Active',
           notes: properties.description || '',
+          assignedTo: assignedTo,
           createdAt: properties.createdate || new Date().toISOString(),
           lastUpdated: properties.hs_lastmodifieddate || new Date().toISOString(),
           closeDate: properties.closedate || null,
           source: 'hubspot',
           importedAt: new Date().toISOString(),
-          linkedEmails: [],
-          notesHistory: properties.description ? [{
-            text: properties.description,
-            createdAt: properties.notes_last_updated || properties.createdate || new Date().toISOString(),
-            author: 'HubSpot Import'
-          }] : [],
-          calls: [],
-          tasks: []
+          linkedEmails: linkedEmails,
+          notesHistory: notesHistory,
+          calls: calls,
+          tasks: tasks,
+          customFields: customFields,
+          hubspotData: {
+            ownerId: ownerId,
+            ownerName: owner?.fullName || null,
+            ownerEmail: owner?.email || null
+          }
         };
 
         importedDeals.push(mappedDeal);
+        totalDealsProcessed++;
+
+        // Progress callback if provided
+        if (options.onProgress) {
+          options.onProgress({
+            current: totalDealsProcessed,
+            total: dealsResult.count,
+            dealName: mappedDeal.emailSubject
+          });
+        }
       }
     }
 
@@ -1252,6 +1698,134 @@ async function importHubSpotData(accessToken, options) {
   }
 }
 
+// Scheduled HubSpot Import
+async function setupScheduledImport(schedule) {
+  // schedule: 'daily', 'weekly', 'never'
+  chrome.storage.local.set({ hubspotImportSchedule: schedule });
+
+  // Clear existing alarms
+  chrome.alarms.clear('hubspotScheduledImport');
+
+  if (schedule === 'daily') {
+    // Run daily at 6 AM
+    chrome.alarms.create('hubspotScheduledImport', { periodInMinutes: 1440, when: getNext6AM() });
+  } else if (schedule === 'weekly') {
+    // Run weekly on Monday at 6 AM
+    chrome.alarms.create('hubspotScheduledImport', { periodInMinutes: 10080, when: getNextMonday6AM() });
+  }
+
+  return { success: true };
+}
+
+function getNext6AM() {
+  const now = new Date();
+  const next6AM = new Date(now);
+  next6AM.setHours(6, 0, 0, 0);
+
+  if (next6AM <= now) {
+    next6AM.setDate(next6AM.getDate() + 1);
+  }
+
+  return next6AM.getTime();
+}
+
+function getNextMonday6AM() {
+  const now = new Date();
+  const daysUntilMonday = (8 - now.getDay()) % 7 || 7;
+  const nextMonday = new Date(now);
+  nextMonday.setDate(now.getDate() + daysUntilMonday);
+  nextMonday.setHours(6, 0, 0, 0);
+
+  return nextMonday.getTime();
+}
+
+async function runScheduledImport() {
+  console.log('Running scheduled HubSpot import...');
+
+  const result = await new Promise(resolve => {
+    chrome.storage.local.get(['hubspotAccessToken', 'hubspotScheduledPipelines'], resolve);
+  });
+
+  if (!result.hubspotAccessToken || !result.hubspotScheduledPipelines) {
+    console.log('Scheduled import skipped - not configured');
+    return;
+  }
+
+  try {
+    await importHubSpotData(result.hubspotAccessToken, {
+      pipelineMappings: result.hubspotScheduledPipelines,
+      replacePipelines: false, // Merge mode for scheduled imports
+      skipExisting: true, // Don't create duplicates
+      importContacts: true,
+      importActivities: true,
+      importOwners: true,
+      importCustomFields: true
+    });
+
+    console.log('Scheduled import completed successfully');
+
+    // Notify user
+    chrome.notifications.create({
+      type: 'basic',
+      iconUrl: 'icons/icon48.png',
+      title: 'HubSpot Import Complete',
+      message: 'Your scheduled HubSpot data has been imported successfully.'
+    });
+  } catch (error) {
+    console.error('Scheduled import failed:', error);
+  }
+}
+
+// Two-Way Sync: Push changes back to HubSpot
+async function syncDealToHubSpot(accessToken, deal) {
+  if (!deal.hubspotId) {
+    return { success: false, error: 'Deal not from HubSpot' };
+  }
+
+  try {
+    // Map our deal back to HubSpot format
+    const hubspotProperties = {
+      dealname: deal.emailSubject,
+      amount: deal.value.toString(),
+      dealstage: deal.stageId.replace('stage_', ''),
+      closedate: deal.closeDate,
+      description: deal.notes
+    };
+
+    // Add custom fields if they exist
+    if (deal.customFields) {
+      Object.assign(hubspotProperties, deal.customFields);
+    }
+
+    const response = await fetch(
+      `https://api.hubapi.com/crm/v3/objects/deals/${deal.hubspotId}`,
+      {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ properties: hubspotProperties })
+      }
+    );
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Failed to sync to HubSpot: ${error}`);
+    }
+
+    return { success: true };
+  } catch (error) {
+    console.error('Error syncing deal to HubSpot:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function enableTwoWaySync(enable) {
+  chrome.storage.local.set({ hubspotTwoWaySync: enable });
+  return { success: true };
+}
+
 // ========== END HUBSPOT INTEGRATION ==========
 
 console.log('Gmail CRM background service worker loaded');
@@ -1263,5 +1837,8 @@ chrome.alarms.create('keepAlive', { periodInMinutes: 1 });
 chrome.alarms.onAlarm.addListener((alarm) => {
   if (alarm.name === 'keepAlive') {
     console.log('Service worker keepAlive ping');
+  } else if (alarm.name === 'hubspotScheduledImport') {
+    console.log('Triggering scheduled HubSpot import');
+    runScheduledImport();
   }
 });
