@@ -416,6 +416,7 @@ class GmailCRM {
           </div>
           ${this.pipelineViewMode === 'kanban' ? '<button class="crm-btn" id="crm-customize-kanban-btn">🎨 Customize Cards</button>' : ''}
           ${pipeline.type === 'customer-tracking' ? '<button class="crm-btn" id="crm-dashboard-btn">📊 Dashboard</button>' : ''}
+          <button class="crm-btn" id="crm-smart-scan-btn" title="Scan recent emails and suggest which deals they belong to">🔍 Smart Scan</button>
           <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
           <button class="crm-btn" id="crm-settings-btn">⚙️ Settings</button>
           <button class="crm-btn" id="crm-share-btn">🔗 Share</button>
@@ -541,6 +542,11 @@ class GmailCRM {
 
     document.getElementById('crm-add-deal-btn')?.addEventListener('click', () => {
       this.showAddDealDialog();
+    });
+
+    // Smart scan button for auto-suggesting email links
+    document.getElementById('crm-smart-scan-btn')?.addEventListener('click', () => {
+      this.scanRecentEmailsForSuggestions();
     });
 
     // Filter event listeners
@@ -2947,12 +2953,45 @@ class GmailCRM {
       const urlMatch = window.location.hash.match(/\/([a-f0-9]+)$/);
       const threadId = urlMatch ? urlMatch[1] : null;
 
+      // Extract full email body for team sharing (Option 1)
+      let body = '';
+      let bodySnippet = '';
+      const bodyContainers = emailView.querySelectorAll('.a3s.aiL') || emailView.querySelectorAll('.ii.gt');
+      if (bodyContainers && bodyContainers.length > 0) {
+        // Get all message bodies in thread
+        const bodies = Array.from(bodyContainers).map(container => {
+          return container.textContent?.trim() || '';
+        });
+        body = bodies.join('\n\n--- Message ---\n\n');
+        bodySnippet = body.substring(0, 500);
+      }
+
+      // Extract recipients (to, cc)
+      let to = [];
+      let cc = [];
+      const recipientEls = emailView.querySelectorAll('span[email]');
+      recipientEls.forEach(el => {
+        const email = el.getAttribute('email');
+        const parent = el.closest('.gD, .afn');
+        if (parent && email) {
+          if (parent.textContent?.includes('to') || parent.classList.contains('gD')) {
+            to.push(email);
+          } else if (parent.textContent?.includes('cc')) {
+            cc.push(email);
+          }
+        }
+      });
+
       return {
         subject,
         from,
+        to,
+        cc,
         date,
         threadId,
-        url: window.location.href
+        url: window.location.href,
+        body,
+        bodySnippet
       };
     } catch (e) {
       console.error('Gmail CRM: Error extracting email metadata:', e);
@@ -3671,15 +3710,20 @@ class GmailCRM {
       return;
     }
 
-    // Add email to deal
+    // Add email to deal with full content for team visibility (Option 1)
     deal.linkedEmails.push({
       subject: emailMetadata.subject,
       from: emailMetadata.from,
+      to: emailMetadata.to || [],
+      cc: emailMetadata.cc || [],
       date: emailMetadata.date,
       threadId: emailMetadata.threadId,
       url: emailMetadata.url,
       body: emailMetadata.body || emailMetadata.bodySnippet || '',
-      linkedAt: new Date().toISOString()
+      bodySnippet: emailMetadata.bodySnippet || '',
+      linkedAt: new Date().toISOString(),
+      linkedBy: window.firebaseCRMSync?.getUserInfo() || { email: 'local@user' },
+      sharedWithTeam: false // Will be set to true when shared via Option 2
     });
 
     await this.saveDeal(deal);
@@ -3704,6 +3748,371 @@ class GmailCRM {
     // Refresh the sidebar
     this.checkAndInjectEmailLinkUI();
   }
+
+  // ====== SMART EMAIL AUTO-SUGGEST SYSTEM ======
+
+  async scanRecentEmailsForSuggestions() {
+    console.log('Gmail CRM: Starting smart email scan...');
+    this.showNotification('🔍 Scanning emails for smart suggestions...');
+
+    try {
+      // Get all emails from Gmail inbox (last 7 days)
+      const emails = await this.getRecentGmailEmails(7);
+      console.log(`Found ${emails.length} recent emails`);
+
+      // Filter out already-linked emails
+      const unlinkedEmails = emails.filter(email => {
+        const alreadyLinked = Object.values(this.deals).some(deal =>
+          deal.linkedEmails?.some(linkedEmail =>
+            linkedEmail.threadId === email.threadId || linkedEmail.subject === email.subject
+          )
+        );
+        return !alreadyLinked;
+      });
+
+      console.log(`${unlinkedEmails.length} unlinked emails to analyze`);
+
+      // Match each email to deals with confidence scoring
+      const suggestions = [];
+      for (const email of unlinkedEmails) {
+        const matches = this.matchEmailToDeals(email);
+        if (matches.length > 0) {
+          suggestions.push({
+            email,
+            matches: matches.sort((a, b) => b.confidence - a.confidence) // highest confidence first
+          });
+        }
+      }
+
+      console.log(`Generated ${suggestions.length} email suggestions`);
+
+      // Show suggestions modal
+      if (suggestions.length > 0) {
+        this.showEmailSuggestionsModal(suggestions);
+      } else {
+        this.showNotification('✅ No email suggestions found - your CRM is up to date!');
+      }
+
+    } catch (error) {
+      console.error('Gmail CRM: Error scanning emails:', error);
+      this.showNotification('❌ Error scanning emails. Please try again.');
+    }
+  }
+
+  async getRecentGmailEmails(days = 7) {
+    // Scan Gmail for emails in the last N days
+    const emails = [];
+    const cutoffDate = new Date();
+    cutoffDate.setDate(cutoffDate.getDate() - days);
+
+    try {
+      // Get all email rows from Gmail inbox and sent
+      const emailRows = document.querySelectorAll('tr.zA, table.F.cf.zt tr');
+
+      if (emailRows.length === 0) {
+        // Not on inbox view - need to navigate or use different approach
+        console.warn('Gmail CRM: Not on inbox view, returning empty array');
+        return [];
+      }
+
+      // Parse visible emails
+      for (const row of emailRows) {
+        try {
+          const dateEl = row.querySelector('.xW.xY span[title]');
+          const subjectEl = row.querySelector('.bog span.bqe, .y6 span');
+          const senderEl = row.querySelector('.yW span[email], .yP span[email]');
+
+          if (!subjectEl || !senderEl) continue;
+
+          const subject = subjectEl.textContent?.trim() || '';
+          const sender = senderEl.getAttribute('email') || senderEl.textContent?.trim() || '';
+          const dateStr = dateEl?.getAttribute('title') || dateEl?.textContent || '';
+
+          // Get thread ID from row if possible
+          const threadId = row.getAttribute('data-thread-id') || null;
+
+          // Try to extract body snippet
+          let bodySnippet = '';
+          const snippetEl = row.querySelector('.y2');
+          if (snippetEl) {
+            bodySnippet = snippetEl.textContent?.trim() || '';
+          }
+
+          emails.push({
+            subject,
+            from: sender,
+            date: dateStr,
+            threadId,
+            bodySnippet,
+            url: `https://mail.google.com/mail/u/0/#inbox/${threadId}`
+          });
+
+        } catch (err) {
+          console.warn('Error parsing email row:', err);
+        }
+      }
+
+      console.log(`Gmail CRM: Extracted ${emails.length} emails from visible rows`);
+      return emails;
+
+    } catch (error) {
+      console.error('Gmail CRM: Error getting Gmail emails:', error);
+      return [];
+    }
+  }
+
+  matchEmailToDeals(email) {
+    // Smart matching algorithm with confidence scoring
+    const matches = [];
+    const allDeals = Object.values(this.deals);
+
+    for (const deal of allDeals) {
+      let score = 0;
+      const reasons = [];
+
+      // Extract email address from sender
+      const emailAddress = email.from.match(/<(.+)>/) ? email.from.match(/<(.+)>/)[1] : email.from;
+      const emailDomain = emailAddress.split('@')[1] || '';
+
+      // 1. CONTACT EMAIL MATCH (Highest confidence: +50 points)
+      if (deal.contactEmail && emailAddress.toLowerCase() === deal.contactEmail.toLowerCase()) {
+        score += 50;
+        reasons.push('Exact contact email match');
+      }
+
+      // 2. ADDITIONAL CONTACTS MATCH (+40 points)
+      if (deal.contacts && deal.contacts.some(contact =>
+        contact.toLowerCase().includes(emailAddress.toLowerCase()) ||
+        emailAddress.toLowerCase().includes(contact.toLowerCase())
+      )) {
+        score += 40;
+        reasons.push('Matches additional contact');
+      }
+
+      // 3. INSTITUTION DOMAIN MATCH (+30 points)
+      if (deal.institutionDomain && emailDomain === deal.institutionDomain) {
+        score += 30;
+        reasons.push('Institution domain match');
+      } else if (deal.institutionDomain && emailDomain.includes(deal.institutionDomain)) {
+        score += 20;
+        reasons.push('Partial domain match');
+      }
+
+      // 4. SUBJECT LINE MATCHING (+15-25 points)
+      const subjectLower = email.subject.toLowerCase();
+      const dealSubjectWords = (deal.emailSubject || '').toLowerCase().split(' ').filter(w => w.length > 3);
+      const matchingWords = dealSubjectWords.filter(word => subjectLower.includes(word));
+
+      if (matchingWords.length > 0) {
+        const subjectScore = Math.min(25, matchingWords.length * 5);
+        score += subjectScore;
+        reasons.push(`Subject contains ${matchingWords.length} keyword(s)`);
+      }
+
+      // Check if subject contains institution name
+      if (deal.institution && subjectLower.includes(deal.institution.toLowerCase())) {
+        score += 15;
+        reasons.push('Subject mentions institution');
+      }
+
+      // 5. BODY CONTENT MATCHING (+5-15 points)
+      if (email.bodySnippet) {
+        const bodyLower = email.bodySnippet.toLowerCase();
+
+        if (deal.institution && bodyLower.includes(deal.institution.toLowerCase())) {
+          score += 10;
+          reasons.push('Body mentions institution');
+        }
+
+        if (deal.contactName && bodyLower.includes(deal.contactName.toLowerCase())) {
+          score += 5;
+          reasons.push('Body mentions contact name');
+        }
+      }
+
+      // Only suggest if confidence score meets threshold
+      if (score >= 30) { // Minimum 30 points to suggest
+        let confidenceLevel = 'low';
+        if (score >= 80) confidenceLevel = 'high';
+        else if (score >= 50) confidenceLevel = 'medium';
+
+        matches.push({
+          deal,
+          confidence: score,
+          confidenceLevel,
+          reasons
+        });
+      }
+    }
+
+    return matches;
+  }
+
+  showEmailSuggestionsModal(suggestions) {
+    // Create modal for email suggestions
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal-backdrop';
+    modal.innerHTML = `
+      <div class="crm-modal crm-email-suggestions-modal" style="max-width: 1000px; width: 90%; max-height: 90vh;">
+        <div class="crm-modal-header">
+          <h2>🔍 Smart Email Suggestions</h2>
+          <button class="crm-modal-close" id="crm-close-suggestions">&times;</button>
+        </div>
+        <div class="crm-modal-body" style="max-height: calc(90vh - 140px); overflow-y: auto;">
+          <div class="crm-suggestions-stats" style="margin-bottom: 20px; padding: 12px; background: #e8f0fe; border-radius: 8px; display: flex; gap: 20px; align-items: center;">
+            <div>
+              <strong>${suggestions.length}</strong> emails found
+            </div>
+            <div>
+              <strong>${suggestions.filter(s => s.matches[0].confidenceLevel === 'high').length}</strong> high confidence
+            </div>
+            <div>
+              <strong>${suggestions.filter(s => s.matches[0].confidenceLevel === 'medium').length}</strong> medium confidence
+            </div>
+            <button class="crm-btn" id="crm-accept-all-high" style="margin-left: auto;">
+              ✓ Accept All High Confidence
+            </button>
+          </div>
+
+          <div id="crm-suggestions-list">
+            ${suggestions.map((suggestion, idx) => this.renderEmailSuggestion(suggestion, idx)).join('')}
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close button
+    document.getElementById('crm-close-suggestions').addEventListener('click', () => {
+      modal.remove();
+    });
+
+    // Accept all high confidence
+    document.getElementById('crm-accept-all-high').addEventListener('click', async () => {
+      const highConfidence = suggestions.filter(s => s.matches[0].confidenceLevel === 'high');
+      let accepted = 0;
+
+      for (const suggestion of highConfidence) {
+        const topMatch = suggestion.matches[0];
+        await this.linkEmailToDeal(topMatch.deal.id, suggestion.email);
+        accepted++;
+      }
+
+      this.showNotification(`✅ Linked ${accepted} emails to deals`);
+      modal.remove();
+    });
+
+    // Individual accept/reject buttons
+    modal.querySelectorAll('.crm-accept-suggestion').forEach(btn => {
+      btn.addEventListener('click', async (e) => {
+        const idx = parseInt(btn.dataset.idx);
+        const matchIdx = parseInt(btn.dataset.matchIdx);
+        const suggestion = suggestions[idx];
+        const match = suggestion.matches[matchIdx];
+
+        await this.linkEmailToDeal(match.deal.id, suggestion.email);
+
+        // Remove from UI
+        const suggestionCard = btn.closest('.crm-suggestion-card');
+        suggestionCard.style.opacity = '0.5';
+        suggestionCard.innerHTML = '<div style="padding: 20px; text-align: center; color: #34a853;">✓ Linked successfully!</div>';
+
+        setTimeout(() => suggestionCard.remove(), 1000);
+      });
+    });
+
+    modal.querySelectorAll('.crm-reject-suggestion').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const suggestionCard = btn.closest('.crm-suggestion-card');
+        suggestionCard.style.opacity = '0.5';
+        suggestionCard.innerHTML = '<div style="padding: 20px; text-align: center; color: #9aa0a6;">Dismissed</div>';
+        setTimeout(() => suggestionCard.remove(), 1000);
+      });
+    });
+  }
+
+  renderEmailSuggestion(suggestion, idx) {
+    const topMatch = suggestion.matches[0];
+    const confidenceColor = {
+      'high': '#34a853',
+      'medium': '#fbbc04',
+      'low': '#ea4335'
+    }[topMatch.confidenceLevel];
+
+    const confidenceLabel = {
+      'high': 'High Confidence',
+      'medium': 'Medium Confidence',
+      'low': 'Low Confidence'
+    }[topMatch.confidenceLevel];
+
+    return `
+      <div class="crm-suggestion-card" style="border: 2px solid ${confidenceColor}20; border-radius: 12px; padding: 16px; margin-bottom: 16px; background: white;">
+        <div style="display: flex; gap: 16px;">
+          <!-- Email Preview -->
+          <div style="flex: 1; border-right: 1px solid #e0e0e0; padding-right: 16px;">
+            <div style="display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+              <span style="background: ${confidenceColor}; color: white; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">
+                ${confidenceLabel}
+              </span>
+              <span style="color: #5f6368; font-size: 12px;">${topMatch.confidence} points</span>
+            </div>
+            <div style="margin-bottom: 8px;">
+              <strong style="font-size: 14px;">${this.escapeHtml(suggestion.email.subject)}</strong>
+            </div>
+            <div style="font-size: 12px; color: #5f6368; margin-bottom: 4px;">
+              From: ${this.escapeHtml(suggestion.email.from)}
+            </div>
+            <div style="font-size: 12px; color: #5f6368; margin-bottom: 8px;">
+              Date: ${suggestion.email.date}
+            </div>
+            ${suggestion.email.bodySnippet ? `
+              <div style="font-size: 12px; color: #5f6368; background: #f8f9fa; padding: 8px; border-radius: 4px; margin-top: 8px;">
+                ${this.escapeHtml(suggestion.email.bodySnippet.substring(0, 150))}${suggestion.email.bodySnippet.length > 150 ? '...' : ''}
+              </div>
+            ` : ''}
+          </div>
+
+          <!-- Suggested Deals -->
+          <div style="flex: 1;">
+            <div style="font-weight: 600; margin-bottom: 12px; color: #202124;">
+              Suggested Deal${suggestion.matches.length > 1 ? 's' : ''}:
+            </div>
+            ${suggestion.matches.slice(0, 3).map((match, matchIdx) => `
+              <div style="background: #f8f9fa; padding: 12px; border-radius: 8px; margin-bottom: 8px;">
+                <div style="font-weight: 500; margin-bottom: 4px;">
+                  ${this.escapeHtml(match.deal.emailSubject || 'Untitled')}
+                </div>
+                <div style="font-size: 11px; color: #5f6368; margin-bottom: 8px;">
+                  ${this.escapeHtml(match.deal.institution || match.deal.company || 'No institution')}
+                </div>
+                <div style="font-size: 11px; color: #5f6368; margin-bottom: 8px;">
+                  ${match.reasons.map(r => `• ${r}`).join('<br>')}
+                </div>
+                <div style="display: flex; gap: 8px;">
+                  <button class="crm-btn-small crm-accept-suggestion" data-idx="${idx}" data-match-idx="${matchIdx}" style="background: ${confidenceColor};">
+                    ✓ Link to this Deal
+                  </button>
+                  ${matchIdx === 0 ? `
+                    <button class="crm-btn-small crm-reject-suggestion" data-idx="${idx}" style="background: #f1f3f4; color: #5f6368;">
+                      ✗ Dismiss
+                    </button>
+                  ` : ''}
+                </div>
+              </div>
+            `).join('')}
+            ${suggestion.matches.length > 3 ? `
+              <div style="font-size: 12px; color: #5f6368; text-align: center;">
+                +${suggestion.matches.length - 3} more matches...
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  // ====== END SMART EMAIL AUTO-SUGGEST SYSTEM ======
 
   showEmailDealsSidebar(emailMetadata) {
     // Check if sidebar already exists
