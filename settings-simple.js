@@ -170,11 +170,24 @@ document.getElementById('save-general-btn').addEventListener('click', async () =
 // Save Firebase Configuration
 document.getElementById('save-firebase-btn').addEventListener('click', async () => {
   try {
-    const configText = document.getElementById('firebase-config').value.trim();
+    let configText = document.getElementById('firebase-config').value.trim();
 
     if (!configText) {
       showAlert('error', 'Please enter Firebase configuration');
       return;
+    }
+
+    // Auto-fix common mistakes:
+    // 1. Remove "const firebaseConfig =" or "var firebaseConfig =" or "let firebaseConfig ="
+    configText = configText.replace(/^(const|var|let)\s+\w+\s*=\s*/m, '');
+
+    // 2. Remove trailing semicolon
+    configText = configText.replace(/;[\s]*$/, '');
+
+    // 3. Extract JSON if wrapped in JavaScript code
+    const jsonMatch = configText.match(/\{[\s\S]*\}/);
+    if (jsonMatch) {
+      configText = jsonMatch[0];
     }
 
     const config = JSON.parse(configText);
@@ -192,7 +205,7 @@ document.getElementById('save-firebase-btn').addEventListener('click', async () 
     showAlert('success', '✓ Firebase configuration saved successfully!');
   } catch (error) {
     console.error('Error saving Firebase config:', error);
-    showAlert('error', 'Invalid configuration: ' + error.message);
+    showAlert('error', 'Invalid configuration: ' + error.message + '\n\nTip: Copy ONLY the {...} part, not the "const firebaseConfig =" part');
   }
 });
 
