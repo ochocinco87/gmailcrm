@@ -295,6 +295,43 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
     sendResponse({ success: true });
     return true;
   }
+
+  // HubSpot Integration
+  if (request.action === 'hubspotAuth') {
+    handleHubSpotAuth().then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'getHubSpotPipelines') {
+    getHubSpotPipelines(request.accessToken).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'getHubSpotDeals') {
+    getHubSpotDeals(request.accessToken, request.pipelineId).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
+
+  if (request.action === 'importHubSpotData') {
+    importHubSpotData(request.accessToken, request.options).then(result => {
+      sendResponse(result);
+    }).catch(error => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true;
+  }
 });
 
 // Listen for storage changes to sync across tabs
@@ -975,6 +1012,247 @@ async function deleteFirestoreDocument(path) {
 
   return true;
 }
+
+// ========== HUBSPOT INTEGRATION ==========
+
+async function handleHubSpotAuth() {
+  // HubSpot OAuth flow
+  // For now, we'll use a private app access token approach for simplicity
+  // Production would use full OAuth2 flow
+
+  return new Promise((resolve) => {
+    chrome.storage.local.get(['hubspotAccessToken'], (result) => {
+      if (result.hubspotAccessToken) {
+        resolve({ success: true, accessToken: result.hubspotAccessToken });
+      } else {
+        resolve({ success: false, error: 'No HubSpot access token found. Please configure in settings.' });
+      }
+    });
+  });
+}
+
+async function getHubSpotPipelines(accessToken) {
+  try {
+    // Fetch all deal pipelines from HubSpot
+    const response = await fetch('https://api.hubapi.com/crm/v3/pipelines/deals', {
+      headers: {
+        'Authorization': `Bearer ${accessToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`HubSpot API error: ${response.status} - ${error}`);
+    }
+
+    const data = await response.json();
+
+    // Map HubSpot pipelines to our format
+    const pipelines = data.results.map(pipeline => ({
+      id: `hubspot_${pipeline.id}`,
+      hubspotId: pipeline.id,
+      name: pipeline.label,
+      stages: pipeline.stages.map(stage => ({
+        id: `stage_${stage.id}`,
+        hubspotId: stage.id,
+        name: stage.label,
+        color: getStageColor(stage.displayOrder),
+        probability: stage.metadata?.probability || 50
+      })),
+      source: 'hubspot',
+      importedAt: new Date().toISOString()
+    }));
+
+    return { success: true, pipelines };
+  } catch (error) {
+    console.error('Error fetching HubSpot pipelines:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+function getStageColor(displayOrder) {
+  // Assign colors based on stage order
+  const colors = ['#ea4335', '#fbbc04', '#34a853', '#4285f4', '#9c27b0', '#ff6d00'];
+  return colors[displayOrder % colors.length];
+}
+
+async function getHubSpotDeals(accessToken, pipelineId = null) {
+  try {
+    let allDeals = [];
+    let after = null;
+    let hasMore = true;
+
+    // Fetch all deals with pagination
+    while (hasMore) {
+      let url = 'https://api.hubapi.com/crm/v3/objects/deals?limit=100&properties=dealname,amount,closedate,dealstage,pipeline,hubspot_owner_id,createdate,notes_last_updated,hs_lastmodifieddate,description';
+
+      if (after) {
+        url += `&after=${after}`;
+      }
+
+      const response = await fetch(url, {
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const error = await response.text();
+        throw new Error(`HubSpot API error: ${response.status} - ${error}`);
+      }
+
+      const data = await response.json();
+      allDeals = allDeals.concat(data.results);
+
+      if (data.paging && data.paging.next) {
+        after = data.paging.next.after;
+      } else {
+        hasMore = false;
+      }
+    }
+
+    // Filter by pipeline if specified
+    if (pipelineId) {
+      allDeals = allDeals.filter(deal => deal.properties.pipeline === pipelineId.replace('hubspot_', ''));
+    }
+
+    return { success: true, deals: allDeals, count: allDeals.length };
+  } catch (error) {
+    console.error('Error fetching HubSpot deals:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+async function importHubSpotData(accessToken, options) {
+  try {
+    console.log('Starting HubSpot import with options:', options);
+
+    // Step 1: Get HubSpot pipelines
+    const pipelinesResult = await getHubSpotPipelines(accessToken);
+    if (!pipelinesResult.success) {
+      throw new Error('Failed to fetch HubSpot pipelines');
+    }
+
+    const importedPipelines = [];
+    const importedDeals = [];
+
+    // Step 2: For each selected pipeline, import deals
+    for (const pipelineMapping of options.pipelineMappings) {
+      if (!pipelineMapping.import) continue;
+
+      const hubspotPipeline = pipelinesResult.pipelines.find(p => p.hubspotId === pipelineMapping.hubspotId);
+      if (!hubspotPipeline) continue;
+
+      // Get deals for this pipeline
+      const dealsResult = await getHubSpotDeals(accessToken, hubspotPipeline.id);
+      if (!dealsResult.success) {
+        console.warn(`Failed to fetch deals for pipeline ${hubspotPipeline.name}`);
+        continue;
+      }
+
+      // Map pipeline to our format
+      const mappedPipeline = {
+        ...hubspotPipeline,
+        id: pipelineMapping.targetId || hubspotPipeline.id,
+        type: 'sales' // Default type
+      };
+
+      importedPipelines.push(mappedPipeline);
+
+      // Map deals to our format
+      for (const hubspotDeal of dealsResult.deals) {
+        const properties = hubspotDeal.properties;
+
+        // Find corresponding stage
+        const stage = mappedPipeline.stages.find(s => s.hubspotId === properties.dealstage);
+
+        const mappedDeal = {
+          id: `deal_hubspot_${hubspotDeal.id}`,
+          hubspotId: hubspotDeal.id,
+          threadId: `hubspot_${hubspotDeal.id}`,
+          pipelineId: mappedPipeline.id,
+          stageId: stage ? stage.id : mappedPipeline.stages[0].id,
+          emailSubject: properties.dealname || 'Untitled Deal',
+          value: parseFloat(properties.amount) || 0,
+          company: properties.dealname?.split('-')[0]?.trim() || 'Unknown Company',
+          contactEmail: '', // Will be populated if we fetch associated contacts
+          priority: 'Medium',
+          probability: stage ? stage.probability : 50,
+          status: 'Active',
+          notes: properties.description || '',
+          createdAt: properties.createdate || new Date().toISOString(),
+          lastUpdated: properties.hs_lastmodifieddate || new Date().toISOString(),
+          closeDate: properties.closedate || null,
+          source: 'hubspot',
+          importedAt: new Date().toISOString(),
+          linkedEmails: [],
+          notesHistory: properties.description ? [{
+            text: properties.description,
+            createdAt: properties.notes_last_updated || properties.createdate || new Date().toISOString(),
+            author: 'HubSpot Import'
+          }] : [],
+          calls: [],
+          tasks: []
+        };
+
+        importedDeals.push(mappedDeal);
+      }
+    }
+
+    // Step 3: Save to local storage
+    chrome.storage.local.get(['pipelines', 'deals'], (result) => {
+      const existingPipelines = result.pipelines || [];
+      const existingDeals = result.deals || {};
+
+      // Merge or replace pipelines based on options
+      let newPipelines = existingPipelines;
+      if (options.replacePipelines) {
+        // Remove old HubSpot pipelines and add new ones
+        newPipelines = existingPipelines.filter(p => p.source !== 'hubspot').concat(importedPipelines);
+      } else {
+        // Add only new pipelines
+        for (const pipeline of importedPipelines) {
+          if (!existingPipelines.find(p => p.id === pipeline.id)) {
+            newPipelines.push(pipeline);
+          }
+        }
+      }
+
+      // Add deals
+      const newDeals = { ...existingDeals };
+      for (const deal of importedDeals) {
+        if (options.skipExisting && newDeals[deal.id]) {
+          continue; // Skip if already exists
+        }
+        newDeals[deal.id] = deal;
+      }
+
+      // Save to storage
+      chrome.storage.local.set({
+        pipelines: newPipelines,
+        deals: newDeals
+      }, () => {
+        console.log('HubSpot import complete!');
+      });
+    });
+
+    return {
+      success: true,
+      imported: {
+        pipelines: importedPipelines.length,
+        deals: importedDeals.length
+      }
+    };
+
+  } catch (error) {
+    console.error('Error importing HubSpot data:', error);
+    return { success: false, error: error.message };
+  }
+}
+
+// ========== END HUBSPOT INTEGRATION ==========
 
 console.log('Gmail CRM background service worker loaded');
 

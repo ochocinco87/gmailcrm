@@ -417,6 +417,7 @@ class GmailCRM {
           ${this.pipelineViewMode === 'kanban' ? '<button class="crm-btn" id="crm-customize-kanban-btn">🎨 Customize Cards</button>' : ''}
           ${pipeline.type === 'customer-tracking' ? '<button class="crm-btn" id="crm-dashboard-btn">📊 Dashboard</button>' : ''}
           <button class="crm-btn" id="crm-smart-scan-btn" title="Scan recent emails and suggest which deals they belong to">🔍 Smart Scan</button>
+          <button class="crm-btn" id="crm-hubspot-import-btn" title="Import pipelines and deals from HubSpot CRM">📥 Import from HubSpot</button>
           <button class="crm-btn" id="crm-refresh-btn">🔄 Refresh</button>
           <button class="crm-btn" id="crm-settings-btn">⚙️ Settings</button>
           <button class="crm-btn" id="crm-share-btn">🔗 Share</button>
@@ -547,6 +548,11 @@ class GmailCRM {
     // Smart scan button for auto-suggesting email links
     document.getElementById('crm-smart-scan-btn')?.addEventListener('click', () => {
       this.scanRecentEmailsForSuggestions();
+    });
+
+    // HubSpot import button
+    document.getElementById('crm-hubspot-import-btn')?.addEventListener('click', () => {
+      this.showHubSpotImportWizard();
     });
 
     // Filter event listeners
@@ -4113,6 +4119,250 @@ class GmailCRM {
   }
 
   // ====== END SMART EMAIL AUTO-SUGGEST SYSTEM ======
+
+  // ====== HUBSPOT IMPORT SYSTEM ======
+
+  async showHubSpotImportWizard() {
+    // Step 1: Access Token Configuration
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal-backdrop';
+    modal.innerHTML = `
+      <div class="crm-modal crm-hubspot-import-modal" style="max-width: 800px;">
+        <div class="crm-modal-header">
+          <h2>📥 Import from HubSpot CRM</h2>
+          <button class="crm-modal-close" id="crm-close-hubspot-import">&times;</button>
+        </div>
+        <div class="crm-modal-body">
+          <div id="hubspot-step-1" class="hubspot-import-step">
+            <h3>Step 1: Connect to HubSpot</h3>
+            <p style="margin-bottom: 16px; color: #5f6368;">
+              To import your data from HubSpot, you'll need a Private App Access Token.
+            </p>
+
+            <div style="background: #e8f0fe; padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+              <strong>How to get your HubSpot Access Token:</strong>
+              <ol style="margin: 12px 0 0 20px; line-height: 1.8;">
+                <li>Go to HubSpot Settings → Integrations → Private Apps</li>
+                <li>Click "Create a private app"</li>
+                <li>Give it a name like "Gmail CRM Import"</li>
+                <li>Under "Scopes", enable: <code>crm.objects.deals.read</code></li>
+                <li>Click "Create app" and copy the access token</li>
+              </ol>
+            </div>
+
+            <label style="display: block; margin-bottom: 8px; font-weight: 500;">HubSpot Access Token:</label>
+            <input type="password" id="hubspot-access-token" class="crm-input" placeholder="pat-na1-xxxxxxxx..." style="width: 100%; margin-bottom: 16px;" />
+
+            <div style="display: flex; justify-content: flex-end; gap: 12px;">
+              <button class="crm-btn" id="hubspot-cancel">Cancel</button>
+              <button class="crm-btn-primary" id="hubspot-connect">Connect & Continue</button>
+            </div>
+          </div>
+
+          <div id="hubspot-step-2" class="hubspot-import-step" style="display: none;">
+            <div style="text-align: center; padding: 40px;">
+              <div class="crm-spinner" style="margin: 0 auto 20px;"></div>
+              <p>Fetching your HubSpot pipelines...</p>
+            </div>
+          </div>
+
+          <div id="hubspot-step-3" class="hubspot-import-step" style="display: none;">
+            <h3>Step 2: Select Pipelines to Import</h3>
+            <p style="margin-bottom: 16px; color: #5f6368;">
+              Choose which HubSpot pipelines you want to import. All deals and stages will be preserved.
+            </p>
+            <div id="hubspot-pipelines-list"></div>
+
+            <div style="margin-top: 24px; padding: 16px; background: #f8f9fa; border-radius: 8px;">
+              <label style="display: flex; align-items: center; margin-bottom: 12px;">
+                <input type="checkbox" id="hubspot-replace-pipelines" style="margin-right: 8px;" />
+                <span>Replace existing HubSpot pipelines (remove old imports and add new ones)</span>
+              </label>
+              <label style="display: flex; align-items: center;">
+                <input type="checkbox" id="hubspot-skip-existing" checked style="margin-right: 8px;" />
+                <span>Skip deals that already exist (prevents duplicates)</span>
+              </label>
+            </div>
+
+            <div style="display: flex; justify-content: space-between; margin-top: 20px;">
+              <button class="crm-btn" id="hubspot-back">← Back</button>
+              <button class="crm-btn-primary" id="hubspot-start-import">Start Import</button>
+            </div>
+          </div>
+
+          <div id="hubspot-step-4" class="hubspot-import-step" style="display: none;">
+            <h3>Importing...</h3>
+            <div style="margin: 30px 0;">
+              <div style="background: #f1f3f4; height: 8px; border-radius: 4px; overflow: hidden;">
+                <div id="hubspot-progress-bar" style="background: #4285f4; height: 100%; width: 0%; transition: width 0.3s;"></div>
+              </div>
+              <p id="hubspot-progress-text" style="text-align: center; margin-top: 12px; color: #5f6368;">Preparing import...</p>
+            </div>
+          </div>
+
+          <div id="hubspot-step-5" class="hubspot-import-step" style="display: none;">
+            <div style="text-align: center; padding: 40px;">
+              <div style="font-size: 64px; margin-bottom: 20px;">✅</div>
+              <h3 style="margin-bottom: 12px;">Import Complete!</h3>
+              <p id="hubspot-result-summary" style="color: #5f6368; margin-bottom: 24px;"></p>
+              <button class="crm-btn-primary" id="hubspot-done">Done</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Step 1: Connect button
+    document.getElementById('hubspot-connect').addEventListener('click', async () => {
+      const accessToken = document.getElementById('hubspot-access-token').value.trim();
+
+      if (!accessToken) {
+        alert('Please enter your HubSpot access token');
+        return;
+      }
+
+      // Save token
+      chrome.storage.local.set({ hubspotAccessToken: accessToken });
+
+      // Show loading
+      document.getElementById('hubspot-step-1').style.display = 'none';
+      document.getElementById('hubspot-step-2').style.display = 'block';
+
+      // Fetch pipelines
+      try {
+        const response = await chrome.runtime.sendMessage({
+          action: 'getHubSpotPipelines',
+          accessToken
+        });
+
+        if (!response.success) {
+          throw new Error(response.error);
+        }
+
+        // Show pipeline selection
+        this.showHubSpotPipelineSelection(response.pipelines, accessToken, modal);
+
+      } catch (error) {
+        alert(`Error connecting to HubSpot: ${error.message}`);
+        document.getElementById('hubspot-step-2').style.display = 'none';
+        document.getElementById('hubspot-step-1').style.display = 'block';
+      }
+    });
+
+    // Cancel/close buttons
+    document.getElementById('hubspot-cancel').addEventListener('click', () => modal.remove());
+    document.getElementById('crm-close-hubspot-import').addEventListener('click', () => modal.remove());
+  }
+
+  showHubSpotPipelineSelection(pipelines, accessToken, modal) {
+    document.getElementById('hubspot-step-2').style.display = 'none';
+    document.getElementById('hubspot-step-3').style.display = 'block';
+
+    const pipelinesList = document.getElementById('hubspot-pipelines-list');
+
+    pipelinesList.innerHTML = pipelines.map((pipeline, idx) => `
+      <div class="hubspot-pipeline-item" style="border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+        <label style="display: flex; align-items: flex-start; cursor: pointer;">
+          <input type="checkbox" class="hubspot-pipeline-checkbox" data-pipeline-idx="${idx}" checked style="margin-right: 12px; margin-top: 4px;" />
+          <div style="flex: 1;">
+            <div style="font-weight: 600; margin-bottom: 8px;">${this.escapeHtml(pipeline.name)}</div>
+            <div style="display: flex; flex-wrap: wrap; gap: 6px;">
+              ${pipeline.stages.map(stage => `
+                <span style="background: ${stage.color}20; color: ${stage.color}; padding: 4px 8px; border-radius: 4px; font-size: 11px;">
+                  ${this.escapeHtml(stage.name)}
+                </span>
+              `).join('')}
+            </div>
+          </div>
+        </label>
+      </div>
+    `).join('');
+
+    // Back button
+    document.getElementById('hubspot-back').addEventListener('click', () => {
+      document.getElementById('hubspot-step-3').style.display = 'none';
+      document.getElementById('hubspot-step-1').style.display = 'block';
+    });
+
+    // Start import button
+    document.getElementById('hubspot-start-import').addEventListener('click', async () => {
+      const selectedPipelines = [];
+
+      document.querySelectorAll('.hubspot-pipeline-checkbox').forEach(checkbox => {
+        if (checkbox.checked) {
+          const idx = parseInt(checkbox.dataset.pipelineIdx);
+          selectedPipelines.push({
+            import: true,
+            hubspotId: pipelines[idx].hubspotId,
+            targetId: pipelines[idx].id
+          });
+        }
+      });
+
+      if (selectedPipelines.length === 0) {
+        alert('Please select at least one pipeline to import');
+        return;
+      }
+
+      // Show progress
+      document.getElementById('hubspot-step-3').style.display = 'none';
+      document.getElementById('hubspot-step-4').style.display = 'block';
+
+      const replacePipelines = document.getElementById('hubspot-replace-pipelines').checked;
+      const skipExisting = document.getElementById('hubspot-skip-existing').checked;
+
+      try {
+        const progressBar = document.getElementById('hubspot-progress-bar');
+        const progressText = document.getElementById('hubspot-progress-text');
+
+        progressBar.style.width = '30%';
+        progressText.textContent = 'Fetching deals from HubSpot...';
+
+        const response = await chrome.runtime.sendMessage({
+          action: 'importHubSpotData',
+          accessToken,
+          options: {
+            pipelineMappings: selectedPipelines,
+            replacePipelines,
+            skipExisting
+          }
+        });
+
+        if (!response.success) {
+          throw new Error(response.error);
+        }
+
+        progressBar.style.width = '100%';
+        progressText.textContent = 'Import complete!';
+
+        // Show success
+        setTimeout(() => {
+          document.getElementById('hubspot-step-4').style.display = 'none';
+          document.getElementById('hubspot-step-5').style.display = 'block';
+          document.getElementById('hubspot-result-summary').textContent =
+            `Successfully imported ${response.imported.pipelines} pipeline(s) and ${response.imported.deals} deal(s) from HubSpot.`;
+        }, 500);
+
+      } catch (error) {
+        alert(`Import failed: ${error.message}`);
+        document.getElementById('hubspot-step-4').style.display = 'none';
+        document.getElementById('hubspot-step-3').style.display = 'block';
+      }
+    });
+
+    // Done button
+    document.getElementById('hubspot-done').addEventListener('click', () => {
+      modal.remove();
+      // Refresh the pipeline view
+      this.renderPipelineBoard();
+      this.showNotification('✅ HubSpot import complete! Refreshing...');
+      setTimeout(() => location.reload(), 1000);
+    });
+  }
+
+  // ====== END HUBSPOT IMPORT SYSTEM ======
 
   showEmailDealsSidebar(emailMetadata) {
     // Check if sidebar already exists
