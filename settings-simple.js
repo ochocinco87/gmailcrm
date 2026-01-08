@@ -190,6 +190,10 @@ document.getElementById('save-firebase-btn').addEventListener('click', async () 
       configText = jsonMatch[0];
     }
 
+    // 4. Convert JavaScript object literal to JSON (add quotes around keys)
+    // This handles Firebase's format: { apiKey: "...", } -> { "apiKey": "...", }
+    configText = configText.replace(/(\w+):/g, '"$1":');
+
     const config = JSON.parse(configText);
 
     // Validate required fields
