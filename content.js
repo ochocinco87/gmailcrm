@@ -5151,40 +5151,6 @@ class GmailCRM {
         </div>
       </div>
 
-      <div class="effortless-ai-input-section">
-        <div class="effortless-section-title">✨ AI Command Center</div>
-        <div class="effortless-input-container">
-          <textarea
-            id="effortless-ai-input"
-            class="effortless-ai-textarea"
-            placeholder="Tell me what you want to do...
-
-Examples:
-• Create a new deal for Acme Corp
-• Move Stanford deal to proposal stage
-• Show me high priority deals
-• Add products to this deal
-• Open Products catalog"></textarea>
-          <div class="effortless-input-actions">
-            <button class="effortless-voice-btn" id="effortless-voice-btn" title="Voice Command">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
-                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
-                <line x1="12" y1="19" x2="12" y2="23"/>
-                <line x1="8" y1="23" x2="16" y2="23"/>
-              </svg>
-            </button>
-            <button class="effortless-send-btn" id="effortless-send-btn">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
-                <line x1="22" y1="2" x2="11" y2="13"/>
-                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div id="effortless-ai-response" class="effortless-ai-response hidden"></div>
-      </div>
-
       <div class="effortless-quick-actions">
         <div class="effortless-section-title">⚡ Quick Actions</div>
         <div class="effortless-action-grid">
@@ -5242,6 +5208,18 @@ Examples:
           </div>
         </div>
       ` : ''}
+
+      <div class="effortless-bottom-voice">
+        <button class="effortless-voice-btn-large" id="effortless-voice-btn" title="Voice Command">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+            <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+            <line x1="12" y1="19" x2="12" y2="23"/>
+            <line x1="8" y1="23" x2="16" y2="23"/>
+          </svg>
+          <span class="effortless-voice-label">Press to speak</span>
+        </button>
+      </div>
     `;
 
     // Close button
@@ -5250,28 +5228,18 @@ Examples:
     });
 
     // Voice button
-    document.getElementById('effortless-voice-btn')?.addEventListener('click', () => {
+    const voiceBtn = document.getElementById('effortless-voice-btn');
+    voiceBtn?.addEventListener('click', () => {
       if (window.voiceControl) {
         if (window.voiceControl.isListening) {
           window.voiceControl.stopListening();
+          voiceBtn.classList.remove('listening');
         } else {
           window.voiceControl.startListening({ type: 'ai-panel' });
+          voiceBtn.classList.add('listening');
         }
       } else {
         this.showNotification('⚠️ Voice control not available');
-      }
-    });
-
-    // Send button
-    document.getElementById('effortless-send-btn')?.addEventListener('click', () => {
-      this.handleAICommand();
-    });
-
-    // Enter key in textarea
-    document.getElementById('effortless-ai-input')?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter' && !e.shiftKey) {
-        e.preventDefault();
-        this.handleAICommand();
       }
     });
 
@@ -5306,65 +5274,6 @@ Examples:
     const effortlessBtn = document.getElementById('effortless-ai-btn');
     if (effortlessBtn) {
       effortlessBtn.classList.remove('active');
-    }
-  }
-
-  async handleAICommand() {
-    const input = document.getElementById('effortless-ai-input');
-    const responseDiv = document.getElementById('effortless-ai-response');
-
-    if (!input || !responseDiv) return;
-
-    const command = input.value.trim();
-    if (!command) return;
-
-    // Show processing
-    responseDiv.classList.remove('hidden');
-    responseDiv.innerHTML = `
-      <div class="effortless-ai-thinking">
-        <div class="effortless-thinking-spinner"></div>
-        <span>Processing your request...</span>
-      </div>
-    `;
-
-    // Clear input
-    input.value = '';
-
-    try {
-      // Use voice control's natural language processing
-      if (window.voiceControl) {
-        const parsed = window.voiceControl.parseNaturalLanguage(command);
-
-        if (parsed) {
-          responseDiv.innerHTML = `
-            <div class="effortless-ai-success">
-              <span class="effortless-success-icon">✅</span>
-              <span>Executing: ${parsed.action}</span>
-            </div>
-          `;
-
-          await window.voiceControl.executeCommand(parsed);
-
-          setTimeout(() => {
-            responseDiv.classList.add('hidden');
-          }, 3000);
-        } else {
-          responseDiv.innerHTML = `
-            <div class="effortless-ai-error">
-              <span class="effortless-error-icon">❌</span>
-              <span>I didn't understand that command. Try something like "Create a new deal" or "Show high priority deals"</span>
-            </div>
-          `;
-        }
-      }
-    } catch (error) {
-      console.error('AI command error:', error);
-      responseDiv.innerHTML = `
-        <div class="effortless-ai-error">
-          <span class="effortless-error-icon">❌</span>
-          <span>Error processing command: ${error.message}</span>
-        </div>
-      `;
     }
   }
 
