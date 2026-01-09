@@ -5,9 +5,11 @@ class GmailCRM {
     this.initialized = false;
     this.currentPipeline = null;
     this.pipelinesNav = null;
+    this.productsNav = null;
     this.pipelineView = null;
     this.deals = {};
     this.pipelines = [];
+    this.products = [];
     this.filters = {
       search: '',
       status: '',
@@ -31,6 +33,9 @@ class GmailCRM {
 
     // Inject pipelines into left sidebar
     this.injectPipelinesNav();
+
+    // Inject products into left sidebar
+    this.injectProductsNav();
 
     // Monitor for navigation
     this.observeNavigation();
@@ -89,6 +94,12 @@ class GmailCRM {
     // Load pipelines from Firebase or local storage
     const pipelines = await window.firebaseCRMSync.loadPipelines();
     this.pipelines = pipelines.length > 0 ? pipelines : this.getDefaultPipelines();
+
+    // Load products from local storage
+    const productsResult = await new Promise(resolve => {
+      chrome.storage.local.get(['products'], resolve);
+    });
+    this.products = productsResult.products || [];
 
     // Load view mode from local storage
     const viewModeResult = await new Promise(resolve => {
@@ -314,6 +325,72 @@ class GmailCRM {
 
       item.addEventListener('click', () => {
         this.openPipeline(pipeline);
+      });
+
+      list.appendChild(item);
+    });
+  }
+
+  injectProductsNav() {
+    // Find Gmail's left navigation
+    const leftNav = document.querySelector('div[role="navigation"]');
+
+    if (!leftNav || !this.pipelinesNav) {
+      console.error('Gmail CRM: Cannot inject products nav');
+      return;
+    }
+
+    // Create products section
+    this.productsNav = document.createElement('div');
+    this.productsNav.id = 'crm-products-nav';
+    this.productsNav.className = 'crm-pipelines-section';
+
+    this.productsNav.innerHTML = `
+      <div class="crm-nav-header">
+        <span class="crm-nav-title">📦 Products</span>
+        <button class="crm-nav-add" title="Add Product">+</button>
+      </div>
+      <div class="crm-nav-list" id="crm-products-list"></div>
+    `;
+
+    // Insert after pipelines section
+    if (this.pipelinesNav && this.pipelinesNav.parentElement) {
+      this.pipelinesNav.parentElement.insertBefore(this.productsNav, this.pipelinesNav.nextSibling);
+      console.log('Gmail CRM: Inserted products nav after pipelines');
+    }
+
+    this.renderProductsList();
+
+    // Add product button
+    this.productsNav.querySelector('.crm-nav-add')?.addEventListener('click', () => {
+      this.showProductEditor();
+    });
+  }
+
+  renderProductsList() {
+    const list = document.getElementById('crm-products-list');
+    if (!list) return;
+
+    list.innerHTML = '';
+
+    if (this.products.length === 0) {
+      list.innerHTML = '<div class="crm-nav-empty">No products yet</div>';
+      return;
+    }
+
+    this.products.forEach(product => {
+      const item = document.createElement('div');
+      item.className = 'crm-nav-item';
+      item.dataset.productId = product.id;
+
+      item.innerHTML = `
+        <span class="crm-nav-icon">📦</span>
+        <span class="crm-nav-name">${product.name}</span>
+        <span class="crm-nav-price" style="margin-left: auto; font-size: 11px; color: #5f6368;">$${product.price}</span>
+      `;
+
+      item.addEventListener('click', () => {
+        this.showProductDetails(product);
       });
 
       list.appendChild(item);
@@ -1924,6 +2001,11 @@ class GmailCRM {
             </div>
           </div>
         </div>
+        <div class="crm-form-group">
+          <label>Products</label>
+          <div id="crm-deal-products-list" style="margin-bottom: 12px;"></div>
+          <button type="button" class="crm-btn" id="crm-add-product-btn" style="width: 100%;">+ Add Product</button>
+        </div>
         <div class="crm-modal-actions">
           <button class="crm-btn" id="crm-cancel-deal">Cancel</button>
           <button class="crm-btn-primary" id="crm-save-deal">Save Deal</button>
@@ -2083,7 +2165,8 @@ class GmailCRM {
         institutionDomain: selectedInstitution.domain,
         latitude: selectedInstitution.location?.lat,
         longitude: selectedInstitution.location?.lng,
-        organizationId: organizationId
+        organizationId: organizationId,
+        products: dealProducts.length > 0 ? dealProducts : undefined
       };
 
       await this.saveDeal(deal);
@@ -2098,6 +2181,142 @@ class GmailCRM {
       this.renderPipelineBoard();
       this.showNotification('✅ Deal added successfully!');
     });
+
+    // Products handling
+    let dealProducts = [];
+
+    const renderDealProducts = () => {
+      const productsList = document.getElementById('crm-deal-products-list');
+      if (!productsList) return;
+
+      if (dealProducts.length === 0) {
+        productsList.innerHTML = '<div style="color: #5f6368; font-size: 13px; padding: 8px;">No products added</div>';
+        return;
+      }
+
+      productsList.innerHTML = dealProducts.map((item, index) => {
+        const product = this.products.find(p => p.id === item.productId);
+        if (!product) return '';
+
+        const subtotal = item.quantity * item.unitPrice * (1 - item.discount / 100);
+
+        return `
+          <div style="display: flex; align-items: center; gap: 12px; padding: 12px; background: #f8f9fa; border-radius: 6px; margin-bottom: 8px;">
+            <div style="flex: 1;">
+              <div style="font-weight: 600; margin-bottom: 4px;">${this.escapeHtml(product.name)}</div>
+              <div style="font-size: 12px; color: #5f6368;">
+                ${item.quantity} × $${item.unitPrice.toFixed(2)}
+                ${item.discount > 0 ? ` (-${item.discount}%)` : ''}
+              </div>
+            </div>
+            <div style="font-weight: 600; color: #1a73e8;">$${subtotal.toFixed(2)}</div>
+            <button class="crm-btn-icon" data-remove-product="${index}" title="Remove">×</button>
+          </div>
+        `;
+      }).join('');
+
+      // Add remove handlers
+      productsList.querySelectorAll('[data-remove-product]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const index = parseInt(btn.dataset.removeProduct);
+          dealProducts.splice(index, 1);
+          renderDealProducts();
+          updateDealValueFromProducts();
+        });
+      });
+    };
+
+    const updateDealValueFromProducts = () => {
+      const total = dealProducts.reduce((sum, item) => {
+        return sum + (item.quantity * item.unitPrice * (1 - item.discount / 100));
+      }, 0);
+      document.getElementById('crm-deal-value-input').value = total.toFixed(2);
+    };
+
+    // Add Product button
+    document.getElementById('crm-add-product-btn')?.addEventListener('click', () => {
+      const activeProducts = this.products.filter(p => p.active !== false);
+
+      if (activeProducts.length === 0) {
+        alert('No products available. Please add products first.');
+        return;
+      }
+
+      const productModal = document.createElement('div');
+      productModal.className = 'crm-modal-backdrop';
+      productModal.innerHTML = `
+        <div class="crm-modal" style="max-width: 500px;">
+          <div class="crm-modal-header">
+            <h3>Add Product to Deal</h3>
+            <button class="crm-modal-close" id="close-product-select">&times;</button>
+          </div>
+          <div class="crm-modal-body">
+            <div class="crm-form-group">
+              <label>Select Product</label>
+              <select id="select-product-id" class="crm-input">
+                <option value="">Choose a product...</option>
+                ${activeProducts.map(p => `<option value="${p.id}">${this.escapeHtml(p.name)} - $${p.price.toFixed(2)}</option>`).join('')}
+              </select>
+            </div>
+            <div class="crm-form-group">
+              <label>Quantity</label>
+              <input type="number" id="product-quantity" class="crm-input" value="1" min="1" step="1">
+            </div>
+            <div class="crm-form-group">
+              <label>Unit Price</label>
+              <input type="number" id="product-unit-price" class="crm-input" value="0" min="0" step="0.01" readonly>
+            </div>
+            <div class="crm-form-group">
+              <label>Discount (%)</label>
+              <input type="number" id="product-discount" class="crm-input" value="0" min="0" max="100" step="0.1">
+            </div>
+            <div class="crm-modal-actions">
+              <button class="crm-btn" id="cancel-product-select">Cancel</button>
+              <button class="crm-btn-primary" id="confirm-product-select">Add to Deal</button>
+            </div>
+          </div>
+        </div>
+      `;
+
+      document.body.appendChild(productModal);
+
+      // Update price when product selected
+      document.getElementById('select-product-id')?.addEventListener('change', (e) => {
+        const productId = e.target.value;
+        const product = this.products.find(p => p.id === productId);
+        if (product) {
+          document.getElementById('product-unit-price').value = product.price.toFixed(2);
+        }
+      });
+
+      document.getElementById('close-product-select')?.addEventListener('click', () => productModal.remove());
+      document.getElementById('cancel-product-select')?.addEventListener('click', () => productModal.remove());
+
+      document.getElementById('confirm-product-select')?.addEventListener('click', () => {
+        const productId = document.getElementById('select-product-id').value;
+        const quantity = parseFloat(document.getElementById('product-quantity').value) || 1;
+        const unitPrice = parseFloat(document.getElementById('product-unit-price').value) || 0;
+        const discount = parseFloat(document.getElementById('product-discount').value) || 0;
+
+        if (!productId) {
+          alert('Please select a product');
+          return;
+        }
+
+        dealProducts.push({
+          productId,
+          quantity,
+          unitPrice,
+          discount
+        });
+
+        renderDealProducts();
+        updateDealValueFromProducts();
+        productModal.remove();
+      });
+    });
+
+    renderDealProducts();
 
     // Voice button event listeners
     document.getElementById('voice-dictate-btn')?.addEventListener('click', () => {
@@ -4443,6 +4662,229 @@ class GmailCRM {
 
   // ====== END HUBSPOT IMPORT SYSTEM ======
 
+  // ====== PRODUCT MANAGEMENT SYSTEM ======
+
+  showProductEditor(product = null) {
+    const isEdit = !!product;
+
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal-backdrop';
+    modal.innerHTML = `
+      <div class="crm-modal" style="max-width: 600px;">
+        <div class="crm-modal-header">
+          <h2>${isEdit ? '✏️ Edit Product' : '➕ Add New Product'}</h2>
+          <button class="crm-modal-close" id="crm-close-product-editor">&times;</button>
+        </div>
+        <div class="crm-modal-body">
+          <div class="crm-form-group">
+            <label>Product Name *</label>
+            <input type="text" id="product-name" class="crm-input" placeholder="Enter product name" value="${product?.name || ''}" required>
+          </div>
+
+          <div class="crm-form-row">
+            <div class="crm-form-group" style="flex: 1;">
+              <label>Price *</label>
+              <input type="number" id="product-price" class="crm-input" placeholder="0.00" step="0.01" min="0" value="${product?.price || ''}" required>
+            </div>
+            <div class="crm-form-group" style="flex: 1;">
+              <label>SKU / Product Code</label>
+              <input type="text" id="product-sku" class="crm-input" placeholder="SKU-001" value="${product?.sku || ''}">
+            </div>
+          </div>
+
+          <div class="crm-form-group">
+            <label>Category</label>
+            <input type="text" id="product-category" class="crm-input" placeholder="e.g., Software, Hardware, Services" value="${product?.category || ''}">
+          </div>
+
+          <div class="crm-form-group">
+            <label>Description</label>
+            <textarea id="product-description" class="crm-input" placeholder="Product details, features, specifications..." rows="4">${product?.description || ''}</textarea>
+          </div>
+
+          <div class="crm-form-row">
+            <div class="crm-form-group" style="flex: 1;">
+              <label>Cost (Optional)</label>
+              <input type="number" id="product-cost" class="crm-input" placeholder="0.00" step="0.01" min="0" value="${product?.cost || ''}">
+              <small style="color: #5f6368;">Your cost/wholesale price</small>
+            </div>
+            <div class="crm-form-group" style="flex: 1;">
+              <label>Unit</label>
+              <input type="text" id="product-unit" class="crm-input" placeholder="e.g., each, license, hour" value="${product?.unit || 'each'}">
+            </div>
+          </div>
+
+          <div class="crm-form-group">
+            <label>
+              <input type="checkbox" id="product-active" ${product?.active !== false ? 'checked' : ''}>
+              Active (available for selection)
+            </label>
+          </div>
+
+          <div class="crm-modal-actions">
+            ${isEdit ? '<button class="crm-btn crm-btn-danger" id="delete-product-btn">Delete Product</button>' : ''}
+            <div style="flex: 1;"></div>
+            <button class="crm-btn" id="cancel-product-btn">Cancel</button>
+            <button class="crm-btn-primary" id="save-product-btn">${isEdit ? 'Save Changes' : 'Add Product'}</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    // Close button
+    document.getElementById('crm-close-product-editor').addEventListener('click', () => modal.remove());
+    document.getElementById('cancel-product-btn').addEventListener('click', () => modal.remove());
+
+    // Delete button (if editing)
+    if (isEdit) {
+      document.getElementById('delete-product-btn').addEventListener('click', async () => {
+        if (confirm(`Are you sure you want to delete "${product.name}"?`)) {
+          this.products = this.products.filter(p => p.id !== product.id);
+          await chrome.storage.local.set({ products: this.products });
+          this.renderProductsList();
+          modal.remove();
+          this.showNotification('🗑️ Product deleted');
+        }
+      });
+    }
+
+    // Save button
+    document.getElementById('save-product-btn').addEventListener('click', async () => {
+      const name = document.getElementById('product-name').value.trim();
+      const price = parseFloat(document.getElementById('product-price').value) || 0;
+      const sku = document.getElementById('product-sku').value.trim();
+      const category = document.getElementById('product-category').value.trim();
+      const description = document.getElementById('product-description').value.trim();
+      const cost = parseFloat(document.getElementById('product-cost').value) || 0;
+      const unit = document.getElementById('product-unit').value.trim() || 'each';
+      const active = document.getElementById('product-active').checked;
+
+      if (!name) {
+        alert('Please enter a product name');
+        return;
+      }
+
+      if (price <= 0) {
+        alert('Please enter a valid price');
+        return;
+      }
+
+      const productData = {
+        id: product?.id || `product_${Date.now()}`,
+        name,
+        price,
+        sku,
+        category,
+        description,
+        cost,
+        unit,
+        active,
+        createdAt: product?.createdAt || new Date().toISOString(),
+        updatedAt: new Date().toISOString()
+      };
+
+      if (isEdit) {
+        const index = this.products.findIndex(p => p.id === product.id);
+        this.products[index] = productData;
+      } else {
+        this.products.push(productData);
+      }
+
+      await chrome.storage.local.set({ products: this.products });
+      this.renderProductsList();
+      modal.remove();
+      this.showNotification(isEdit ? '✅ Product updated' : '✅ Product added');
+    });
+  }
+
+  showProductDetails(product) {
+    const modal = document.createElement('div');
+    modal.className = 'crm-modal-backdrop';
+
+    const margin = product.price - (product.cost || 0);
+    const marginPercent = product.cost ? ((margin / product.price) * 100).toFixed(1) : '-';
+
+    modal.innerHTML = `
+      <div class="crm-modal" style="max-width: 500px;">
+        <div class="crm-modal-header">
+          <h2>📦 ${this.escapeHtml(product.name)}</h2>
+          <button class="crm-modal-close" id="crm-close-product-details">&times;</button>
+        </div>
+        <div class="crm-modal-body">
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 20px;">
+            <div>
+              <div style="color: #5f6368; font-size: 12px; margin-bottom: 4px;">PRICE</div>
+              <div style="font-size: 24px; font-weight: 600; color: #1a73e8;">$${product.price.toFixed(2)}</div>
+              <div style="color: #5f6368; font-size: 11px;">per ${product.unit || 'each'}</div>
+            </div>
+            ${product.cost ? `
+              <div>
+                <div style="color: #5f6368; font-size: 12px; margin-bottom: 4px;">MARGIN</div>
+                <div style="font-size: 24px; font-weight: 600; color: #34a853;">$${margin.toFixed(2)}</div>
+                <div style="color: #5f6368; font-size: 11px;">${marginPercent}% margin</div>
+              </div>
+            ` : ''}
+          </div>
+
+          ${product.sku ? `
+            <div style="margin-bottom: 16px;">
+              <div style="color: #5f6368; font-size: 12px; margin-bottom: 4px;">SKU</div>
+              <div style="font-family: monospace; color: #202124;">${this.escapeHtml(product.sku)}</div>
+            </div>
+          ` : ''}
+
+          ${product.category ? `
+            <div style="margin-bottom: 16px;">
+              <div style="color: #5f6368; font-size: 12px; margin-bottom: 4px;">CATEGORY</div>
+              <div style="color: #202124;">${this.escapeHtml(product.category)}</div>
+            </div>
+          ` : ''}
+
+          ${product.description ? `
+            <div style="margin-bottom: 16px;">
+              <div style="color: #5f6368; font-size: 12px; margin-bottom: 4px;">DESCRIPTION</div>
+              <div style="color: #202124; line-height: 1.6;">${this.escapeHtml(product.description)}</div>
+            </div>
+          ` : ''}
+
+          ${product.cost ? `
+            <div style="margin-bottom: 16px;">
+              <div style="color: #5f6368; font-size: 12px; margin-bottom: 4px;">COST</div>
+              <div style="color: #202124;">$${product.cost.toFixed(2)}</div>
+            </div>
+          ` : ''}
+
+          <div style="margin-bottom: 16px;">
+            <div style="color: #5f6368; font-size: 12px; margin-bottom: 4px;">STATUS</div>
+            <div>
+              <span style="display: inline-block; padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: 600; background: ${product.active !== false ? '#e6f4ea' : '#fce8e6'}; color: ${product.active !== false ? '#137333' : '#c5221f'};">
+                ${product.active !== false ? '✓ ACTIVE' : '✗ INACTIVE'}
+              </span>
+            </div>
+          </div>
+
+          <div class="crm-modal-actions">
+            <button class="crm-btn" id="close-product-details-btn">Close</button>
+            <button class="crm-btn-primary" id="edit-product-btn">Edit Product</button>
+          </div>
+        </div>
+      </div>
+    `;
+
+    document.body.appendChild(modal);
+
+    document.getElementById('crm-close-product-details').addEventListener('click', () => modal.remove());
+    document.getElementById('close-product-details-btn').addEventListener('click', () => modal.remove());
+    document.getElementById('edit-product-btn').addEventListener('click', () => {
+      modal.remove();
+      this.showProductEditor(product);
+    });
+  }
+
+  // ====== END PRODUCT MANAGEMENT SYSTEM ======
+
   showEmailDealsSidebar(emailMetadata) {
     // Check if sidebar already exists
     let sidebar = document.getElementById('crm-email-deals-sidebar');
@@ -5149,6 +5591,38 @@ class GmailCRM {
             <textarea id="crm-edit-weekly-update" rows="3">${this.escapeHtml(deal.weeklyUpdate || '')}</textarea>
             ${deal.weeklyUpdateDate ? `<div class="crm-field-hint">Last updated: ${new Date(deal.weeklyUpdateDate).toLocaleString()}</div>` : ''}
           </div>
+
+          ${deal.products && deal.products.length > 0 ? `
+            <div class="crm-general-field">
+              <label>Products</label>
+              <div style="background: #f8f9fa; border-radius: 8px; padding: 12px;">
+                ${deal.products.map(item => {
+                  const product = this.products.find(p => p.id === item.productId);
+                  if (!product) return '';
+
+                  const subtotal = item.quantity * item.unitPrice * (1 - item.discount / 100);
+
+                  return `
+                    <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px 0; border-bottom: 1px solid #e8eaed;">
+                      <div style="flex: 1;">
+                        <div style="font-weight: 600; margin-bottom: 2px;">${this.escapeHtml(product.name)}</div>
+                        <div style="font-size: 11px; color: #5f6368;">
+                          ${item.quantity} × $${item.unitPrice.toFixed(2)}${item.discount > 0 ? ` (-${item.discount}%)` : ''}
+                        </div>
+                      </div>
+                      <div style="font-weight: 600; color: #1a73e8;">$${subtotal.toFixed(2)}</div>
+                    </div>
+                  `;
+                }).join('')}
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 12px 0 4px 0; font-weight: 600; font-size: 15px;">
+                  <div>Total</div>
+                  <div style="color: #1a73e8;">$${deal.products.reduce((sum, item) => {
+                    return sum + (item.quantity * item.unitPrice * (1 - item.discount / 100));
+                  }, 0).toFixed(2)}</div>
+                </div>
+              </div>
+            </div>
+          ` : ''}
 
           <button class="crm-save-general-btn" id="crm-save-general-btn">Save Changes</button>
         </div>
