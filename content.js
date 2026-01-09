@@ -3108,50 +3108,47 @@ class GmailCRM {
 
   injectSidebarToggleButton() {
     // Check if button already exists
-    if (document.getElementById('crm-sidebar-toggle-btn')) return;
+    if (document.getElementById('effortless-ai-btn')) return;
 
-    const toggleBtn = document.createElement('button');
-    toggleBtn.id = 'crm-sidebar-toggle-btn';
-    toggleBtn.className = 'crm-sidebar-toggle-btn';
-    toggleBtn.innerHTML = '🔗';
-    toggleBtn.title = 'Link Email to Deal';
+    const effortlessBtn = document.createElement('button');
+    effortlessBtn.id = 'effortless-ai-btn';
+    effortlessBtn.className = 'effortless-ai-btn';
+    effortlessBtn.innerHTML = `
+      <div class="effortless-logo">
+        <svg width="32" height="32" viewBox="0 0 32 32" fill="none">
+          <circle cx="16" cy="16" r="14" fill="url(#gradient1)" />
+          <path d="M16 8 L20 16 L16 24 L12 16 Z" fill="white" opacity="0.9"/>
+          <circle cx="16" cy="16" r="3" fill="white"/>
+          <defs>
+            <linearGradient id="gradient1" x1="0" y1="0" x2="32" y2="32">
+              <stop offset="0%" stop-color="#667eea"/>
+              <stop offset="100%" stop-color="#764ba2"/>
+            </linearGradient>
+          </defs>
+        </svg>
+      </div>
+      <span class="effortless-label">Effortless</span>
+    `;
+    effortlessBtn.title = 'Open Effortless AI Assistant';
 
-    document.body.appendChild(toggleBtn);
+    document.body.appendChild(effortlessBtn);
 
-    toggleBtn.addEventListener('click', () => {
-      const emailMetadata = this.extractEmailMetadata();
-      if (emailMetadata) {
-        const sidebar = document.getElementById('crm-email-deals-sidebar');
-        if (sidebar && sidebar.style.display === 'flex') {
-          sidebar.style.display = 'none';
-          toggleBtn.classList.remove('active');
-        } else {
-          this.showEmailDealsSidebar(emailMetadata);
-          toggleBtn.classList.add('active');
-        }
+    effortlessBtn.addEventListener('click', () => {
+      const panel = document.getElementById('effortless-ai-panel');
+      if (panel && panel.classList.contains('visible')) {
+        this.closeEffortlessAIPanel();
       } else {
-        alert('Please open an email first to link it to a deal.');
+        this.showEffortlessAIPanel();
       }
     });
   }
 
   updateToggleButtonVisibility() {
-    const toggleBtn = document.getElementById('crm-sidebar-toggle-btn');
-    if (!toggleBtn) return;
+    const effortlessBtn = document.getElementById('effortless-ai-btn');
+    if (!effortlessBtn) return;
 
     // Always show the button
-    toggleBtn.style.display = 'flex';
-
-    // Check if we're viewing an email - if not, close sidebar
-    const emailMetadata = this.extractEmailMetadata();
-    if (!emailMetadata) {
-      // Not viewing an email, close sidebar if open
-      const sidebar = document.getElementById('crm-email-deals-sidebar');
-      if (sidebar) {
-        sidebar.style.display = 'none';
-      }
-      toggleBtn.classList.remove('active');
-    }
+    effortlessBtn.style.display = 'flex';
   }
 
   extractEmailMetadata() {
@@ -5075,6 +5072,354 @@ class GmailCRM {
         if (toggleBtn) toggleBtn.classList.remove('active');
       });
     });
+  }
+
+  showEffortlessAIPanel() {
+    // Check if panel already exists
+    let panel = document.getElementById('effortless-ai-panel');
+
+    if (!panel) {
+      // Create panel
+      panel = document.createElement('div');
+      panel.id = 'effortless-ai-panel';
+      panel.className = 'effortless-ai-panel';
+      document.body.appendChild(panel);
+    }
+
+    panel.classList.add('visible');
+    const effortlessBtn = document.getElementById('effortless-ai-btn');
+    if (effortlessBtn) effortlessBtn.classList.add('active');
+
+    // Get email context if available
+    const emailMetadata = this.extractEmailMetadata();
+    const contextInfo = emailMetadata ?
+      `📧 Current Email: ${emailMetadata.subject.substring(0, 40)}${emailMetadata.subject.length > 40 ? '...' : ''}` :
+      '📊 Ready to help';
+
+    // Get pipeline info
+    const pipelineInfo = this.currentPipeline ?
+      `${this.currentPipeline.name} (${Object.values(this.deals).filter(d => d.pipelineId === this.currentPipeline.id).length} deals)` :
+      'No pipeline selected';
+
+    // Calculate stats
+    const totalDeals = Object.keys(this.deals).length;
+    const activeDeals = Object.values(this.deals).filter(d => d.status === 'Active').length;
+    const totalValue = Object.values(this.deals)
+      .filter(d => d.status === 'Active')
+      .reduce((sum, d) => sum + (parseFloat(d.value) || 0), 0);
+
+    panel.innerHTML = `
+      <div class="effortless-panel-header">
+        <div class="effortless-header-title">
+          <div class="effortless-logo-small">
+            <svg width="24" height="24" viewBox="0 0 32 32" fill="none">
+              <circle cx="16" cy="16" r="14" fill="url(#gradient2)" />
+              <path d="M16 8 L20 16 L16 24 L12 16 Z" fill="white" opacity="0.9"/>
+              <circle cx="16" cy="16" r="3" fill="white"/>
+              <defs>
+                <linearGradient id="gradient2" x1="0" y1="0" x2="32" y2="32">
+                  <stop offset="0%" stop-color="#667eea"/>
+                  <stop offset="100%" stop-color="#764ba2"/>
+                </linearGradient>
+              </defs>
+            </svg>
+          </div>
+          <span>Effortless AI Assistant</span>
+        </div>
+        <button class="effortless-close-btn" id="close-effortless-panel">×</button>
+      </div>
+
+      <div class="effortless-context-bar">
+        <div class="effortless-context-item">
+          <span class="effortless-context-icon">🎯</span>
+          <span class="effortless-context-text">${contextInfo}</span>
+        </div>
+      </div>
+
+      <div class="effortless-stats-grid">
+        <div class="effortless-stat-card">
+          <div class="effortless-stat-value">${totalDeals}</div>
+          <div class="effortless-stat-label">Total Deals</div>
+        </div>
+        <div class="effortless-stat-card">
+          <div class="effortless-stat-value">${activeDeals}</div>
+          <div class="effortless-stat-label">Active</div>
+        </div>
+        <div class="effortless-stat-card">
+          <div class="effortless-stat-value">$${(totalValue / 1000).toFixed(0)}K</div>
+          <div class="effortless-stat-label">Pipeline Value</div>
+        </div>
+      </div>
+
+      <div class="effortless-ai-input-section">
+        <div class="effortless-section-title">✨ AI Command Center</div>
+        <div class="effortless-input-container">
+          <textarea
+            id="effortless-ai-input"
+            class="effortless-ai-textarea"
+            placeholder="Tell me what you want to do...
+
+Examples:
+• Create a new deal for Acme Corp
+• Move Stanford deal to proposal stage
+• Show me high priority deals
+• Add products to this deal
+• Open Products catalog"></textarea>
+          <div class="effortless-input-actions">
+            <button class="effortless-voice-btn" id="effortless-voice-btn" title="Voice Command">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+                <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                <line x1="12" y1="19" x2="12" y2="23"/>
+                <line x1="8" y1="23" x2="16" y2="23"/>
+              </svg>
+            </button>
+            <button class="effortless-send-btn" id="effortless-send-btn">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor">
+                <line x1="22" y1="2" x2="11" y2="13"/>
+                <polygon points="22 2 15 22 11 13 2 9 22 2"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div id="effortless-ai-response" class="effortless-ai-response hidden"></div>
+      </div>
+
+      <div class="effortless-quick-actions">
+        <div class="effortless-section-title">⚡ Quick Actions</div>
+        <div class="effortless-action-grid">
+          ${emailMetadata ? `
+            <button class="effortless-action-btn" data-action="link-email">
+              <span class="effortless-action-icon">🔗</span>
+              <span class="effortless-action-text">Link Email to Deal</span>
+            </button>
+            <button class="effortless-action-btn" data-action="create-deal-from-email">
+              <span class="effortless-action-icon">➕</span>
+              <span class="effortless-action-text">Create Deal from Email</span>
+            </button>
+          ` : ''}
+          <button class="effortless-action-btn" data-action="create-deal">
+            <span class="effortless-action-icon">📝</span>
+            <span class="effortless-action-text">New Deal</span>
+          </button>
+          <button class="effortless-action-btn" data-action="view-products">
+            <span class="effortless-action-icon">📦</span>
+            <span class="effortless-action-text">Products Catalog</span>
+          </button>
+          <button class="effortless-action-btn" data-action="hubspot-import">
+            <span class="effortless-action-icon">📥</span>
+            <span class="effortless-action-text">Import from HubSpot</span>
+          </button>
+          <button class="effortless-action-btn" data-action="settings">
+            <span class="effortless-action-icon">⚙️</span>
+            <span class="effortless-action-text">Settings</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="effortless-pipelines-section">
+        <div class="effortless-section-title">📊 Your Pipelines</div>
+        <div class="effortless-pipeline-list">
+          ${this.pipelines.map(pipeline => {
+            const dealCount = Object.values(this.deals).filter(d => d.pipelineId === pipeline.id).length;
+            const isActive = this.currentPipeline?.id === pipeline.id;
+            return `
+              <button class="effortless-pipeline-item ${isActive ? 'active' : ''}" data-pipeline-id="${pipeline.id}">
+                <div class="effortless-pipeline-name">${pipeline.name}</div>
+                <div class="effortless-pipeline-count">${dealCount}</div>
+              </button>
+            `;
+          }).join('')}
+        </div>
+      </div>
+
+      ${emailMetadata ? `
+        <div class="effortless-email-context">
+          <div class="effortless-section-title">📧 Current Email</div>
+          <div class="effortless-email-info">
+            <div class="effortless-email-subject">${this.escapeHtml(emailMetadata.subject)}</div>
+            <div class="effortless-email-from">From: ${this.escapeHtml(emailMetadata.from)}</div>
+          </div>
+        </div>
+      ` : ''}
+    `;
+
+    // Close button
+    document.getElementById('close-effortless-panel')?.addEventListener('click', () => {
+      this.closeEffortlessAIPanel();
+    });
+
+    // Voice button
+    document.getElementById('effortless-voice-btn')?.addEventListener('click', () => {
+      if (window.voiceControl) {
+        if (window.voiceControl.isListening) {
+          window.voiceControl.stopListening();
+        } else {
+          window.voiceControl.startListening({ type: 'ai-panel' });
+        }
+      } else {
+        this.showNotification('⚠️ Voice control not available');
+      }
+    });
+
+    // Send button
+    document.getElementById('effortless-send-btn')?.addEventListener('click', () => {
+      this.handleAICommand();
+    });
+
+    // Enter key in textarea
+    document.getElementById('effortless-ai-input')?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        this.handleAICommand();
+      }
+    });
+
+    // Quick action buttons
+    panel.querySelectorAll('.effortless-action-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const action = btn.dataset.action;
+        this.handleQuickAction(action, emailMetadata);
+      });
+    });
+
+    // Pipeline buttons
+    panel.querySelectorAll('.effortless-pipeline-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const pipelineId = btn.dataset.pipelineId;
+        const pipeline = this.pipelines.find(p => p.id === pipelineId);
+        if (pipeline) {
+          this.currentPipeline = pipeline;
+          this.showPipelineView();
+          this.closeEffortlessAIPanel();
+        }
+      });
+    });
+  }
+
+  closeEffortlessAIPanel() {
+    const panel = document.getElementById('effortless-ai-panel');
+    if (panel) {
+      panel.classList.remove('visible');
+    }
+
+    const effortlessBtn = document.getElementById('effortless-ai-btn');
+    if (effortlessBtn) {
+      effortlessBtn.classList.remove('active');
+    }
+  }
+
+  async handleAICommand() {
+    const input = document.getElementById('effortless-ai-input');
+    const responseDiv = document.getElementById('effortless-ai-response');
+
+    if (!input || !responseDiv) return;
+
+    const command = input.value.trim();
+    if (!command) return;
+
+    // Show processing
+    responseDiv.classList.remove('hidden');
+    responseDiv.innerHTML = `
+      <div class="effortless-ai-thinking">
+        <div class="effortless-thinking-spinner"></div>
+        <span>Processing your request...</span>
+      </div>
+    `;
+
+    // Clear input
+    input.value = '';
+
+    try {
+      // Use voice control's natural language processing
+      if (window.voiceControl) {
+        const parsed = window.voiceControl.parseNaturalLanguage(command);
+
+        if (parsed) {
+          responseDiv.innerHTML = `
+            <div class="effortless-ai-success">
+              <span class="effortless-success-icon">✅</span>
+              <span>Executing: ${parsed.action}</span>
+            </div>
+          `;
+
+          await window.voiceControl.executeCommand(parsed);
+
+          setTimeout(() => {
+            responseDiv.classList.add('hidden');
+          }, 3000);
+        } else {
+          responseDiv.innerHTML = `
+            <div class="effortless-ai-error">
+              <span class="effortless-error-icon">❌</span>
+              <span>I didn't understand that command. Try something like "Create a new deal" or "Show high priority deals"</span>
+            </div>
+          `;
+        }
+      }
+    } catch (error) {
+      console.error('AI command error:', error);
+      responseDiv.innerHTML = `
+        <div class="effortless-ai-error">
+          <span class="effortless-error-icon">❌</span>
+          <span>Error processing command: ${error.message}</span>
+        </div>
+      `;
+    }
+  }
+
+  handleQuickAction(action, emailMetadata) {
+    switch (action) {
+      case 'link-email':
+        if (emailMetadata) {
+          this.showEmailDealsSidebar(emailMetadata);
+          this.closeEffortlessAIPanel();
+        }
+        break;
+
+      case 'create-deal-from-email':
+        if (emailMetadata && this.currentPipeline) {
+          this.createDealFromEmail(this.currentPipeline.id, emailMetadata);
+          this.closeEffortlessAIPanel();
+        } else if (emailMetadata) {
+          // Show pipeline selector
+          this.showEmailDealsSidebar(emailMetadata);
+          this.closeEffortlessAIPanel();
+        }
+        break;
+
+      case 'create-deal':
+        if (this.currentPipeline) {
+          this.showAddDealDialog(this.currentPipeline.stages[0]?.id);
+          this.closeEffortlessAIPanel();
+        } else {
+          this.showNotification('❌ Please select a pipeline first');
+        }
+        break;
+
+      case 'view-products':
+        // Navigate to products view
+        this.closeEffortlessAIPanel();
+        this.showNotification('📦 Products catalog coming soon!');
+        // TODO: Implement products catalog view
+        break;
+
+      case 'hubspot-import':
+        if (this.currentPipeline) {
+          this.showHubSpotImportWizard();
+          this.closeEffortlessAIPanel();
+        } else {
+          this.showNotification('❌ Please select a pipeline first');
+        }
+        break;
+
+      case 'settings':
+        chrome.runtime.openOptionsPage();
+        break;
+
+      default:
+        console.log('Unknown action:', action);
+    }
   }
 
   async updateDealStatus(dealId, newStatus) {

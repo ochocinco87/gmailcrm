@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Effortless - Gmail CRM",
-  "version": "5.2.0",
+  "version": "5.3.0",
   "description": "Effortless CRM with powerful voice control. Manage deals, contacts, and pipelines directly from your Gmail inbox using natural voice commands.",
   "permissions": [
     "storage",
