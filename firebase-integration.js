@@ -124,13 +124,45 @@ class FirebaseCRMSync {
 
       // Use background script to save to Firebase (has access to chrome.identity)
       try {
+        // Robust wake-up: Try multiple pings with longer timeouts
+        console.log('📡 Waking up service worker (this may take a moment)...');
+        let workerAwake = false;
+        for (let attempt = 1; attempt <= 3; attempt++) {
+          try {
+            await Promise.race([
+              chrome.runtime.sendMessage({ action: 'ping' }),
+              new Promise((_, reject) => setTimeout(() => reject(new Error('Ping timeout')), 3000))
+            ]);
+            console.log(`✓ Service worker responded on attempt ${attempt}`);
+            workerAwake = true;
+            break;
+          } catch (e) {
+            console.warn(`⚠️ Ping attempt ${attempt}/3 failed:`, e.message);
+            if (attempt < 3) {
+              // Wait progressively longer between attempts
+              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
+            }
+          }
+        }
+
+        if (!workerAwake) {
+          console.error('❌ Service worker failed to wake up after 3 attempts');
+          throw new Error('Service worker is not responding. Please reload the extension at chrome://extensions/');
+        }
+
+        // Give it a moment to fully initialize
+        await new Promise(resolve => setTimeout(resolve, 500));
+
+        console.log('📤 Sending saveFirebaseDeal message...');
         const response = await Promise.race([
           chrome.runtime.sendMessage({
             action: 'saveFirebaseDeal',
             deal: deal
           }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout after 5s')), 5000))
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout after 15s')), 15000))
         ]);
+
+        console.log('📥 Response received:', response);
 
         if (response && response.success) {
           // Also save to local storage for offline access
