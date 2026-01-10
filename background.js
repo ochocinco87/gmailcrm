@@ -148,9 +148,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
   // Firebase Authentication
   if (request.action === 'signInWithGoogle') {
+    console.log('📨 Received signInWithGoogle message from content script');
     handleSignIn().then(result => {
+      console.log('📤 Sending response back to content script:', result.success ? 'SUCCESS' : 'FAILED');
       sendResponse(result);
     }).catch(error => {
+      console.error('❌ Caught error in message handler:', error);
       sendResponse({ success: false, error: error.message });
     });
     return true;
@@ -436,32 +439,41 @@ chrome.contextMenus.onClicked.addListener((info, tab) => {
 
 async function handleSignIn() {
   try {
+    console.log('🔐 Starting Google sign-in process...');
+
     // Use chrome.identity to get OAuth token
     const token = await new Promise((resolve, reject) => {
       chrome.identity.getAuthToken({ interactive: true }, (token) => {
         if (chrome.runtime.lastError) {
+          console.error('❌ OAuth token error:', chrome.runtime.lastError);
           reject(new Error(chrome.runtime.lastError.message));
         } else {
+          console.log('✓ OAuth token retrieved');
           resolve(token);
         }
       });
     });
 
     authToken = token;
+    console.log('✓ Token stored');
 
     // Get user info from Google API
+    console.log('📡 Fetching user info from Google API...');
     const response = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
       headers: { Authorization: `Bearer ${token}` }
     });
 
     if (!response.ok) {
+      console.error('❌ Failed to fetch user info:', response.status, response.statusText);
       throw new Error('Failed to get user info');
     }
 
     const userInfo = await response.json();
+    console.log('✓ User info retrieved:', userInfo.email);
 
     // Extract domain
     const domain = userInfo.email.split('@')[1];
+    console.log('✓ Domain extracted:', domain);
 
     // Note: Removed domain restriction - all Google Workspace domains are now allowed
 
@@ -469,12 +481,16 @@ async function handleSignIn() {
     let role = 'admin'; // Default role
     try {
       if (firebaseConfig) {
+        console.log('🔥 Updating user in Firestore...');
         await createOrUpdateUser(userInfo, domain);
         // Load user role from Firestore
         role = await getUserRole(userInfo.email, domain);
+        console.log('✓ User role from Firestore:', role);
+      } else {
+        console.log('⚠️ Firebase not configured, using local-only mode');
       }
     } catch (error) {
-      console.warn('Firestore operation skipped (Firebase may not be configured):', error.message);
+      console.warn('⚠️ Firestore operation skipped:', error.message);
       // Continue with local-only mode
     }
 
@@ -486,14 +502,16 @@ async function handleSignIn() {
       role: role
     };
 
+    console.log('💾 Saving user to storage...');
     await chrome.storage.local.set({ currentUser });
 
+    console.log('✅ Sign-in completed successfully!');
     return {
       success: true,
       user: currentUser
     };
   } catch (error) {
-    console.error('Sign-in error:', error);
+    console.error('❌ Sign-in error:', error);
     return {
       success: false,
       error: error.message

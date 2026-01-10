@@ -5399,17 +5399,22 @@ class GmailCRM {
 
   async handleGoogleSignIn() {
     try {
+      console.log('🔐 Starting Google sign-in from content script...');
       this.showNotification('🔐 Signing in with Google...');
 
       // Send message to background script to handle sign-in
       // (chrome.identity is only available in background/extension pages)
+      console.log('📤 Sending signInWithGoogle message to background script...');
       const response = await chrome.runtime.sendMessage({ action: 'signInWithGoogle' });
+      console.log('📥 Received response from background script:', response);
 
       if (!response || !response.success) {
+        console.error('❌ Sign-in failed:', response);
         throw new Error(response?.error || 'Sign-in failed');
       }
 
       const user = response.user;
+      console.log('✅ Sign-in successful! User:', user.email);
       this.showNotification(`✅ Successfully signed in as ${user.name}!`);
 
       // Refresh the panel to show user info
