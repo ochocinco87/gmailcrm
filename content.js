@@ -5401,44 +5401,15 @@ class GmailCRM {
     try {
       this.showNotification('🔐 Signing in with Google...');
 
-      // Get OAuth token using Chrome Identity API
-      const token = await new Promise((resolve, reject) => {
-        chrome.identity.getAuthToken({ interactive: true }, (token) => {
-          if (chrome.runtime.lastError) {
-            reject(new Error(chrome.runtime.lastError.message));
-          } else {
-            resolve(token);
-          }
-        });
-      });
+      // Send message to background script to handle sign-in
+      // (chrome.identity is only available in background/extension pages)
+      const response = await chrome.runtime.sendMessage({ action: 'signInWithGoogle' });
 
-      // Fetch user info from Google
-      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-
-      if (!userInfoResponse.ok) {
-        throw new Error('Failed to fetch user info');
+      if (!response || !response.success) {
+        throw new Error(response?.error || 'Sign-in failed');
       }
 
-      const userInfo = await userInfoResponse.json();
-      const email = userInfo.email;
-      const domain = email.split('@')[1];
-
-      // Create user object
-      const user = {
-        uid: userInfo.id,
-        email: email,
-        name: userInfo.name,
-        photoURL: userInfo.picture,
-        domain: domain,
-        role: 'admin',
-        createdAt: new Date().toISOString(),
-        lastLoginAt: new Date().toISOString()
-      };
-
-      // Save user to storage
-      await chrome.storage.local.set({ currentUser: user });
+      const user = response.user;
       this.showNotification(`✅ Successfully signed in as ${user.name}!`);
 
       // Refresh the panel to show user info
@@ -5461,16 +5432,12 @@ class GmailCRM {
 
   async handleGoogleSignOut() {
     try {
-      // Clear OAuth token
-      chrome.identity.getAuthToken({ interactive: false }, (token) => {
-        if (token) {
-          chrome.identity.removeCachedAuthToken({ token: token });
-        }
-      });
+      // Send message to background script to handle sign-out
+      const response = await chrome.runtime.sendMessage({ action: 'signOut' });
 
-      // Clear local user data
-      await chrome.storage.local.remove('currentUser');
-      this.showNotification('✅ Successfully signed out');
+      if (response && response.success) {
+        this.showNotification('✅ Successfully signed out');
+      }
 
       // Refresh the panel
       this.closeEffortlessAIPanel();

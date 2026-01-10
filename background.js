@@ -174,6 +174,15 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'signOut') {
+    // Clear OAuth token from cache
+    chrome.identity.getAuthToken({ interactive: false }, (token) => {
+      if (token) {
+        chrome.identity.removeCachedAuthToken({ token: token }, () => {
+          console.log('Auth token removed from cache');
+        });
+      }
+    });
+
     currentUser = null;
     authToken = null;
     chrome.storage.local.remove('currentUser');
@@ -454,16 +463,20 @@ async function handleSignIn() {
     // Extract domain
     const domain = userInfo.email.split('@')[1];
 
-    // Check if domain is authorized (for now, only medivis.com)
-    if (domain !== 'medivis.com') {
-      throw new Error(`Domain ${domain} is not authorized. Only medivis.com users can sign in.`);
+    // Note: Removed domain restriction - all Google Workspace domains are now allowed
+
+    // Try to create or update user in Firestore (if Firebase is configured)
+    let role = 'admin'; // Default role
+    try {
+      if (firebaseConfig) {
+        await createOrUpdateUser(userInfo, domain);
+        // Load user role from Firestore
+        role = await getUserRole(userInfo.email, domain);
+      }
+    } catch (error) {
+      console.warn('Firestore operation skipped (Firebase may not be configured):', error.message);
+      // Continue with local-only mode
     }
-
-    // Create or update user in Firestore
-    await createOrUpdateUser(userInfo, domain);
-
-    // Load user role
-    const role = await getUserRole(userInfo.email, domain);
 
     currentUser = {
       email: userInfo.email,
