@@ -194,9 +194,10 @@ document.getElementById('save-firebase-btn').addEventListener('click', async () 
     // Replace multiple spaces between properties with a newline
     configText = configText.replace(/,\s{2,}(\w+):/g, ',\n  $1:');
 
-    // 5. Convert JavaScript object literal to JSON (add quotes around keys)
+    // 5. Convert JavaScript object literal to JSON (add quotes around keys ONLY if not already quoted)
     // This handles Firebase's format: { apiKey: "...", } -> { "apiKey": "...", }
-    configText = configText.replace(/(\w+):/g, '"$1":');
+    // Use negative lookbehind to avoid double-quoting already quoted keys
+    configText = configText.replace(/([{,]\s*)(\w+)(\s*:)/g, '$1"$2"$3');
 
     // 6. Remove trailing commas (common in JavaScript but invalid in JSON)
     configText = configText.replace(/,(\s*[}\]])/g, '$1');
