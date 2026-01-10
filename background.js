@@ -259,9 +259,12 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
   }
 
   if (request.action === 'saveFirebaseDeal') {
+    console.log('📨 Received saveFirebaseDeal message from content script');
     saveFirebaseDeal(request.deal).then(result => {
+      console.log('📤 Sending saveFirebaseDeal response:', result.success ? 'SUCCESS' : 'FAILED');
       sendResponse(result);
     }).catch(error => {
+      console.error('❌ Error in saveFirebaseDeal handler:', error);
       sendResponse({ success: false, error: error.message });
     });
     return true;
@@ -912,21 +915,29 @@ async function getFirebaseDeals() {
 
 async function saveFirebaseDeal(deal) {
   try {
+    console.log('🔥 Starting saveFirebaseDeal for deal:', deal.id);
+
     if (!currentUser) {
+      console.error('❌ Not signed in');
       throw new Error('Not signed in');
     }
+    console.log('✓ User check passed:', currentUser.email);
 
     if (currentUser.role === 'viewer') {
+      console.error('❌ User is viewer, cannot edit');
       throw new Error('Viewers cannot edit deals');
     }
+    console.log('✓ Permission check passed');
 
-    await setFirestoreDocument(
-      `organizations/${currentUser.domain}/deals/${deal.id}`,
-      deal
-    );
+    const path = `organizations/${currentUser.domain}/deals/${deal.id}`;
+    console.log('📝 Saving to Firestore path:', path);
 
+    await setFirestoreDocument(path, deal);
+
+    console.log('✅ Deal saved to Firestore successfully');
     return { success: true, deal };
   } catch (error) {
+    console.error('❌ Error in saveFirebaseDeal:', error);
     return { success: false, error: error.message };
   }
 }
