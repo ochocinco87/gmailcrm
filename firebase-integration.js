@@ -122,13 +122,22 @@ class FirebaseCRMSync {
         throw new Error('You do not have permission to edit deals (viewer role)');
       }
 
-      // Save directly to Firebase REST API (bypass broken background worker)
+      // Use background script to save to Firebase (has access to chrome.identity)
       try {
-        await this.saveToFirestoreDirectly(deal);
-        // Also save to local storage for offline access
-        await this.saveToLocal('deals', deal.id, deal);
-        console.log('✓ Deal saved to Firebase and local storage');
-        return deal;
+        await this.wakeUpServiceWorker();
+        const response = await chrome.runtime.sendMessage({
+          action: 'saveFirebaseDeal',
+          deal: deal
+        });
+
+        if (response && response.success) {
+          // Also save to local storage for offline access
+          await this.saveToLocal('deals', deal.id, deal);
+          console.log('✓ Deal saved to Firebase and local storage');
+          return deal;
+        } else {
+          throw new Error(response?.error || 'Failed to save to Firebase');
+        }
       } catch (error) {
         console.warn('Error saving to Firebase, falling back to local:', error);
         // Fall back to local storage if Firebase fails
