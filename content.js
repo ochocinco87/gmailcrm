@@ -5402,6 +5402,16 @@ class GmailCRM {
       console.log('🔐 Starting Google sign-in from content script...');
       this.showNotification('🔐 Signing in with Google...');
 
+      // Wake up service worker first by pinging it
+      console.log('📡 Waking up service worker...');
+      try {
+        const pingResponse = await chrome.runtime.sendMessage({ action: 'ping' });
+        console.log('✓ Service worker is awake:', pingResponse);
+      } catch (pingError) {
+        console.error('⚠️ Service worker ping failed:', pingError);
+        throw new Error('Service worker is inactive. Please reload the extension at chrome://extensions/');
+      }
+
       // Send message to background script to handle sign-in
       // (chrome.identity is only available in background/extension pages)
       console.log('📤 Sending signInWithGoogle message to background script...');
