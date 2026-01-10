@@ -124,11 +124,13 @@ class FirebaseCRMSync {
 
       // Use background script to save to Firebase (has access to chrome.identity)
       try {
-        await this.wakeUpServiceWorker();
-        const response = await chrome.runtime.sendMessage({
-          action: 'saveFirebaseDeal',
-          deal: deal
-        });
+        const response = await Promise.race([
+          chrome.runtime.sendMessage({
+            action: 'saveFirebaseDeal',
+            deal: deal
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout after 5s')), 5000))
+        ]);
 
         if (response && response.success) {
           // Also save to local storage for offline access
