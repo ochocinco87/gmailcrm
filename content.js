@@ -5074,7 +5074,7 @@ class GmailCRM {
     });
   }
 
-  showEffortlessAIPanel() {
+  async showEffortlessAIPanel() {
     // Check if panel already exists
     let panel = document.getElementById('effortless-ai-panel');
 
@@ -5089,6 +5089,13 @@ class GmailCRM {
     panel.classList.add('visible');
     const effortlessBtn = document.getElementById('effortless-ai-btn');
     if (effortlessBtn) effortlessBtn.classList.add('active');
+
+    // Get current user from storage
+    const userResult = await new Promise(resolve => {
+      chrome.storage.local.get(['currentUser', 'firebaseConfig'], resolve);
+    });
+    const currentUser = userResult.currentUser;
+    const hasFirebase = !!userResult.firebaseConfig;
 
     // Get email context if available
     const emailMetadata = this.extractEmailMetadata();
@@ -5149,6 +5156,53 @@ class GmailCRM {
           <div class="effortless-stat-value">$${(totalValue / 1000).toFixed(0)}K</div>
           <div class="effortless-stat-label">Pipeline Value</div>
         </div>
+      </div>
+
+      <div class="effortless-user-section">
+        <div class="effortless-section-title">👤 Team Collaboration</div>
+        ${currentUser ? `
+          <div class="effortless-user-card">
+            <div class="effortless-user-avatar">
+              ${currentUser.photoURL ?
+                `<img src="${currentUser.photoURL}" alt="${currentUser.name}">` :
+                `<div class="effortless-user-initial">${currentUser.email.charAt(0).toUpperCase()}</div>`
+              }
+            </div>
+            <div class="effortless-user-info">
+              <div class="effortless-user-name">${this.escapeHtml(currentUser.name || currentUser.email.split('@')[0])}</div>
+              <div class="effortless-user-email">${this.escapeHtml(currentUser.email)}</div>
+              ${hasFirebase ?
+                '<div class="effortless-firebase-status">✅ Firebase Connected</div>' :
+                '<div class="effortless-firebase-status warning">⚠️ Firebase Not Configured</div>'
+              }
+            </div>
+            <button class="effortless-sign-out-btn" id="effortless-sign-out">Sign Out</button>
+          </div>
+        ` : `
+          <div class="effortless-signin-card">
+            <div class="effortless-signin-icon">
+              <svg width="48" height="48" viewBox="0 0 48 48">
+                <path fill="#4285F4" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                <path fill="#34A853" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                <path fill="#EA4335" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+              </svg>
+            </div>
+            <div class="effortless-signin-text">
+              <h3>Sign in with Google Workspace</h3>
+              <p>Enable team collaboration and Firebase sync</p>
+            </div>
+            <button class="effortless-signin-btn" id="effortless-sign-in">
+              <svg width="18" height="18" viewBox="0 0 18 18" style="margin-right: 8px;">
+                <path fill="currentColor" d="M9 3.48c1.69 0 2.83.73 3.48 1.34l2.54-2.48C13.46.89 11.43 0 9 0 5.48 0 2.44 2.02.96 4.96l2.91 2.26C4.6 5.05 6.62 3.48 9 3.48z"/>
+                <path fill="currentColor" d="M17.64 9.2c0-.74-.06-1.28-.19-1.84H9v3.34h4.96c-.1 1.03-.74 2.7-2.04 3.79l2.93 2.27c1.89-1.73 2.79-4.29 2.79-7.56z"/>
+                <path fill="currentColor" d="M3.88 10.78A5.54 5.54 0 0 1 3.58 9c0-.62.11-1.22.29-1.78L.96 4.96A9.008 9.008 0 0 0 0 9c0 1.45.35 2.82.96 4.04l2.92-2.26z"/>
+                <path fill="currentColor" d="M9 18c2.43 0 4.47-.8 5.96-2.18l-2.93-2.27c-.8.53-1.87.86-3.03.86-2.38 0-4.4-1.57-5.12-3.62L.97 13.04C2.45 15.98 5.48 18 9 18z"/>
+              </svg>
+              Sign in with Google
+            </button>
+          </div>
+        `}
       </div>
 
       <div class="effortless-quick-actions">
@@ -5243,6 +5297,18 @@ class GmailCRM {
       }
     });
 
+    // Sign in button
+    const signInBtn = document.getElementById('effortless-sign-in');
+    signInBtn?.addEventListener('click', async () => {
+      await this.handleGoogleSignIn();
+    });
+
+    // Sign out button
+    const signOutBtn = document.getElementById('effortless-sign-out');
+    signOutBtn?.addEventListener('click', async () => {
+      await this.handleGoogleSignOut();
+    });
+
     // Quick action buttons
     panel.querySelectorAll('.effortless-action-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -5329,6 +5395,150 @@ class GmailCRM {
       default:
         console.log('Unknown action:', action);
     }
+  }
+
+  async handleGoogleSignIn() {
+    try {
+      this.showNotification('🔐 Signing in with Google...');
+
+      // Get OAuth token using Chrome Identity API
+      const token = await new Promise((resolve, reject) => {
+        chrome.identity.getAuthToken({ interactive: true }, (token) => {
+          if (chrome.runtime.lastError) {
+            reject(new Error(chrome.runtime.lastError.message));
+          } else {
+            resolve(token);
+          }
+        });
+      });
+
+      // Fetch user info from Google
+      const userInfoResponse = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (!userInfoResponse.ok) {
+        throw new Error('Failed to fetch user info');
+      }
+
+      const userInfo = await userInfoResponse.json();
+      const email = userInfo.email;
+      const domain = email.split('@')[1];
+
+      // Create user object
+      const user = {
+        uid: userInfo.id,
+        email: email,
+        name: userInfo.name,
+        photoURL: userInfo.picture,
+        domain: domain,
+        role: 'admin',
+        createdAt: new Date().toISOString(),
+        lastLoginAt: new Date().toISOString()
+      };
+
+      // Save user to storage
+      await chrome.storage.local.set({ currentUser: user });
+      this.showNotification(`✅ Successfully signed in as ${user.name}!`);
+
+      // Refresh the panel to show user info
+      this.closeEffortlessAIPanel();
+      setTimeout(() => this.showEffortlessAIPanel(), 100);
+
+      // Initialize Firebase if configured
+      const firebaseResult = await new Promise(resolve => {
+        chrome.storage.local.get(['firebaseConfig'], resolve);
+      });
+
+      if (firebaseResult.firebaseConfig) {
+        await this.initializeFirebase(firebaseResult.firebaseConfig, user);
+      }
+    } catch (error) {
+      console.error('Sign-in error:', error);
+      this.showNotification(`❌ Sign-in failed: ${error.message}`);
+    }
+  }
+
+  async handleGoogleSignOut() {
+    try {
+      // Clear OAuth token
+      chrome.identity.getAuthToken({ interactive: false }, (token) => {
+        if (token) {
+          chrome.identity.removeCachedAuthToken({ token: token });
+        }
+      });
+
+      // Clear local user data
+      await chrome.storage.local.remove('currentUser');
+      this.showNotification('✅ Successfully signed out');
+
+      // Refresh the panel
+      this.closeEffortlessAIPanel();
+      setTimeout(() => this.showEffortlessAIPanel(), 100);
+    } catch (error) {
+      console.error('Sign-out error:', error);
+      this.showNotification(`❌ Sign-out failed: ${error.message}`);
+    }
+  }
+
+  async initializeFirebase(firebaseConfig, user) {
+    try {
+      console.log('🔥 Initializing Firebase...');
+
+      // Check if Firebase is already initialized
+      if (window.firebase && window.firebase.apps && window.firebase.apps.length > 0) {
+        console.log('✓ Firebase already initialized');
+        return;
+      }
+
+      // Load Firebase scripts if not already loaded
+      if (!window.firebase) {
+        await this.loadFirebaseScripts();
+      }
+
+      // Initialize Firebase
+      const app = firebase.initializeApp(firebaseConfig);
+      const db = firebase.firestore();
+      const auth = firebase.auth();
+
+      console.log('✓ Firebase initialized successfully');
+      this.showNotification('✅ Firebase connected!');
+
+      // Store Firebase instances
+      window.firebaseApp = app;
+      window.firebaseDb = db;
+      window.firebaseAuth = auth;
+
+      return { app, db, auth };
+    } catch (error) {
+      console.error('Firebase initialization error:', error);
+      this.showNotification(`⚠️ Firebase initialization failed: ${error.message}`);
+    }
+  }
+
+  async loadFirebaseScripts() {
+    // Load Firebase scripts dynamically
+    return new Promise((resolve, reject) => {
+      const scripts = [
+        'https://www.gstatic.com/firebasejs/9.22.0/firebase-app-compat.js',
+        'https://www.gstatic.com/firebasejs/9.22.0/firebase-firestore-compat.js',
+        'https://www.gstatic.com/firebasejs/9.22.0/firebase-auth-compat.js'
+      ];
+
+      let loaded = 0;
+      scripts.forEach(src => {
+        const script = document.createElement('script');
+        script.src = src;
+        script.onload = () => {
+          loaded++;
+          if (loaded === scripts.length) {
+            resolve();
+          }
+        };
+        script.onerror = reject;
+        document.head.appendChild(script);
+      });
+    });
   }
 
   async updateDealStatus(dealId, newStatus) {
