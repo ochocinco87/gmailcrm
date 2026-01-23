@@ -188,7 +188,8 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
 
     currentUser = null;
     authToken = null;
-    chrome.storage.local.remove('currentUser');
+    chrome.storage.local.remove(['currentUser', 'oauthToken']);
+    console.log('✓ User and OAuth token cleared from storage');
     sendResponse({ success: true });
     return true;
   }
@@ -459,6 +460,10 @@ async function handleSignIn() {
 
     authToken = token;
     console.log('✓ Token stored');
+
+    // Store OAuth token in storage for content script to use
+    await chrome.storage.local.set({ oauthToken: token });
+    console.log('✓ OAuth token saved to storage for content script access');
 
     // Get user info from Google API
     console.log('📡 Fetching user info from Google API...');

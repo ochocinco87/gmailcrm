@@ -122,58 +122,17 @@ class FirebaseCRMSync {
         throw new Error('You do not have permission to edit deals (viewer role)');
       }
 
-      // Use background script to save to Firebase (has access to chrome.identity)
+      // Save directly to Firebase REST API using stored OAuth token (no service worker needed!)
       try {
-        // Robust wake-up: Try multiple pings with longer timeouts
-        console.log('📡 Waking up service worker (this may take a moment)...');
-        let workerAwake = false;
-        for (let attempt = 1; attempt <= 3; attempt++) {
-          try {
-            await Promise.race([
-              chrome.runtime.sendMessage({ action: 'ping' }),
-              new Promise((_, reject) => setTimeout(() => reject(new Error('Ping timeout')), 3000))
-            ]);
-            console.log(`✓ Service worker responded on attempt ${attempt}`);
-            workerAwake = true;
-            break;
-          } catch (e) {
-            console.warn(`⚠️ Ping attempt ${attempt}/3 failed:`, e.message);
-            if (attempt < 3) {
-              // Wait progressively longer between attempts
-              await new Promise(resolve => setTimeout(resolve, 1000 * attempt));
-            }
-          }
-        }
+        console.log('🔥 Saving deal directly to Firebase...');
+        await this.saveToFirestoreDirectly(deal);
 
-        if (!workerAwake) {
-          console.error('❌ Service worker failed to wake up after 3 attempts');
-          throw new Error('Service worker is not responding. Please reload the extension at chrome://extensions/');
-        }
-
-        // Give it a moment to fully initialize
-        await new Promise(resolve => setTimeout(resolve, 500));
-
-        console.log('📤 Sending saveFirebaseDeal message...');
-        const response = await Promise.race([
-          chrome.runtime.sendMessage({
-            action: 'saveFirebaseDeal',
-            deal: deal
-          }),
-          new Promise((_, reject) => setTimeout(() => reject(new Error('Save timeout after 15s')), 15000))
-        ]);
-
-        console.log('📥 Response received:', response);
-
-        if (response && response.success) {
-          // Also save to local storage for offline access
-          await this.saveToLocal('deals', deal.id, deal);
-          console.log('✓ Deal saved to Firebase and local storage');
-          return deal;
-        } else {
-          throw new Error(response?.error || 'Failed to save to Firebase');
-        }
+        // Also save to local storage for offline access
+        await this.saveToLocal('deals', deal.id, deal);
+        console.log('✅ Deal saved to Firebase and local storage');
+        return deal;
       } catch (error) {
-        console.warn('Error saving to Firebase, falling back to local:', error);
+        console.warn('⚠️ Error saving to Firebase, falling back to local:', error);
         // Fall back to local storage if Firebase fails
         await this.saveToLocal('deals', deal.id, deal);
         return deal;
@@ -195,16 +154,17 @@ class FirebaseCRMSync {
       throw new Error('Firebase not configured');
     }
 
-    // Get OAuth token
-    const token = await new Promise((resolve, reject) => {
-      chrome.identity.getAuthToken({ interactive: false }, (token) => {
-        if (chrome.runtime.lastError || !token) {
-          reject(new Error('Not authenticated'));
-        } else {
-          resolve(token);
-        }
-      });
+    // Get OAuth token from storage (stored during sign-in)
+    const tokenResult = await new Promise(resolve => {
+      chrome.storage.local.get(['oauthToken'], resolve);
     });
+
+    const token = tokenResult.oauthToken;
+    if (!token) {
+      throw new Error('Not authenticated - please sign in again');
+    }
+
+    console.log('✓ OAuth token retrieved from storage');
 
     // Convert deal to Firestore format
     const firestoreDoc = this.convertToFirestoreFormat(deal);
